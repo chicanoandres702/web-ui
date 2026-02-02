@@ -245,11 +245,11 @@ def get_llm_model(provider: str, **kwargs):
         )
     elif provider == "ollama":
         if not kwargs.get("base_url", ""):
-            base_url = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+            base_url = os.getenv("OLLAMA_ENDPOINT", "http://137.131.201.189:11434")
         else:
             base_url = kwargs.get("base_url")
 
-        if "deepseek-r1" in kwargs.get("model_name", "qwen2.5:7b"):
+        if "deepseek-r1" in kwargs.get("model_name", "qwen3:8b"):
             return DeepSeekR1ChatOllama(
                 model=kwargs.get("model_name", "deepseek-r1:14b"),
                 temperature=kwargs.get("temperature", 0.0),
@@ -258,7 +258,7 @@ def get_llm_model(provider: str, **kwargs):
             )
         else:
             return ChatOllama(
-                model=kwargs.get("model_name", "qwen2.5:7b"),
+                model=kwargs.get("model_name", "qwen3:8b"),
                 temperature=kwargs.get("temperature", 0.0),
                 num_ctx=kwargs.get("num_ctx", 32000),
                 num_predict=kwargs.get("num_predict", 1024),
