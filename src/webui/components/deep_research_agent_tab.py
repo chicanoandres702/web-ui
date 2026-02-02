@@ -6,12 +6,13 @@ from src.webui.webui_manager import WebuiManager
 from src.utils import config
 import logging
 import os
-from typing import Any, Dict, AsyncGenerator, Optional, Tuple, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 import asyncio
 import json
 from src.agent.deep_research.deep_research_agent import DeepResearchAgent
 from src.webui.llm_helper import initialize_llm
-from src.utils.utils import read_file_safe, get_progress_bar_html
+from src.utils.utils import read_file_safe, get_progress_bar_html, calculate_progress_from_markdown
+from src.webui.components.shared import get_agent_settings_values, get_browser_settings_values, safe_execution, update_mcp_server, initialize_agent_llms, get_valid_input_components, map_dict_to_gradio_outputs
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
     resume_task_id_comp = webui_manager.get_component_by_id("deep_research_agent.resume_task_id")
     parallel_num_comp = webui_manager.get_component_by_id("deep_research_agent.parallel_num")
     save_dir_comp = webui_manager.get_component_by_id(
-        "deep_research_agent.max_query")  # Note: component ID seems misnamed in original code
+        "deep_research_agent.save_dir")
     start_button_comp = webui_manager.get_component_by_id("deep_research_agent.start_button")
     stop_button_comp = webui_manager.get_component_by_id("deep_research_agent.stop_button")
     markdown_display_comp = webui_manager.get_component_by_id("deep_research_agent.markdown_display")
@@ -35,6 +36,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
     mcp_server_config_comp = webui_manager.get_component_by_id("deep_research_agent.mcp_server_config")
     progress_bar_comp = webui_manager.get_component_by_id("deep_research_agent.progress_bar")
     memory_file_comp = webui_manager.get_component_by_id("deep_research_agent.memory_file")
+    google_docs_template_comp = webui_manager.get_component_by_id("deep_research_agent.google_docs_template")
 
     # --- 1. Get Task and Settings ---
     task_topic = components.get(research_task_comp, "").strip()
@@ -50,6 +52,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
     mcp_server_config_str = components.get(mcp_server_config_comp)
     mcp_config = json.loads(mcp_server_config_str) if mcp_server_config_str else None
     memory_file = components.get(memory_file_comp, "./memory.txt")
+    google_docs_template_url = components.get(google_docs_template_comp, "https://docs.new").strip()
 
     if not task_topic:
         gr.Warning("Please enter a research task.")
@@ -68,6 +71,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
         resume_task_id_comp: gr.update(interactive=False),
         parallel_num_comp: gr.update(interactive=False),
         save_dir_comp: gr.update(interactive=False),
+        google_docs_template_comp: gr.update(interactive=False),
         markdown_display_comp: gr.update(value="Starting research..."),
         markdown_download_comp: gr.update(value=None, interactive=False),
         progress_bar_comp: gr.update(value="", visible=True)
@@ -82,36 +86,26 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
 
     try:
         # --- 3. Get LLM and Browser Config from other tabs ---
-        # Access settings values via components dict, getting IDs from webui_manager
-        def get_setting(tab: str, key: str, default: Any = None):
-            comp = webui_manager.id_to_component.get(f"{tab}.{key}")
-            val = components.get(comp, default) if comp else default
-            return val if val is not None else default
+        agent_settings = get_agent_settings_values(webui_manager, components)
+        browser_settings = get_browser_settings_values(webui_manager, components)
 
-        # LLM Config (from agent_settings tab)
-        llm_provider_name = get_setting("agent_settings", "llm_provider")
-        llm_model_name = get_setting("agent_settings", "llm_model_name")
-        llm_temperature = max(get_setting("agent_settings", "llm_temperature", 0.5), 0.5)
-        llm_base_url = get_setting("agent_settings", "llm_base_url")
-        llm_api_key = get_setting("agent_settings", "llm_api_key")
-        ollama_num_ctx = get_setting("agent_settings", "ollama_num_ctx")
-
-        llm = await initialize_llm(
-            llm_provider_name, llm_model_name, llm_temperature, llm_base_url, llm_api_key,
-            ollama_num_ctx if llm_provider_name == "ollama" else None
-        )
+        # Initialize LLMs using shared function
+        llm, _, _, _, _ = await initialize_agent_llms(agent_settings)
         if not llm:
             raise ValueError("LLM Initialization failed. Please check Agent Settings.")
 
         # Browser Config (from browser_settings tab)
         # Note: DeepResearchAgent constructor takes a dict, not full Browser/Context objects
         browser_config_dict = {
-            "headless": get_setting("browser_settings", "headless", False),
-            "disable_security": get_setting("browser_settings", "disable_security", False),
-            "browser_binary_path": get_setting("browser_settings", "browser_binary_path"),
-            "user_data_dir": get_setting("browser_settings", "browser_user_data_dir"),
-            "window_width": int(get_setting("browser_settings", "window_w", 1280)),
-            "window_height": int(get_setting("browser_settings", "window_h", 1100)),
+            "headless": browser_settings["headless"],
+            "disable_security": browser_settings["disable_security"],
+            "browser_binary_path": browser_settings["browser_binary_path"],
+            "user_data_dir": browser_settings["browser_user_data_dir"],
+            "window_width": browser_settings["window_w"],
+            "window_height": browser_settings["window_h"],
+            "wss_url": browser_settings["wss_url"],
+            "cdp_url": browser_settings["cdp_url"],
+            "use_own_browser": browser_settings["use_own_browser"],
             # Add other relevant fields if DeepResearchAgent accepts them
         }
 
@@ -130,7 +124,8 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
             topic=task_topic,
             task_id=task_id_to_resume,
             save_dir=base_save_dir,
-            max_parallel_browsers=max_parallel_agents
+            max_parallel_browsers=max_parallel_agents,
+            google_docs_template_url=google_docs_template_url
         )
         agent_task = asyncio.create_task(agent_run_coro)
         webui_manager.dr_current_task = agent_task
@@ -184,11 +179,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
                             update_dict[markdown_display_comp] = gr.update(value=plan_content)
                             
                             # Calculate progress
-                            total_tasks = plan_content.count("- [ ]") + plan_content.count("- [x]") + plan_content.count("- [-]")
-                            completed_tasks = plan_content.count("- [x]") + plan_content.count("- [-]")
-                            progress = 0
-                            if total_tasks > 0:
-                                progress = int((completed_tasks / total_tasks) * 100)
+                            progress = calculate_progress_from_markdown(plan_content)
                             
                             # Create HTML for progress bar
                             update_dict[progress_bar_comp] = gr.update(value=get_progress_bar_html(progress))
@@ -267,6 +258,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
             resume_task_id_comp: gr.update(value="", interactive=True),
             parallel_num_comp: gr.update(interactive=True),
             save_dir_comp: gr.update(interactive=True),
+            google_docs_template_comp: gr.update(interactive=True),
             # Keep download button enabled if file exists
             markdown_download_comp: gr.update() if report_file_path and os.path.exists(report_file_path) else gr.update(
                 interactive=False),
@@ -339,27 +331,6 @@ async def stop_deep_research(webui_manager: WebuiManager) -> Dict[Component, Any
     return final_update
 
 
-async def update_mcp_server(mcp_file: str, webui_manager: WebuiManager):
-    """
-    Update the MCP server.
-    """
-    if hasattr(webui_manager, "dr_agent") and webui_manager.dr_agent:
-        logger.warning("⚠️ Close controller because mcp file has changed!")
-        await webui_manager.dr_agent.close_mcp_client()
-
-    if not mcp_file:
-        return None, gr.update(visible=False)
-
-    if not os.path.exists(mcp_file) or not mcp_file.endswith('.json'):
-        logger.warning(f"{mcp_file} is not a valid MCP file.")
-        return None, gr.update(visible=False)
-
-    with open(mcp_file, 'r') as f:
-        mcp_server = json.load(f)
-
-    return json.dumps(mcp_server, indent=2), gr.update(visible=True)
-
-
 def create_deep_research_agent_tab(webui_manager: WebuiManager):
     """
     Creates a deep research agent tab
@@ -383,12 +354,14 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
                                      precision=0,
                                      interactive=True)
             memory_file = gr.Textbox(label="Memory File", value="./memory.txt", interactive=True)
-            max_query = gr.Textbox(label="Research Save Dir", value="./tmp/deep_research",
+            save_dir = gr.Textbox(label="Research Save Dir", value="./tmp/deep_research",
                                    interactive=True)
+        with gr.Row():
+            google_docs_template = gr.Textbox(label="Google Docs Template URL", value="https://docs.new", interactive=True, placeholder="https://docs.google.com/document/d/...")
     with gr.Row():
         stop_button = gr.Button("⏹️ Stop", variant="stop", scale=2)
         start_button = gr.Button("▶️ Run", variant="primary", scale=3)
-    progress_bar = gr.HTML(visible=False)
+    progress_bar = gr.HTML(visible=False, padding=False)
     with gr.Group():
         markdown_display = gr.Markdown(label="Research Report")
         markdown_download = gr.File(label="Download Research Report", interactive=False)
@@ -397,7 +370,7 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
             research_task=research_task,
             parallel_num=parallel_num,
             memory_file=memory_file,
-            max_query=max_query,
+            save_dir=save_dir,
             start_button=start_button,
             stop_button=stop_button,
             markdown_display=markdown_display,
@@ -406,6 +379,7 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
             mcp_json_file=mcp_json_file,
             mcp_server_config=mcp_server_config,
             progress_bar=progress_bar,
+            google_docs_template=google_docs_template,
         )
     )
     webui_manager.add_components("deep_research_agent", tab_components)
@@ -413,8 +387,8 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
 
     async def update_wrapper(mcp_file):
         """Wrapper for handle_pause_resume."""
-        update_dict = await update_mcp_server(mcp_file, webui_manager)
-        yield update_dict
+        async for update in safe_execution(update_mcp_server, mcp_file, webui_manager):
+            yield update
 
     mcp_json_file.change(
         update_wrapper,
@@ -423,21 +397,23 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
     )
 
     dr_tab_outputs = list(tab_components.values())
-    all_managed_inputs = set(webui_manager.get_components())
+    all_managed_inputs = list(webui_manager.get_components())
+    valid_inputs = get_valid_input_components(all_managed_inputs)
 
     # --- Define Event Handler Wrappers ---
-    async def start_wrapper(comps: Dict[Component, Any]) -> AsyncGenerator[Dict[Component, Any], None]:
-        async for update in run_deep_research(webui_manager, comps):
-            yield update
+    async def start_wrapper(*args) -> AsyncGenerator[List[Any], None]:
+        comps = dict(zip(valid_inputs, args))
+        async for update in safe_execution(run_deep_research, webui_manager, comps):
+            yield map_dict_to_gradio_outputs(update, dr_tab_outputs)
 
-    async def stop_wrapper() -> AsyncGenerator[Dict[Component, Any], None]:
-        update_dict = await stop_deep_research(webui_manager)
-        yield update_dict
+    async def stop_wrapper() -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(stop_deep_research, webui_manager):
+            yield map_dict_to_gradio_outputs(update, dr_tab_outputs)
 
     # --- Connect Handlers ---
     start_button.click(
         fn=start_wrapper,
-        inputs=all_managed_inputs,
+        inputs=valid_inputs,
         outputs=dr_tab_outputs
     )
 

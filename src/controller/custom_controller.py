@@ -1,578 +1,566 @@
-import pyperclip
-from typing import Optional, Type, Callable, Dict, Any, Union, Awaitable, TypeVar, List
-from datetime import datetime
-from urllib.parse import urlparse
-from pydantic import BaseModel
-from browser_use.agent.views import ActionResult
+from browser_use.controller.service import Controller
 from browser_use.browser.context import BrowserContext
-from browser_use.controller.service import Controller, DoneAction
-from browser_use.controller.registry.service import Registry, RegisteredAction
-from main_content_extractor import MainContentExtractor
-from browser_use.controller.views import (
-    ClickElementAction,
-    DoneAction,
-    ExtractPageContentAction,
-    GoToUrlAction,
-    InputTextAction,
-    OpenTabAction,
-    ScrollAction,
-    SearchGoogleAction,
-    SendKeysAction,
-    SwitchTabAction,
-)
 import logging
-import inspect
-import asyncio
-import os
 import json
-from langchain_core.language_models.chat_models import BaseChatModel
-from browser_use.agent.views import ActionModel, ActionResult
-
-from src.utils.mcp_client import create_tool_param_model, setup_mcp_client_and_tools
-
-from browser_use.utils import time_execution_sync, time_execution_async
-from src.utils.utils import save_text_to_file_async, save_to_knowledge_base_file
+import os
+import aiohttp
+from src.utils.utils import save_text_to_file as utils_save_text, retry_async
+from src.utils.browser_scripts import (
+    COMMON_CLOSE_SELECTORS,
+    JS_REMOVE_OVERLAYS,
+    JS_SCROLL_SLOW,
+    JS_EXTRACT_LINKS,
+    JS_GET_STRUCTURE,
+    JS_HIGHLIGHT_ELEMENTS,
+    JS_REMOVE_HIGHLIGHTS,
+    JS_GET_COMPUTED_STYLE,
+    JS_GET_DROPDOWN_OPTIONS,
+    JS_ENABLE_LOG_CAPTURE,
+    JS_FIND_TEXT_ELEMENTS,
+    JS_GET_LOCAL_STORAGE,
+    JS_WAIT_FOR_DOM_STABILITY,
+    JS_REMOVE_ADS
+)
+from src.utils.knowledge_base import search_kb_files, load_kb_content, list_kb_files
+from src.utils.memory_utils import reset_mem0
 
 logger = logging.getLogger(__name__)
 
-Context = TypeVar('Context')
-
-
 class CustomController(Controller):
-    def __init__(self, exclude_actions: list[str] = [],
-                 output_model: Optional[Type[BaseModel]] = None,
-                 ask_assistant_callback: Optional[Union[Callable[[str, BrowserContext], Dict[str, Any]], Callable[
-                     [str, BrowserContext], Awaitable[Dict[str, Any]]]]] = None,
-                 confirm_action_callback: Optional[Union[Callable[[str, Dict[str, Any], BrowserContext], str], Callable[
-                     [str, Dict[str, Any], BrowserContext], Awaitable[str]]]] = None,
-                 ):
-        super().__init__(exclude_actions=exclude_actions, output_model=output_model)
-        self._register_custom_actions()
-        self.ask_assistant_callback = ask_assistant_callback
-        self.confirm_action_callback = confirm_action_callback
-        self.mcp_client = None
-        self.mcp_server_config = None
+    def __init__(self, exclude_actions: list[str] = [], **kwargs):
+        super().__init__(exclude_actions=exclude_actions, **kwargs)
         self.memory_file = None
-        self.history: List[Dict[str, Any]] = []
         self.fast_mode = False
         self.require_confirmation = False
-        self.critical_actions = ["click_element", "input_text", "go_to_url", "upload_file", "send_keys", "scroll_to_text"]
+        self.kb_dir = None
+        self.clipboard_content = ""
+        self._register_custom_actions()
 
-    def set_fast_mode(self, enabled: bool):
-        self.fast_mode = enabled
+    def set_memory_file(self, memory_file: str):
+        self.memory_file = memory_file
 
-    def set_require_confirmation(self, enabled: bool):
-        self.require_confirmation = enabled
-
-    def set_memory_file(self, path: Optional[str]):
-        self.memory_file = path
-
-    async def _read_text_from_file(self, path: str) -> str:
-        """Helper to safely read text from a file asynchronously."""
-        def _read():
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    return f.read()
-            return ""
-        return await asyncio.to_thread(_read)
-
-    def reset_loop_history(self):
-        self.history = []
+    def set_knowledge_base_dir(self, kb_dir: str):
+        self.kb_dir = kb_dir
+        
+    async def close_mcp_client(self):
+        # Placeholder for MCP client cleanup if implemented in registry
+        pass
 
     def _register_custom_actions(self):
-        """Register all custom browser actions"""
+        self._register_navigation_actions()
+        self._register_interaction_actions()
+        self._register_extraction_actions()
+        self._register_debugging_actions()
+        self._register_system_actions()
 
-        @self.registry.action(
-            "When executing tasks, prioritize autonomous completion. However, if you encounter a definitive blocker "
-            "that prevents you from proceeding independently – such as needing credentials you don't possess, "
-            "requiring subjective human judgment, needing a physical action performed, encountering complex CAPTCHAs, "
-            "or facing limitations in your capabilities – you must request human assistance."
-        )
-        async def ask_for_assistant(query: str, browser: BrowserContext):
-            if self.ask_assistant_callback:
-                if inspect.iscoroutinefunction(self.ask_assistant_callback):
-                    user_response = await self.ask_assistant_callback(query, browser)
-                else:
-                    user_response = self.ask_assistant_callback(query, browser)
-                msg = f"AI ask: {query}. User response: {user_response['response']}"
-                logger.info(msg)
-                return ActionResult(extracted_content=msg, include_in_memory=True)
-            else:
-                return ActionResult(extracted_content="Human cannot help you. Please try another way.",
-                                    include_in_memory=True)
+    async def _smart_scan(self, page, script, args=None, check_empty=True):
+        """Executes a script, and if results are empty, waits for DOM stability and retries."""
+        # Execute first attempt
+        result = await page.evaluate(script, args) if args else await page.evaluate(script)
+        
+        should_retry = False
+        if check_empty:
+            if isinstance(result, list) and len(result) == 0:
+                should_retry = True
+            elif isinstance(result, dict) and not result:
+                should_retry = True
+                
+        if should_retry:
+            logger.info("Smart Scan: Empty result detected. Waiting for DOM stability...")
+            await page.evaluate(JS_WAIT_FOR_DOM_STABILITY)
+            result = await page.evaluate(script, args) if args else await page.evaluate(script)
+            
+        return result
 
-        @self.registry.action(
-            'Upload file to interactive element with file path ',
-        )
-        async def upload_file(index: int, path: str, browser: BrowserContext, available_file_paths: list[str]):
-            if path not in available_file_paths:
-                return ActionResult(error=f'File path {path} is not available')
-
-            if not os.path.exists(path):
-                return ActionResult(error=f'File {path} does not exist')
-
-            dom_el = await browser.get_dom_element_by_index(index)
-
-            file_upload_dom_el = dom_el.get_file_upload_element()
-
-            if file_upload_dom_el is None:
-                msg = f'No file upload element found at index {index}'
-                logger.info(msg)
-                return ActionResult(error=msg)
-
-            file_upload_el = await browser.get_locate_element(file_upload_dom_el)
-
-            if file_upload_el is None:
-                msg = f'No file upload element found at index {index}'
-                logger.info(msg)
-                return ActionResult(error=msg)
-
+    def _register_navigation_actions(self):
+        @self.registry.action("Close difficult popups, modals, or overlays that block the screen")
+        async def close_difficult_popup(browser: BrowserContext):
+            page = await browser.get_current_page()
+            
+            # Strategy 1: Press Escape
             try:
-                await file_upload_el.set_input_files(path)
-                msg = f'Successfully uploaded file to index {index}'
-                logger.info(msg)
-                return ActionResult(extracted_content=msg, include_in_memory=True)
-            except Exception as e:
-                msg = f'Failed to upload file to index {index}: {str(e)}'
-                logger.info(msg)
-                return ActionResult(error=msg)
+                await page.keyboard.press("Escape")
+            except Exception:
+                pass
 
-        @self.registry.action("Save important information to long-term memory.")
-        async def save_to_memory(text: str):
-            if self.memory_file:
+            # Strategy 2: Click common close buttons
+            clicked = False
+            for selector in COMMON_CLOSE_SELECTORS:
                 try:
-                    entry = f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {text}"
-                    await save_text_to_file_async(self.memory_file, entry, mode="a")
-                    msg = f"Saved to memory: {text}"
-                    logger.info(msg)
-                    return ActionResult(extracted_content=msg, include_in_memory=True)
+                    # Short timeout to check visibility
+                    loc = page.locator(selector).first
+                    if await loc.is_visible(timeout=200):
+                        await loc.click(timeout=500)
+                        clicked = True
+                        logger.info(f"Clicked popup close button: {selector}")
+                        await page.wait_for_timeout(500)
+                        break
+                except Exception:
+                    continue
+            
+            if clicked:
+                return "Clicked a close button."
+
+            # Strategy 3: Remove aggressive overlays via JS
+            try:
+                removed = await page.evaluate(JS_REMOVE_OVERLAYS)
+                if removed > 0:
+                    return f"Removed {removed} full-screen overlay(s) via JavaScript."
+            except Exception as e:
+                logger.warning(f"Failed to remove overlays: {e}")
+
+            return "Attempted to close popup using Escape key and common selectors."
+
+        @self.registry.action("Remove ads and tracking elements from the page")
+        async def remove_ads(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                count = await page.evaluate(JS_REMOVE_ADS)
+                return f"Removed {count} ad/tracking elements."
+            except Exception as e:
+                return f"Error removing ads: {e}"
+
+        @self.registry.action("Scroll down the page. Optional: amount='full' scans the whole page.")
+        async def scroll_down(browser: BrowserContext, amount: str = "page"):
+            page = await browser.get_current_page()
+            
+            if amount == "full":
+                async def _do_full_scroll():
+                    # Scroll to bottom slowly to trigger lazy loading
+                    await page.evaluate(JS_SCROLL_SLOW)
+                    # Wait a moment for final loads
+                    await page.wait_for_timeout(500)
+                    # Scroll back to top
+                    await page.evaluate("window.scrollTo(0, 0)")
+                    # Extract text content to ensure the agent "reads" it
+                    return await page.evaluate("document.body.innerText")
+
+                try:
+                    content = await retry_async(_do_full_scroll, logger=logger, error_message="Full scroll failed")
+                    preview = content[:2000]
+                    if len(content) > 2000:
+                        preview += "\n...[content truncated]..."
+                    return f"Scanned entire page (scrolled down and back up). Content preview:\n{preview}"
                 except Exception as e:
-                    msg = f"Failed to save to memory: {str(e)}"
-                    logger.error(msg)
-                    return ActionResult(error=msg)
+                    return f"Failed to scan full page: {e}"
             else:
-                return ActionResult(error="Memory file not configured.")
+                # Simple scroll down
+                await page.evaluate("window.scrollBy(0, window.innerHeight * 0.8)")
+                return "Scrolled down one screen."
 
-        @self.registry.action("Save structured knowledge to a specific topic database. The agent decides the topic name.")
-        async def save_to_knowledge_base(text: str, topic: str):
-            """
-            Saves text to a specific knowledge base file based on the topic.
-            """
-            try:
-                filepath = await asyncio.to_thread(save_to_knowledge_base_file, text, topic, self.memory_file or "./tmp/memory/memory.txt")
-                msg = f"Saved information to knowledge base '{topic}': {text[:50]}..."
-                logger.info(msg)
-                return ActionResult(extracted_content=msg, include_in_memory=True)
-            except Exception as e:
-                msg = f"Failed to save to knowledge base '{topic}': {str(e)}"
-                logger.error(msg)
-                return ActionResult(error=msg)
-
-        @self.registry.action("Save specific knowledge about how to navigate or use a website. Use this when you learn how to bypass a popup, find a specific resource, or navigate a complex menu.")
-        async def save_site_knowledge(knowledge: str, url: str):
-            """
-            Saves knowledge about a specific website.
-            """
-            if self.memory_file:
-                base_dir = os.path.dirname(os.path.abspath(self.memory_file))
-            else:
-                base_dir = os.path.abspath("./tmp/memory")
-            
-            sites_dir = os.path.join(base_dir, "sites")
-            os.makedirs(sites_dir, exist_ok=True)
-            
-            try:
-                domain = urlparse(url).netloc.replace("www.", "")
-                if not domain:
-                    return ActionResult(error="Invalid URL provided.")
-                
-                filename = f"{domain}.md"
-                filepath = os.path.join(sites_dir, filename)
-                
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                entry = f"\n## [{timestamp}]\n{knowledge}\n"
-                await save_text_to_file_async(filepath, entry, mode="a")
-                    
-                msg = f"Saved site knowledge for '{domain}': {knowledge[:50]}..."
-                logger.info(msg)
-                return ActionResult(extracted_content=msg, include_in_memory=True)
-            except Exception as e:
-                msg = f"Failed to save site knowledge: {str(e)}"
-                logger.error(msg)
-                return ActionResult(error=msg)
-
-        @self.registry.action("Retrieve stored knowledge about a specific website. Use this when visiting a new domain to check for past learnings.")
-        async def get_site_knowledge(url: str):
-            """
-            Retrieves knowledge about a specific website.
-            """
-            if self.memory_file:
-                base_dir = os.path.dirname(os.path.abspath(self.memory_file))
-            else:
-                base_dir = os.path.abspath("./tmp/memory")
-            
-            sites_dir = os.path.join(base_dir, "sites")
-            
-            try:
-                domain = urlparse(url).netloc.replace("www.", "")
-                if not domain:
-                    return ActionResult(error="Invalid URL provided.")
-                
-                filename = f"{domain}.md"
-                filepath = os.path.join(sites_dir, filename)
-                
-                if os.path.exists(filepath):
-                    content = await self._read_text_from_file(filepath)
-                    
-                    msg = f"Knowledge for '{domain}':\n{content}"
-                    return ActionResult(extracted_content=msg, include_in_memory=True)
-                else:
-                    return ActionResult(extracted_content=f"No specific knowledge found for '{domain}'.", include_in_memory=True)
-            except Exception as e:
-                msg = f"Failed to get site knowledge: {str(e)}"
-                logger.error(msg)
-                return ActionResult(error=msg)
-
-        @self.registry.action("List all available knowledge base topics.")
-        async def list_knowledge_topics():
-            """
-            Lists all available knowledge base topics.
-            """
-            if self.memory_file:
-                base_dir = os.path.dirname(os.path.abspath(self.memory_file))
-            else:
-                base_dir = os.path.abspath("./tmp/memory")
-            
-            def _list():
-                topics = []
-                if os.path.exists(base_dir):
-                    for f in os.listdir(base_dir):
-                        if f.startswith("kb_") and f.endswith(".md"):
-                            topics.append(f[3:-3]) # remove kb_ and .md
-                return topics
-            
-            topics = await asyncio.to_thread(_list)
-            return ActionResult(extracted_content=f"Available topics: {', '.join(topics)}", include_in_memory=True)
-
-        @self.registry.action("Search through all knowledge bases for a specific query.")
-        async def search_knowledge_base(query: str):
-            """
-            Searches for a query string across all knowledge base files.
-            """
-            if self.memory_file:
-                base_dir = os.path.dirname(os.path.abspath(self.memory_file))
-            else:
-                base_dir = os.path.abspath("./tmp/memory")
-            
-            def _search():
-                results = []
-                if os.path.exists(base_dir):
-                    for root, _, files in os.walk(base_dir):
-                        for file in files:
-                            if file.endswith(".md") or file.endswith(".txt"):
-                                path = os.path.join(root, file)
-                                try:
-                                    with open(path, "r", encoding="utf-8") as f:
-                                        content = f.read()
-                                        if query.lower() in content.lower():
-                                            # Extract a snippet around the match
-                                            idx = content.lower().find(query.lower())
-                                            start = max(0, idx - 100)
-                                            end = min(len(content), idx + 200)
-                                            snippet = content[start:end].replace("\n", " ")
-                                            results.append(f"File: {file}\nSnippet: ...{snippet}...")
-                                except Exception:
-                                    continue
-                return results
-
-            found = await asyncio.to_thread(_search)
-            if found:
-                return ActionResult(extracted_content="\n\n".join(found), include_in_memory=True)
-            else:
-                return ActionResult(extracted_content="No matches found in knowledge bases.", include_in_memory=True)
-
-        @self.registry.action("Archive the full content of the current page to a local file for permanent storage.")
-        async def archive_current_page(browser: BrowserContext):
-            """
-            Saves the full text content of the current page to an archive file.
-            """
-            if self.memory_file:
-                base_dir = os.path.dirname(os.path.abspath(self.memory_file))
-            else:
-                base_dir = os.path.abspath("./tmp/memory")
-            
-            archive_dir = os.path.join(base_dir, "archive")
-            os.makedirs(archive_dir, exist_ok=True)
-            
-            try:
-                page = await browser.get_current_page()
-                title = await page.title()
-                content = await page.evaluate("document.body.innerText")
-                url = page.url
-                
-                safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_')[:50]
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"{timestamp}_{safe_title}.txt"
-                filepath = os.path.join(archive_dir, filename)
-                
-                header = f"URL: {url}\nTitle: {title}\nDate: {datetime.now()}\n\n"
-                await save_text_to_file_async(filepath, header + content)
-                
-                msg = f"Archived page '{title}' to {filename}"
-                logger.info(msg)
-                return ActionResult(extracted_content=msg, include_in_memory=True)
-            except Exception as e:
-                msg = f"Failed to archive page: {str(e)}"
-                logger.error(msg)
-                return ActionResult(error=msg)
-
-        @self.registry.action("Detect and close/remove common chat widgets and overlays.")
-        async def close_chat_widget(browser: BrowserContext):
-            """
-            Attempts to close or remove chat widgets and overlays using common selectors and JavaScript.
-            """
-            try:
-                page = await browser.get_current_page()
-                # JavaScript to find and remove/close common chat widgets
-                js_script = """
-                () => {
-                    const selectors = [
-                        'iframe[title*="chat"]',
-                        'iframe[title*="Chat"]',
-                        'iframe[src*="intercom"]',
-                        'iframe[src*="drift"]',
-                        'iframe[src*="crisp"]',
-                        'iframe[src*="zendesk"]',
-                        'div[id*="intercom"]',
-                        'div[class*="intercom"]',
-                        'div[id*="drift"]',
-                        'div[class*="drift"]',
-                        'div[id*="crisp"]',
-                        'div[class*="crisp"]',
-                        'div[id*="zendesk"]',
-                        'div[class*="zendesk"]',
-                        '#hubspot-messenger-iframe',
-                        'button[aria-label*="close chat"]',
-                        'button[aria-label*="Close Chat"]'
-                    ];
-                    
-                    let count = 0;
-                    selectors.forEach(selector => {
-                        const elements = document.querySelectorAll(selector);
-                        elements.forEach(el => {
-                            el.remove();
-                            count++;
-                        });
-                    });
-                    return count;
-                }
-                """
-                removed_count = await page.evaluate(js_script)
-                msg = f"Removed {removed_count} chat widget elements."
-                logger.info(msg)
-                return ActionResult(extracted_content=msg, include_in_memory=True)
-            except Exception as e:
-                msg = f"Failed to remove chat widgets: {str(e)}"
-                logger.error(msg)
-                return ActionResult(error=msg)
-
-        @self.registry.action("Scroll down the page until the specified text is visible. Use this to find specific items. Returns success if found.")
-        async def scroll_to_text(text: str, browser: BrowserContext):
+        @self.registry.action("Wait for network traffic to settle (Network Idle)")
+        async def wait_for_network_idle(browser: BrowserContext):
             page = await browser.get_current_page()
-            delay_time = 50 if self.fast_mode else 200
             try:
-                found = await page.evaluate("""
-                    async ({text, delay_time}) => {
-                        const delay = ms => new Promise(res => setTimeout(res, ms));
-                        const maxScrolls = 20;
-                        for (let i = 0; i < maxScrolls; i++) {
-                            const xpath = `//*[contains(text(), '${text.replace("'", "\\'")}')]`;
-                            const matchingElement = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                            
-                            if (matchingElement && matchingElement.offsetParent !== null) {
-                                matchingElement.scrollIntoView({behavior: "auto", block: "center"});
-                                return true;
-                            }
-                            
-                            window.scrollBy(0, window.innerHeight * 0.7);
-                            await delay(delay_time);
-                            
-                            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight) {
-                                break;
-                            }
-                        }
-                        return false;
-                    }
-                """, {"text": text, "delay_time": delay_time})
-                
-                if found:
-                    return ActionResult(extracted_content=f"Scrolled to find text: '{text}'")
-                else:
-                    return ActionResult(error=f"Could not find text '{text}' even after scrolling.")
-            except Exception as e:
-                return ActionResult(error=f"Failed to scroll to text: {str(e)}")
+                await page.wait_for_load_state("networkidle", timeout=5000)
+                return "Network is idle."
+            except Exception:
+                return "Timeout waiting for network idle (5s)."
 
-        @self.registry.action("Scroll down the page to see more content. Use this frequently to explore the page.")
-        async def scroll_down(browser: BrowserContext):
+        @self.registry.action("List all iframes on the current page")
+        async def list_iframes(browser: BrowserContext):
             page = await browser.get_current_page()
-            sleep_time = 0.1 if self.fast_mode else 0.3
-            behavior = "auto" if self.fast_mode else "smooth"
-            await page.evaluate(f"window.scrollBy({{top: window.innerHeight * 0.75, behavior: '{behavior}'}})")
-            await asyncio.sleep(sleep_time)
-            return ActionResult(extracted_content="Scrolled down.")
+            frames = page.frames
+            frame_data = []
+            for i, frame in enumerate(frames):
+                try:
+                    is_main = (frame == page.main_frame)
+                    frame_data.append({
+                        "index": i,
+                        "name": frame.name,
+                        "url": frame.url,
+                        "is_main_frame": is_main
+                    })
+                except Exception:
+                    continue
+            return f"Found {len(frames)} frames:\n{json.dumps(frame_data, indent=2)}"
 
-        @self.registry.action("Scroll up the page to see previous content.")
+    def _register_extraction_actions(self):
+        @self.registry.action("Extract all hyperlinks from the current page")
+        async def extract_page_links(browser: BrowserContext):
+            page = await browser.get_current_page()
+            
+            async def _extract():
+                return await self._smart_scan(page, JS_EXTRACT_LINKS)
+
+            try:
+                links = await retry_async(
+                    _extract,
+                    logger=logger,
+                    error_message="Link extraction failed"
+                )
+                
+                # Deduplicate based on href
+                unique_links = {}
+                for link in links:
+                    unique_links[link['href']] = link['text']
+                
+                formatted_links = [{"text": txt, "href": href} for href, txt in unique_links.items()]
+                
+                return f"Found {len(formatted_links)} unique links. Here are the top 50: {json.dumps(formatted_links[:50], indent=2)}"
+            except Exception as e:
+                return f"Failed to extract links after retries: {e}"
+
+        @self.registry.action("Get page heading structure (H1-H6)")
+        async def get_page_structure(browser: BrowserContext):
+            page = await browser.get_current_page()
+            structure = await self._smart_scan(page, JS_GET_STRUCTURE)
+            return f"Page Structure: {json.dumps(structure, indent=2)}"
+
+        @self.registry.action("Get full HTML and attributes of a specific element")
+        async def inspect_element_details(browser: BrowserContext, selector: str):
+            page = await browser.get_current_page()
+            try:
+                element = page.locator(selector).first
+                if not await element.count():
+                    return f"Element not found: {selector}"
+                
+                html = await element.evaluate("el => el.outerHTML")
+                box = await element.bounding_box()
+                return f"HTML:\n{html}\n\nBounding Box: {box}"
+            except Exception as e:
+                return f"Error inspecting element: {e}"
+
+        @self.registry.action("Get all cookies from the current context")
+        async def get_cookies(browser: BrowserContext):
+            page = await browser.get_current_page()
+            cookies = await page.context.cookies()
+            return json.dumps(cookies, indent=2)
+
+        @self.registry.action("Set cookies for the current context")
+        async def set_cookies(browser: BrowserContext, cookies_json: str):
+            page = await browser.get_current_page()
+            try:
+                cookies = json.loads(cookies_json)
+                if isinstance(cookies, dict):
+                    cookies = [cookies]
+                await page.context.add_cookies(cookies)
+                return "Cookies set successfully."
+            except Exception as e:
+                return f"Error setting cookies: {e}"
+
+        @self.registry.action("Get all local storage items from the current page")
+        async def get_local_storage(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                data = await page.evaluate(JS_GET_LOCAL_STORAGE)
+                return f"Local Storage:\n{json.dumps(data, indent=2)}"
+            except Exception as e:
+                return f"Error getting local storage: {e}"
+
+        @self.registry.action("Enable console log capture on the current page")
+        async def enable_console_log_capture(browser: BrowserContext):
+            page = await browser.get_current_page()
+            await page.evaluate(JS_ENABLE_LOG_CAPTURE)
+            return "Console log capture enabled. Use 'get_console_logs' to retrieve them."
+
+        @self.registry.action("Get captured console logs")
+        async def get_console_logs(browser: BrowserContext):
+            page = await browser.get_current_page()
+            logs = await page.evaluate("() => window._captured_logs || []")
+            if not logs:
+                return "No logs captured (did you run 'enable_console_log_capture'?)."
+            return json.dumps(logs, indent=2)
+
+        @self.registry.action("Get computed style of an element to check visibility")
+        async def get_element_computed_style(browser: BrowserContext, selector: str):
+            page = await browser.get_current_page()
+            try:
+                style = await page.evaluate(JS_GET_COMPUTED_STYLE, selector)
+                
+                if not style:
+                    return f"Element not found: {selector}"
+                
+                return f"Computed Style for '{selector}':\n{json.dumps(style, indent=2)}"
+            except Exception as e:
+                return f"Error getting computed style: {e}"
+
+        @self.registry.action("List all elements containing specific text")
+        async def get_elements_by_text(browser: BrowserContext, text: str):
+            page = await browser.get_current_page()
+            try:
+                elements = await self._smart_scan(page, JS_FIND_TEXT_ELEMENTS, args=text)
+                return f"Found {len(elements)} visible elements containing '{text}':\n{json.dumps(elements, indent=2)}"
+            except Exception as e:
+                return f"Error finding elements by text: {e}"
+
+        @self.registry.action("Get options from a dropdown/select element")
+        async def get_dropdown_options(browser: BrowserContext, selector: str):
+            page = await browser.get_current_page()
+            try:
+                options = await self._smart_scan(page, JS_GET_DROPDOWN_OPTIONS, args=selector)
+                
+                if options is None:
+                    return f"Element not found: {selector}"
+                
+                return f"Dropdown Options for '{selector}':\n{json.dumps(options, indent=2)}"
+            except Exception as e:
+                return f"Error getting options: {e}"
+
+        @self.registry.action("Get HTML content of a specific iframe")
+        async def get_iframe_content(browser: BrowserContext, frame_index: int):
+            page = await browser.get_current_page()
+            frames = page.frames
+            if frame_index < 0 or frame_index >= len(frames):
+                return f"Frame index {frame_index} out of bounds."
+            try:
+                content = await frames[frame_index].content()
+                return f"Content of iframe {frame_index} (truncated):\n{content[:4000]}"
+            except Exception as e:
+                return f"Error getting content: {e}"
+
+        @self.registry.action("Scroll up the page")
         async def scroll_up(browser: BrowserContext):
             page = await browser.get_current_page()
-            sleep_time = 0.1 if self.fast_mode else 0.3
-            behavior = "auto" if self.fast_mode else "smooth"
-            await page.evaluate(f"window.scrollBy({{top: -window.innerHeight * 0.75, behavior: '{behavior}'}})")
-            await asyncio.sleep(sleep_time)
-            return ActionResult(extracted_content="Scrolled up.")
+            await page.evaluate("window.scrollBy(0, -window.innerHeight * 0.8)")
+            return "Scrolled up one screen."
 
-        @self.registry.action("Get the full text content of the page. Useful for reading long articles or quizzes.")
-        async def get_full_page_text(browser: BrowserContext):
+    def _register_debugging_actions(self):
+        @self.registry.action("Take a full page screenshot and save to file")
+        async def take_full_page_screenshot(browser: BrowserContext, filename: str):
             page = await browser.get_current_page()
-            text = await page.evaluate("document.body.innerText")
-            return ActionResult(extracted_content=text)
+            safe_dir = os.path.abspath("./tmp/downloads")
+            os.makedirs(safe_dir, exist_ok=True)
+            
+            base_name = os.path.basename(filename)
+            if not base_name.lower().endswith('.png'):
+                base_name += '.png'
+            
+            filepath = os.path.join(safe_dir, base_name)
+            
+            try:
+                await page.screenshot(path=filepath, full_page=True)
+                return f"Full page screenshot saved to {filepath}"
+            except Exception as e:
+                return f"Error taking screenshot: {e}"
 
-    @time_execution_async('--act')
-    async def act(
-            self,
-            action: ActionModel,
-            browser_context: Optional[BrowserContext] = None,
-            #
-            page_extraction_llm: Optional[BaseChatModel] = None,
-            sensitive_data: Optional[Dict[str, str]] = None,
-            available_file_paths: Optional[list[str]] = None,
-            #
-            context: Context | None = None,
-    ) -> ActionResult:
-        """Execute an action"""
+        @self.registry.action("Highlight specific elements on the page for debugging")
+        async def highlight_elements(browser: BrowserContext, selector: str):
+            page = await browser.get_current_page()
+            try:
+                count = await page.evaluate(JS_HIGHLIGHT_ELEMENTS, selector)
+                return f"Highlighted {count} element(s) matching '{selector}'."
+            except Exception as e:
+                return f"Error highlighting elements: {e}"
 
-        try:
-            # Loop detection
-            current_action_dict = action.model_dump(exclude_unset=True)
-            self.history.append(current_action_dict)
-            if len(self.history) > 10:
-                self.history.pop(0)
+        @self.registry.action("Remove all highlighting from the page")
+        async def remove_highlights(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                await page.evaluate(JS_REMOVE_HIGHLIGHTS)
+                return "Removed debugging highlights."
+            except Exception as e:
+                return f"Error removing highlights: {e}"
 
-            if len(self.history) >= 3:
-                last_three = self.history[-3:]
-                if all(x == last_three[0] for x in last_three):
-                    action_name = list(current_action_dict.keys())[0] if current_action_dict else "unknown"
-                    
-                    if "scroll" in action_name:
-                        if len(self.history) >= 20:
-                            last_twenty = self.history[-20:]
-                            if all(x == last_twenty[0] for x in last_twenty):
-                                return ActionResult(error=f"Loop detected: Action '{action_name}' repeated 20 times. Please try a different strategy.")
-                    else:
-                        return ActionResult(error=f"Loop detected: Action '{action_name}' repeated 3 times. Please try a different strategy.")
+        @self.registry.action("Execute arbitrary JavaScript on the current page")
+        async def execute_javascript(browser: BrowserContext, code: str):
+            page = await browser.get_current_page()
+            try:
+                result = await page.evaluate(code)
+                return f"JavaScript executed successfully. Result: {json.dumps(result, default=str)}"
+            except Exception as e:
+                return f"Error executing JavaScript: {e}"
 
-            for action_name, params in action.model_dump(exclude_unset=True).items():
-                if params is not None:
-                    if action_name.startswith("mcp"):
-                        # this is a mcp tool
-                        logger.debug(f"Invoke MCP tool: {action_name}")
-                        mcp_tool = self.registry.registry.actions.get(action_name).function
-                        result = await mcp_tool.ainvoke(params)
-                    else:
-                        # Human in the Loop: Confirmation (Moved inside loop to allow modification)
-                        if self.require_confirmation and self.confirm_action_callback and action_name in self.critical_actions:
-                            if inspect.iscoroutinefunction(self.confirm_action_callback):
-                                response = await self.confirm_action_callback(action_name, params, browser_context)
-                            else:
-                                response = self.confirm_action_callback(action_name, params, browser_context)
-                            
-                            if response.lower() in ["no", "skip", "reject", "stop"]:
-                                return ActionResult(error=f"Action '{action_name}' rejected by user.")
-                            
-                            if response.lower().startswith("modify:"):
-                                try:
-                                    mod_data = response[7:].strip()
-                                    new_params = json.loads(mod_data)
-                                    if isinstance(params, dict):
-                                        params.update(new_params)
-                                        logger.info(f"Action '{action_name}' modified. New params: {params}")
-                                    else:
-                                        return ActionResult(error=f"Cannot modify action '{action_name}': params is not a dictionary.")
-                                except Exception as e:
-                                    return ActionResult(error=f"Failed to modify action: {e}")
+    def _register_interaction_actions(self):
+        @self.registry.action("Simulate hovering over an element")
+        async def hover_element(browser: BrowserContext, selector: str):
+            page = await browser.get_current_page()
+            try:
+                await page.hover(selector)
+                return f"Hovered over element: {selector}"
+            except Exception as e:
+                return f"Error hovering over element: {e}"
 
-                        result = await self.registry.execute_action(
-                            action_name,
-                            params,
-                            browser=browser_context,
-                            page_extraction_llm=page_extraction_llm,
-                            sensitive_data=sensitive_data,
-                            available_file_paths=available_file_paths,
-                            context=context,
-                        )
+        @self.registry.action("Simulate pressing a specific key combination")
+        async def press_key(browser: BrowserContext, key: str):
+            page = await browser.get_current_page()
+            try:
+                await page.keyboard.press(key)
+                return f"Pressed key: {key}"
+            except Exception as e:
+                return f"Error pressing key: {e}"
 
-                    if action_name == "go_to_url" and self.memory_file:
-                        try:
-                            url = params.get('url')
-                            if url:
-                                domain = urlparse(url).netloc.replace("www.", "")
-                                if domain:
-                                    base_dir = os.path.dirname(os.path.abspath(self.memory_file))
-                                    sites_dir = os.path.join(base_dir, "sites")
-                                    filename = f"{domain}.md"
-                                    filepath = os.path.join(sites_dir, filename)
-                                    
-                                    if os.path.exists(filepath):
-                                        site_knowledge = await self._read_text_from_file(filepath)
-                                        
-                                        knowledge_msg = f"\n\n[Auto-Loaded Site Knowledge for {domain}]:\n{site_knowledge}"
-                                        
-                                        if isinstance(result, ActionResult):
-                                            result.extracted_content = (result.extracted_content or "") + knowledge_msg
-                                        elif isinstance(result, str):
-                                            result += knowledge_msg
-                                        
-                                        logger.info(f"Auto-loaded knowledge for {domain}")
-                        except Exception as e:
-                            logger.error(f"Failed to auto-load site knowledge: {e}")
+        @self.registry.action("Upload a file to a specific selector")
+        async def upload_file_to_element(browser: BrowserContext, selector: str, filename: str):
+            page = await browser.get_current_page()
+            safe_dir = os.path.abspath("./tmp/downloads")
+            filepath = os.path.join(safe_dir, os.path.basename(filename))
+            
+            if not os.path.exists(filepath):
+                return f"File not found: {filepath}"
+            
+            try:
+                await page.set_input_files(selector, filepath)
+                return f"Uploaded {filename} to {selector}"
+            except Exception as e:
+                return f"Error uploading file: {e}"
 
-                    if isinstance(result, str):
-                        return ActionResult(extracted_content=result)
-                    elif isinstance(result, ActionResult):
-                        return result
-                    elif result is None:
-                        return ActionResult()
-                    else:
-                        raise ValueError(f'Invalid action result type: {type(result)} of {result}')
-            return ActionResult()
-        except Exception as e:
-            raise e
+        @self.registry.action("Select an option from a dropdown element")
+        async def select_dropdown_option(browser: BrowserContext, selector: str, value: str):
+            page = await browser.get_current_page()
+            try:
+                await page.select_option(selector, value)
+                return f"Selected option '{value}' in {selector}"
+            except Exception as e:
+                return f"Error selecting option: {e}"
 
-    async def setup_mcp_client(self, mcp_server_config: Optional[Dict[str, Any]] = None):
-        self.mcp_server_config = mcp_server_config
-        if self.mcp_server_config:
-            self.mcp_client = await setup_mcp_client_and_tools(self.mcp_server_config)
-            self.register_mcp_tools()
+        @self.registry.action("Drag and drop an element to a target location")
+        async def drag_and_drop(browser: BrowserContext, source_selector: str, target_selector: str):
+            page = await browser.get_current_page()
+            try:
+                await page.drag_and_drop(source_selector, target_selector)
+                return f"Dragged {source_selector} to {target_selector}"
+            except Exception as e:
+                return f"Error dragging and dropping: {e}"
 
-    def register_mcp_tools(self):
-        """
-        Register the MCP tools used by this controller.
-        """
-        if self.mcp_client:
-            for server_name in self.mcp_client.server_name_to_tools:
-                for tool in self.mcp_client.server_name_to_tools[server_name]:
-                    tool_name = f"mcp.{server_name}.{tool.name}"
-                    self.registry.registry.actions[tool_name] = RegisteredAction(
-                        name=tool_name,
-                        description=tool.description,
-                        function=tool,
-                        param_model=create_tool_param_model(tool),
-                    )
-                    logger.info(f"Add mcp tool: {tool_name}")
-                logger.debug(
-                    f"Registered {len(self.mcp_client.server_name_to_tools[server_name])} mcp tools for {server_name}")
-        else:
-            logger.warning(f"MCP client not started.")
+        @self.registry.action("Execute JavaScript in a specific iframe")
+        async def execute_js_in_iframe(browser: BrowserContext, frame_index: int, code: str):
+            page = await browser.get_current_page()
+            frames = page.frames
+            if frame_index < 0 or frame_index >= len(frames):
+                return f"Frame index {frame_index} out of bounds."
+            try:
+                result = await frames[frame_index].evaluate(code)
+                return f"Result: {json.dumps(result, default=str)}"
+            except Exception as e:
+                return f"Error executing JS: {e}"
 
-    async def close_mcp_client(self):
-        if self.mcp_client:
-            await self.mcp_client.__aexit__(None, None, None)
+        @self.registry.action("Copy text to internal clipboard")
+        async def copy_to_clipboard(text: str):
+            self.clipboard_content = text
+            return "Text copied to internal clipboard."
+
+        @self.registry.action("Paste text from internal clipboard to an element")
+        async def paste_from_clipboard(browser: BrowserContext, selector: str):
+            if not self.clipboard_content:
+                return "Clipboard is empty."
+            page = await browser.get_current_page()
+            try:
+                await page.fill(selector, self.clipboard_content)
+                return f"Pasted content to {selector}"
+            except Exception as e:
+                return f"Error pasting content: {e}"
+
+        @self.registry.action("Read internal clipboard content")
+        async def read_clipboard():
+            return self.clipboard_content if self.clipboard_content else "Clipboard is empty."
+
+        @self.registry.action("Attempt to solve simple CAPTCHAs (checkboxes)")
+        async def solve_captcha(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                # Google reCAPTCHA
+                recaptcha_frame = page.frame_locator("iframe[src*='google.com/recaptcha'][src*='anchor']")
+                if await recaptcha_frame.locator(".recaptcha-checkbox-border").count() > 0:
+                    await recaptcha_frame.locator(".recaptcha-checkbox-border").click()
+                    await page.wait_for_timeout(2000)
+                    return "Clicked Google reCAPTCHA checkbox. Please verify if solved."
+                
+                # Cloudflare Turnstile
+                cf_frame = page.frame_locator("iframe[src*='challenges.cloudflare.com']")
+                if await cf_frame.locator("input[type='checkbox']").count() > 0:
+                    await cf_frame.locator("input[type='checkbox']").click()
+                    await page.wait_for_timeout(2000)
+                    return "Clicked Cloudflare Turnstile checkbox."
+                
+                # Generic "I am human" buttons
+                human_btns = page.locator("button:has-text('I am human'), button:has-text('Verify you are human')")
+                if await human_btns.count() > 0:
+                    await human_btns.first.click()
+                    return "Clicked generic human verification button."
+
+                return "No simple CAPTCHA found. If a complex CAPTCHA is present, please ask the user for help."
+            except Exception as e:
+                return f"Error attempting to solve CAPTCHA: {e}"
+
+    def _register_system_actions(self):
+        @self.registry.action("Save text content to a file")
+        async def save_text_to_file(filename: str, content: str, append: bool = False):
+            safe_dir = os.path.abspath("./tmp/downloads")
+            os.makedirs(safe_dir, exist_ok=True)
+            filepath = os.path.join(safe_dir, os.path.basename(filename))
+            mode = "a" if append else "w"
+            utils_save_text(filepath, content, mode)
+            return f"Saved content to {filepath}"
+
+        @self.registry.action("Clear browser cookies and local storage")
+        async def clear_browser_data(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                context = page.context
+                await context.clear_cookies()
+                await page.evaluate("try { window.localStorage.clear(); window.sessionStorage.clear(); } catch (e) {}")
+                return "Cleared cookies and local/session storage."
+            except Exception as e:
+                return f"Error clearing browser data: {e}"
+
+        @self.registry.action("Clear agent memory (Mem0)")
+        async def clear_agent_memory():
+            reset_mem0()
+            return "Agent memory (Mem0) cleared."
+
+        @self.registry.action("Download a file from a URL")
+        async def download_file(browser: BrowserContext, url: str, filename: str):
+            path = browser.config.save_downloads_path
+            if not path:
+                return "Error: No download path configured."
+            
+            os.makedirs(path, exist_ok=True)
+            safe_filename = "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')).strip()
+            filepath = os.path.join(path, safe_filename)
+            
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            content = await response.read()
+                            with open(filepath, 'wb') as f:
+                                f.write(content)
+                            return f"Successfully downloaded {url} to {filepath}"
+                        else:
+                            return f"Failed to download. Status code: {response.status}"
+            except Exception as e:
+                return f"Error downloading file: {e}"
+
+        @self.registry.action("Search the knowledge base for information")
+        async def search_knowledge_base(query: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            matches = search_kb_files(self.kb_dir, query)
+            if not matches:
+                return f"No matches found in knowledge base for query: '{query}'"
+            
+            # If few matches, return content of first few
+            result = f"Found {len(matches)} matches:\n"
+            for filename in matches[:3]: # Limit to top 3
+                content = load_kb_content(self.kb_dir, filename)
+                preview = content[:500] + "..." if len(content) > 500 else content
+                result += f"\n--- File: {filename} ---\n{preview}\n"
+            
+            if len(matches) > 3:
+                result += f"\n...and {len(matches) - 3} more files: {', '.join(matches[3:])}"
+                
+            return result
+
+        @self.registry.action("Read the full content of a specific knowledge base file")
+        async def read_knowledge_base_file(filename: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            content = load_kb_content(self.kb_dir, filename)
+            if not content:
+                return f"File '{filename}' not found or empty."
+            
+            return f"--- File: {filename} ---\n{content}"
+
+        @self.registry.action("List all available knowledge base files")
+        async def list_knowledge_base_files():
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            files = list_kb_files(self.kb_dir)
+            if not files:
+                return "No knowledge base files found."
+            
+            return f"Available Knowledge Base Files:\n" + "\n".join(files)

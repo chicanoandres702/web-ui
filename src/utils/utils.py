@@ -3,7 +3,7 @@ import re
 import os
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Callable, Any
 import requests
 import json
 import gradio as gr
@@ -105,6 +105,25 @@ def get_progress_bar_html(progress: int, label: str = "Progress") -> str:
     """
 
 
+def calculate_progress_from_markdown(markdown_content: str) -> int:
+    """Calculates progress percentage from markdown task lists."""
+    if not markdown_content:
+        return 0
+    
+    # Count task markers
+    pending = markdown_content.count("- [ ]")
+    completed = markdown_content.count("- [x]")
+    failed = markdown_content.count("- [-]")
+    
+    total_tasks = pending + completed + failed
+    processed_tasks = completed + failed
+    
+    if total_tasks == 0:
+        return 0
+        
+    return min(100, int((processed_tasks / total_tasks) * 100))
+
+
 def parse_agent_thought(thought: str) -> Dict[str, str]:
     """Parses the agent's thought string into structured sections."""
     sections = {
@@ -137,3 +156,41 @@ def parse_agent_thought(thought: str) -> Dict[str, str]:
                 sections[key] = content
                 break
     return sections
+
+
+async def retry_async(
+    func: Callable[..., Any],
+    retries: int = 3,
+    delay: float = 1.0,
+    backoff: float = 2.0,
+    logger: Optional[logging.Logger] = None,
+    error_message: str = "Operation failed",
+    *args,
+    **kwargs
+) -> Any:
+    """Retries an async function with exponential backoff."""
+    last_exception = None
+    current_delay = delay
+    for attempt in range(retries):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            last_exception = e
+            if logger:
+                logger.warning(f"{error_message} (Attempt {attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(current_delay)
+                current_delay *= backoff
+    raise last_exception
+
+
+def clean_json_string(content: str) -> str:
+    """Cleans a string to extract JSON content, removing markdown code blocks."""
+    content = content.strip()
+    if content.startswith("```json"):
+        content = content[7:]
+    elif content.startswith("```"):
+        content = content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    return content.strip()

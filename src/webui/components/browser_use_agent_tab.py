@@ -5,7 +5,7 @@ import os
 import uuid
 import time
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import gradio as gr
 
@@ -14,101 +14,24 @@ from browser_use.agent.views import (
     AgentHistoryList,
     AgentOutput,
 )
-from browser_use.browser.browser import BrowserConfig
-from browser_use.browser.context import BrowserContext, BrowserContextConfig
+from browser_use.browser.context import BrowserContext
 from browser_use.browser.views import BrowserState
 from gradio.components import Component
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from src.agent.browser_use.browser_use_agent import BrowserUseAgent
-from src.browser.custom_browser import CustomBrowser
+from src.utils.browser_factory import create_browser, create_context
 from src.controller.custom_controller import CustomController
 from src.webui.llm_helper import initialize_llm
+from src.webui.components.shared import create_agent_control_buttons, get_agent_settings_values, get_browser_settings_values, safe_execution, initialize_agent_llms, read_text_file, save_text_file, get_valid_input_components, map_dict_to_gradio_outputs, format_agent_output, render_plan_markdown, process_knowledge_generation
 from src.webui.webui_manager import WebuiManager
+from src.webui.components.agent_logic import initialize_browser_infrastructure, configure_controller, construct_agent, prepare_directories
 
-from src.utils.prompts import FULL_SYSTEM_PROMPT
+from src.utils.prompts import FULL_SYSTEM_PROMPT # Still needed for memory loading logic if kept here
 from src.utils.utils import get_progress_bar_html, parse_agent_thought
+from src.utils.prompt_library import get_all_prompts, save_custom_prompt, delete_custom_prompt, get_prompt_by_name
+from src.webui.components.knowledge_base_logic import list_kb_files, load_kb_content
 logger = logging.getLogger(__name__)
-
-# --- Helper Functions --- (Defined at module level)
-
-def _format_agent_output(model_output: AgentOutput) -> str:
-    """Formats AgentOutput for display in the chatbot using JSON."""
-    content = ""
-    if model_output:
-        try:
-            # Try to format nicely
-            try:
-                thought = getattr(model_output, "thought", None)
-            except Exception:
-                thought = None
-            if thought:
-                parsed = parse_agent_thought(thought)
-                if any(parsed[k] for k in ["Status", "Challenge", "Analysis", "Next Steps"]):
-                    content += "<div class='agent-thought-container'>"
-                    if parsed["Status"]: 
-                        content += f"<div style='margin-bottom:8px;'><span class='thought-badge'>Status</span><span style='font-weight:600'>{parsed['Status']}</span></div>"
-                    if parsed["Reasoning"]: 
-                        content += f"<div style='margin-bottom:6px;'><strong>🤔 Reasoning:</strong> {parsed['Reasoning']}</div>"
-                    if parsed["Analysis"]: 
-                        content += f"<div style='margin-bottom:6px;'><strong>🔎 Analysis:</strong> {parsed['Analysis']}</div>"
-                    if parsed["Challenge"]: 
-                        content += f"<div style='margin-bottom:6px; color: var(--error-text-color);'><strong>⚠️ Challenge:</strong> {parsed['Challenge']}</div>"
-                    if parsed["Next Steps"]: 
-                        content += f"<div><strong>⏭️ Next Steps:</strong> {parsed['Next Steps']}</div>"
-                    content += "</div>"
-                else:
-                    content += f"<div class='agent-thought-container'><strong>Thought:</strong> {thought}</div>"
-
-            # --- Confirmer/Validation Visualization ---
-            # Attempt to retrieve validation info from the output object
-            validation_info = getattr(model_output, "validation", None) or getattr(model_output, "confirmer", None)
-            
-            if not validation_info and hasattr(model_output, "model_dump"):
-                dump = model_output.model_dump(exclude_none=True)
-                validation_info = dump.get("validation") or dump.get("confirmer")
-
-            if validation_info:
-                content += f"<div style='margin-top:10px; padding:8px; border-left: 3px solid #10b981; background-color: rgba(16, 185, 129, 0.1);'>"
-                content += f"<strong>✅ Confirmer:</strong><br/>"
-                if isinstance(validation_info, dict):
-                    for k, v in validation_info.items():
-                        content += f"- {k}: {v}\n"
-                else:
-                    content += f"{validation_info}\n"
-                content += "</div>"
-
-            actions = getattr(model_output, "action", [])
-            if actions:
-                content += "<div style='margin-top:10px;'><strong>🛠️ Actions:</strong><ul style='margin-top:5px; padding-left:20px;'>"
-                for action in actions:
-                    # action is likely a Pydantic model
-                    if hasattr(action, "model_dump"):
-                        act_dict = action.model_dump(exclude_none=True)
-                        for k, v in act_dict.items():
-                            content += f"<li><strong>{k}:</strong> {v}</li>"
-                    else:
-                        content += f"<li>{str(action)}</li>"
-                content += "</ul></div>"
-            
-            if not content:
-                # Fallback to JSON
-                dump = model_output.model_dump(exclude_none=True) if hasattr(model_output, "model_dump") else str(model_output)
-                json_string = json.dumps(dump, indent=2, ensure_ascii=False)
-                content = f"```json\n{json_string}\n```"
-
-        except AttributeError as ae:
-            logger.error(
-                f"AttributeError during model dump: {ae}."
-            )
-            content = f"Error: Could not format agent output (AttributeError: {ae}).\nRaw output: {str(model_output)}"
-        except Exception as e:
-            logger.error(f"Error formatting agent output: {e}", exc_info=True)
-            # Fallback to simple string representation on error
-            content = f"Error formatting agent output.\nRaw output:\n{str(model_output)}"
-
-    return content.strip()
-
 
 # --- Updated Callback Implementation ---
 
@@ -202,7 +125,7 @@ async def _handle_new_step(
         logger.debug(f"No screenshot available for step {step_num}.")
 
     # --- Format Agent Output ---
-    formatted_output = _format_agent_output(output)  # Use the updated function
+    formatted_output = format_agent_output(output)  # Use the updated function
 
     # --- Combine and Append to Chat ---
     step_header = f"--- **Step {step_num}** ---"
@@ -349,42 +272,10 @@ async def handle_resume_session(webui_manager: WebuiManager, history_file: str, 
         # Reconstruct AgentHistoryList
         history = AgentHistoryList.model_validate(history_data)
         
-        # Initialize agent with this history
-        # We need to trigger the initialization logic similar to run_agent_task but without running it immediately
-        # For simplicity, we'll use a modified version of the initialization part of run_agent_task
-        
-        # ... (Initialization logic reused/adapted) ...
-        # Since we can't easily extract just the init logic without refactoring run_agent_task completely,
-        # we will assume the user has set up the environment (browser, etc.) and we just need to create the agent.
-        
-        # Ensure browser/context exists (similar to run_agent_task)
-        # ... (This part relies on the user having clicked "Run" at least once or we duplicate the init logic)
-        # Ideally, we should refactor run_agent_task to separate initialization. 
-        # For now, we will trigger a "dry run" init if needed.
-        
-        # Let's try to initialize the agent using the current settings from components
-        # This requires calling the same setup code.
-        
-        # HACK: We will yield a generator that calls run_agent_task but with a special flag or just sets up the agent.
-        # Actually, we can just set up the agent here if we have access to the necessary helpers.
-        # We have access to `initialize_llm` and `CustomBrowser`, etc.
-        
-        # ... (Setup LLM, Browser, Context - simplified for resume) ...
-        # We assume the user wants to use the *current* settings for the resumed session (e.g. model), 
-        # but the *history* from the file.
-        
         # We need to yield UI updates to show we are loading
         yield {
             webui_manager.get_component_by_id("browser_use_agent.agent_status"): gr.update(value="### Agent Status\nResuming Session...")
         }
-        
-        # We will use a trick: we will set a flag in webui_manager to indicate we want to resume with specific history,
-        # and then trigger the run_agent_task logic but pause it immediately? 
-        # No, better to just initialize the agent object and populate chat.
-        
-        # 1. Initialize Agent (using a helper if we had one, or copy-paste essential init)
-        # For now, let's assume the user has to click "Run" to start the browser, so we just load the history into memory
-        # and when they click "Run", we use it? No, "Resume" should probably restore the state visible in UI.
         
         webui_manager.bu_chat_history = []
         
@@ -394,12 +285,7 @@ async def handle_resume_session(webui_manager: WebuiManager, history_file: str, 
             state = item.state
             output = item.model_output
             
-            # Reconstruct chat message
-            # We can reuse _handle_new_step logic but synchronously and without real screenshots (unless saved?)
-            # Saved history usually doesn't have base64 screenshots embedded (too large), unless configured.
-            # If they are missing, we just show text.
-            
-            formatted_output = _format_agent_output(output)
+            formatted_output = format_agent_output(output)
             step_header = f"--- **Step {step_num} (Restored)** ---"
             
             screenshot_html = ""
@@ -409,12 +295,6 @@ async def handle_resume_session(webui_manager: WebuiManager, history_file: str, 
             final_content = step_header + "<br/>" + screenshot_html + formatted_output
             webui_manager.bu_chat_history.append({"role": "assistant", "content": final_content.strip()})
             
-        # Store history to be used when "Run" is clicked next? 
-        # Or initialize the agent NOW.
-        # To initialize the agent now, we need the browser.
-        # If we don't have a browser, we can't fully init the agent.
-        # So we will store this history in `webui_manager.bu_resumed_history` and use it in `run_agent_task`.
-        
         webui_manager.bu_resumed_history = history
         webui_manager.bu_agent_status = f"### Agent Status\nSession Restored ({len(history.history)} steps)."
         
@@ -455,6 +335,15 @@ async def run_agent_task(
     retry_button_comp = webui_manager.get_component_by_id("browser_use_agent.retry_button")
     chatbot_comp = webui_manager.get_component_by_id("browser_use_agent.chatbot")
     agent_status_comp = webui_manager.get_component_by_id("browser_use_agent.agent_status")
+    plan_status_comp = webui_manager.get_component_by_id("browser_use_agent.plan_status")
+    plan_editor_comp = webui_manager.get_component_by_id("browser_use_agent.plan_editor")
+    plan_editor_acc_comp = webui_manager.get_component_by_id("browser_use_agent.plan_editor_accordion")
+    kb_gen_acc_comp = webui_manager.get_component_by_id("browser_use_agent.kb_gen_accordion")
+    kb_gen_title_comp = webui_manager.get_component_by_id("browser_use_agent.kb_gen_title")
+    kb_gen_content_comp = webui_manager.get_component_by_id("browser_use_agent.kb_gen_content")
+    kb_files_dropdown_comp = webui_manager.get_component_by_id("browser_use_agent.kb_files_dropdown")
+    extraction_model_comp = webui_manager.get_component_by_id("browser_use_agent.extraction_model_dropdown")
+    
     history_file_comp = webui_manager.get_component_by_id(
         "browser_use_agent.agent_history_file"
     )
@@ -480,210 +369,108 @@ async def run_agent_task(
     webui_manager.bu_agent_status = "### Agent Status\nRunning..."
 
     yield {
-        user_input_comp: gr.Textbox(
+        user_input_comp: gr.update(
             value="", interactive=True, placeholder="Agent is running... Enter text to steer/add instructions."
         ),
-        run_button_comp: gr.Button(value="⬆️ Add Instruction", interactive=True, variant="secondary"),
-        retry_button_comp: gr.Button(interactive=False),
-        stop_button_comp: gr.Button(interactive=True),
-        pause_resume_button_comp: gr.Button(value="⏸️ Pause", interactive=True),
-        clear_button_comp: gr.Button(interactive=False),
+        run_button_comp: gr.update(value="⬆️ Add Instruction", interactive=True, variant="secondary"),
+        retry_button_comp: gr.update(interactive=False),
+        stop_button_comp: gr.update(interactive=True),
+        pause_resume_button_comp: gr.update(value="⏸️ Pause", interactive=True),
+        clear_button_comp: gr.update(interactive=False),
         chatbot_comp: gr.update(value=webui_manager.bu_chat_history),
         agent_status_comp: gr.update(value=webui_manager.bu_agent_status),
+        plan_status_comp: gr.update(value="", visible=False),
+        plan_editor_comp: gr.update(value=None),
+        plan_editor_acc_comp: gr.update(visible=False),
+        kb_gen_acc_comp: gr.update(visible=False, open=False),
         history_file_comp: gr.update(value=None),
         gif_comp: gr.update(value=None),
     }
 
-    # --- Agent Settings ---
-    # Access settings values via components dict, getting IDs from webui_manager
-    def get_setting(key, default=None):
-        comp = webui_manager.id_to_component.get(f"agent_settings.{key}")
-        val = components.get(comp, default) if comp else default
-        return val if val is not None else default
+    # --- Retrieve Settings ---
+    agent_settings = get_agent_settings_values(webui_manager, components)
+    browser_settings = get_browser_settings_values(webui_manager, components)
 
-    override_system_prompt = get_setting("override_system_prompt") or None
-    extend_system_prompt = get_setting("extend_system_prompt") or None
-    llm_provider_name = get_setting(
-        "llm_provider", None
-    )  # Default to None if not found
-    llm_model_name = get_setting("llm_model_name", None)
-    llm_temperature = get_setting("llm_temperature", 0.6)
-    use_vision = get_setting("use_vision", True)
-    ollama_num_ctx = get_setting("ollama_num_ctx", 16000)
-    llm_base_url = get_setting("llm_base_url") or None
-    llm_api_key = get_setting("llm_api_key") or None
-    max_steps = get_setting("max_steps", 100)
+    max_steps = agent_settings["max_steps"]
     webui_manager.bu_max_steps = max_steps
-    max_actions = get_setting("max_actions", 10)
-    fast_mode = get_setting("fast_mode", False)
-    auto_save_on_stuck = get_setting("auto_save_on_stuck", True)
-    require_confirmation = get_setting("require_confirmation", False)
     
-    if fast_mode:
+    if agent_settings["fast_mode"]:
         webui_manager.bu_agent_status += "\n⚡ **Fast Mode Active**"
-
-    max_input_tokens = get_setting("max_input_tokens", 128000)
-    tool_calling_str = get_setting("tool_calling_method", "auto")
-    tool_calling_method = tool_calling_str if tool_calling_str != "None" else None
-    mcp_server_config_comp = webui_manager.id_to_component.get(
-        "agent_settings.mcp_server_config"
-    )
-    mcp_server_config_str = (
-        components.get(mcp_server_config_comp) if mcp_server_config_comp else None
-    )
-    mcp_server_config = (
-        json.loads(mcp_server_config_str) if mcp_server_config_str else None
-    )
 
     # --- Brain & Memory ---
     brain_file = components.get(brain_file_comp)
     memory_file = components.get(memory_file_comp)
-
+    
+    # Load file content into settings
     if brain_file and os.path.exists(brain_file):
         try:
             with open(brain_file, "r", encoding="utf-8") as f:
-                override_system_prompt = f.read()
+                agent_settings["override_system_prompt"] = f.read()
             logger.info(f"Loaded Brain from {brain_file}")
         except Exception as e:
             logger.error(f"Failed to load Brain file: {e}")
+
+    # Ensure memory directory and file exist to prevent errors
+    if memory_file:
+        try:
+            mem_path = os.path.abspath(memory_file)
+            os.makedirs(os.path.dirname(mem_path), exist_ok=True)
+            if not os.path.exists(mem_path):
+                with open(mem_path, 'w', encoding='utf-8') as f:
+                    f.write("")
+        except Exception as e:
+            logger.error(f"Error initializing memory file: {e}")
 
     if memory_file and os.path.exists(memory_file):
         try:
             with open(memory_file, "r", encoding="utf-8") as f:
                 memory_content = f.read()
             if memory_content.strip():
-                extend_system_prompt = (extend_system_prompt or "") + f"\n\nLONG TERM MEMORY:\n{memory_content}"
+                agent_settings["extend_system_prompt"] = (agent_settings["extend_system_prompt"] or "") + f"\n\nLONG TERM MEMORY:\n{memory_content}"
             logger.info(f"Loaded Memory from {memory_file}")
         except Exception as e:
             logger.error(f"Failed to load Memory file: {e}")
     
-    # Note: If memory file doesn't exist, we still pass the path to the controller so it can create it on write.
+    # --- Initialize LLMs ---
+    main_llm, planner_llm, confirmer_llm, smart_retry_llm, cheap_llm = await initialize_agent_llms(agent_settings)
+    llms = (main_llm, planner_llm, confirmer_llm, smart_retry_llm, cheap_llm)
 
-    # --- Learning Prompt Injection ---
-    extend_system_prompt = (extend_system_prompt or "") + FULL_SYSTEM_PROMPT
+    # Reset plan state
+    webui_manager.bu_plan = []
 
-    # Planner LLM Settings (Optional)
-    planner_llm_provider_name = get_setting("planner_llm_provider") or None
-    planner_llm = None
-    planner_use_vision = False
-    if planner_llm_provider_name:
-        planner_llm_model_name = get_setting("planner_llm_model_name")
-        planner_llm_temperature = get_setting("planner_llm_temperature", 0.6)
-        planner_ollama_num_ctx = get_setting("planner_ollama_num_ctx", 16000)
-        planner_llm_base_url = get_setting("planner_llm_base_url") or None
-        planner_llm_api_key = get_setting("planner_llm_api_key") or None
-        planner_use_vision = get_setting("planner_use_vision", False)
-
-        planner_llm = await initialize_llm(
-            planner_llm_provider_name,
-            planner_llm_model_name,
-            planner_llm_temperature,
-            planner_llm_base_url,
-            planner_llm_api_key,
-            planner_ollama_num_ctx if planner_llm_provider_name == "ollama" else None,
-        )
-
-    # Confirmer LLM Settings (Optional)
-    confirmer_llm_provider_name = get_setting("confirmer_llm_provider") or None
-    confirmer_llm = None
-    confirmer_strictness = 5
-    confirmer_use_vision = False
-    if confirmer_llm_provider_name:
-        confirmer_llm_model_name = get_setting("confirmer_llm_model_name")
-        confirmer_llm_temperature = get_setting("confirmer_llm_temperature", 0.6)
-        confirmer_ollama_num_ctx = get_setting("confirmer_ollama_num_ctx", 16000)
-        confirmer_llm_base_url = get_setting("confirmer_llm_base_url") or None
-        confirmer_llm_api_key = get_setting("confirmer_llm_api_key") or None
-        confirmer_strictness = get_setting("confirmer_strictness", 5)
-        confirmer_use_vision = get_setting("confirmer_use_vision", False)
+    # --- Hierarchical Planning ---
+    if agent_settings["enable_hierarchical_planning"]:
+        webui_manager.bu_agent_status = "### Agent Status\n🧠 Generating Plan..."
+        yield {agent_status_comp: gr.update(value=webui_manager.bu_agent_status)}
         
-        if fast_mode:
-            confirmer_strictness = 1
+        planning_llm = planner_llm if planner_llm else main_llm
+        if planning_llm:
+            from src.agent.planner import generate_hierarchical_plan
+            plan = await generate_hierarchical_plan(planning_llm, task, agent_settings["planner_system_prompt"])
             
-        confirmer_llm = await initialize_llm(
-            confirmer_llm_provider_name,
-            confirmer_llm_model_name,
-            confirmer_llm_temperature,
-            confirmer_llm_base_url,
-            confirmer_llm_api_key,
-            confirmer_ollama_num_ctx if confirmer_llm_provider_name == "ollama" else None,
-        )
-        
-    # Smart Retry LLM Settings
-    enable_smart_retry = get_setting("enable_smart_retry", False)
-    smart_retry_llm = None
-    if enable_smart_retry:
-        retry_provider = get_setting("smart_retry_llm_provider")
-        retry_model = get_setting("smart_retry_llm_model_name")
-        retry_temp = get_setting("smart_retry_llm_temperature", 0.6)
-        retry_base_url = get_setting("smart_retry_llm_base_url") or None
-        retry_api_key = get_setting("smart_retry_llm_api_key") or None
-        
-        if retry_provider and retry_model:
-            smart_retry_llm = await initialize_llm(
-                retry_provider, retry_model, retry_temp, retry_base_url, retry_api_key
-            )
+            if plan:
+                # Initialize plan state for visualization
+                webui_manager.bu_plan = [{"step": step, "status": "pending"} for step in plan]
+                plan_md = render_plan_markdown(webui_manager.bu_plan)
+                yield {
+                    plan_status_comp: gr.update(value=plan_md, visible=True),
+                    plan_editor_comp: gr.update(value=json.dumps(webui_manager.bu_plan, indent=2)),
+                    plan_editor_acc_comp: gr.update(visible=True)
+                }
 
-    # Cost Saver LLM Settings
-    enable_cost_saver = get_setting("enable_cost_saver", False)
-    cheap_llm = None
-    if enable_cost_saver:
-        cheap_provider = get_setting("cheap_llm_provider")
-        cheap_model = get_setting("cheap_llm_model_name")
-        cheap_temp = get_setting("cheap_llm_temperature", 0.6)
-        cheap_base_url = get_setting("cheap_llm_base_url") or None
-        cheap_api_key = get_setting("cheap_llm_api_key") or None
-        
-        if cheap_provider and cheap_model:
-            cheap_llm = await initialize_llm(
-                cheap_provider, cheap_model, cheap_temp, cheap_base_url, cheap_api_key
-            )
+                formatted_plan_text = "\n".join([f"{i+1}. {step}" for i, step in enumerate(plan)])
+                webui_manager.bu_chat_history.append({
+                    "role": "assistant", 
+                    "content": f"**🧠 Proposed Plan:**\n{formatted_plan_text}"
+                })
+                yield {chatbot_comp: gr.update(value=webui_manager.bu_chat_history)}
+                
+                task = f"Goal: {task}\n\nExecute the following plan step-by-step:\n{formatted_plan_text}\n\nIMPORTANT: Use the `update_plan_step(step_index, status)` tool to mark steps as 'in_progress' or 'completed' as you execute them to keep the user informed."
+                webui_manager.bu_agent_status = "### Agent Status\nRunning Plan..."
 
-    # --- Browser Settings ---
-    def get_browser_setting(key, default=None):
-        comp = webui_manager.id_to_component.get(f"browser_settings.{key}")
-        val = components.get(comp, default) if comp else default
-        return val if val is not None else default
-
-    browser_binary_path = get_browser_setting("browser_binary_path") or None
-    browser_user_data_dir = get_browser_setting("browser_user_data_dir") or None
-    use_own_browser = get_browser_setting(
-        "use_own_browser", False
-    )  # Logic handled by CDP/WSS presence
-    keep_browser_open = get_browser_setting("keep_browser_open", False)
-    headless = get_browser_setting("headless", False)
-    disable_security = get_browser_setting("disable_security", False)
-    window_w = int(get_browser_setting("window_w", 1280))
-    window_h = int(get_browser_setting("window_h", 1100))
-    cdp_url = get_browser_setting("cdp_url") or None
-    wss_url = get_browser_setting("wss_url") or None
-    save_recording_path = get_browser_setting("save_recording_path") or None
-    save_trace_path = get_browser_setting("save_trace_path") or None
-    save_agent_history_path = get_browser_setting(
-        "save_agent_history_path", "./tmp/agent_history"
-    )
-    save_download_path = get_browser_setting("save_download_path", "./tmp/downloads")
-
-    stream_vw = 70
-    stream_vh = int(70 * window_h // window_w)
-
-    os.makedirs(save_agent_history_path, exist_ok=True)
-    if save_recording_path:
-        os.makedirs(save_recording_path, exist_ok=True)
-    if save_trace_path:
-        os.makedirs(save_trace_path, exist_ok=True)
-    if save_download_path:
-        os.makedirs(save_download_path, exist_ok=True)
-
-    # --- 2. Initialize LLM ---
-    main_llm = await initialize_llm(
-        llm_provider_name,
-        llm_model_name,
-        llm_temperature,
-        llm_base_url,
-        llm_api_key,
-        ollama_num_ctx if llm_provider_name == "ollama" else None,
-    )
+    # --- Prepare Directories ---
+    webui_manager.bu_agent_task_id = str(uuid.uuid4())
+    history_file, gif_path = await prepare_directories(browser_settings, webui_manager.bu_agent_task_id)
 
     # Pass the webui_manager instance to the callback when wrapping it
     async def ask_callback_wrapper(
@@ -696,105 +483,39 @@ async def run_agent_task(
     ) -> str:
         return await _confirm_action_callback(webui_manager, action_name, params, browser_context)
 
-    if not webui_manager.bu_controller:
-        webui_manager.bu_controller = CustomController(
-            ask_assistant_callback=ask_callback_wrapper,
-            confirm_action_callback=confirm_callback_wrapper
-        )
-        webui_manager.bu_controller.set_fast_mode(fast_mode)
-        await webui_manager.bu_controller.setup_mcp_client(mcp_server_config)
-    else:
-        # Update callbacks if controller exists (in case webui_manager reference changed or just to be safe)
-        webui_manager.bu_controller.ask_assistant_callback = ask_callback_wrapper
-        webui_manager.bu_controller.confirm_action_callback = confirm_callback_wrapper
+    async def update_plan_callback_wrapper(step_index: int, status: str):
+        if hasattr(webui_manager, "bu_plan") and webui_manager.bu_plan:
+            idx = step_index - 1
+            if 0 <= idx < len(webui_manager.bu_plan):
+                webui_manager.bu_plan[idx]["status"] = status
+                webui_manager.bu_plan_updated = True
+                
+                # Auto-Pause Logic
+                if status == "failed" and agent_settings.get("enable_auto_pause", False):
+                    if webui_manager.bu_agent:
+                        webui_manager.bu_agent.pause()
 
-    # Set memory file in controller (Update existing or new controller)
-    webui_manager.bu_controller.set_memory_file(memory_file if memory_file else None)
-    
-    # Reset loop detection history
-    webui_manager.bu_controller.reset_loop_history()
-    webui_manager.bu_controller.set_fast_mode(fast_mode)
-    webui_manager.bu_controller.set_require_confirmation(require_confirmation)
+    # --- Configure Controller ---
+    callbacks = {
+        "ask_assistant": ask_callback_wrapper,
+        "confirm_action": confirm_callback_wrapper,
+        "update_plan": update_plan_callback_wrapper
+    }
+    await configure_controller(
+        webui_manager, 
+        agent_settings, 
+        memory_file, 
+        components.get(extraction_model_comp), 
+        callbacks
+    )
 
     # --- 4. Initialize Browser and Context ---
-    should_close_browser_on_finish = not keep_browser_open
+    should_close_browser_on_finish = not browser_settings["keep_browser_open"]
 
     try:
-        # Close existing resources if not keeping open
-        if not keep_browser_open:
-            if webui_manager.bu_browser_context:
-                logger.info("Closing previous browser context.")
-                await webui_manager.bu_browser_context.close()
-                webui_manager.bu_browser_context = None
-            if webui_manager.bu_browser:
-                logger.info("Closing previous browser.")
-                await webui_manager.bu_browser.close()
-                webui_manager.bu_browser = None
-
-        # Create Browser if needed
-        if not webui_manager.bu_browser:
-            logger.info("Launching new browser instance.")
-            extra_args = []
-            if use_own_browser:
-                browser_binary_path = os.getenv("BROWSER_PATH", None) or browser_binary_path
-                if browser_binary_path == "":
-                    browser_binary_path = None
-                browser_user_data = browser_user_data_dir or os.getenv("BROWSER_USER_DATA", None)
-                if browser_user_data:
-                    extra_args += [f"--user-data-dir={browser_user_data}"]
-            else:
-                browser_binary_path = None
-
-            webui_manager.bu_browser = CustomBrowser(
-                config=BrowserConfig(
-                    headless=headless,
-                    disable_security=disable_security,
-                    browser_binary_path=browser_binary_path,
-                    extra_browser_args=extra_args,
-                    wss_url=wss_url,
-                    cdp_url=cdp_url,
-                    new_context_config=BrowserContextConfig(
-                        window_width=window_w,
-                        window_height=window_h,
-                    )
-                )
-            )
-
-        # Create Context if needed
-        if not webui_manager.bu_browser_context:
-            logger.info("Creating new browser context.")
-            context_config = BrowserContextConfig(
-                trace_path=save_trace_path if save_trace_path else None,
-                save_recording_path=save_recording_path
-                if save_recording_path
-                else None,
-                save_downloads_path=save_download_path if save_download_path else None,
-                window_height=window_h,
-                window_width=window_w,
-            )
-            if not webui_manager.bu_browser:
-                raise ValueError("Browser not initialized, cannot create context.")
-            webui_manager.bu_browser_context = (
-                await webui_manager.bu_browser.new_context(config=context_config)
-            )
+        await initialize_browser_infrastructure(webui_manager, browser_settings)
 
         # --- 5. Initialize or Update Agent ---
-        webui_manager.bu_agent_task_id = str(uuid.uuid4())  # New ID for this task run
-        os.makedirs(
-            os.path.join(save_agent_history_path, webui_manager.bu_agent_task_id),
-            exist_ok=True,
-        )
-        history_file = os.path.join(
-            save_agent_history_path,
-            webui_manager.bu_agent_task_id,
-            f"{webui_manager.bu_agent_task_id}.json",
-        )
-        gif_path = os.path.join(
-            save_agent_history_path,
-            webui_manager.bu_agent_task_id,
-            f"{webui_manager.bu_agent_task_id}.gif",
-        )
-
         # Pass the webui_manager to callbacks when wrapping them
         async def step_callback_wrapper(
                 state: BrowserState, output: AgentOutput, step_num: int
@@ -804,50 +525,20 @@ async def run_agent_task(
         def done_callback_wrapper(history: AgentHistoryList):
             _handle_done(webui_manager, history)
 
-        if not webui_manager.bu_agent:
-            logger.info(f"Initializing new agent for task: {task}")
-            if not webui_manager.bu_browser or not webui_manager.bu_browser_context:
-                raise ValueError(
-                    "Browser or Context not initialized, cannot create agent."
-                )
-            webui_manager.bu_agent = BrowserUseAgent(
-                task=task,
-                llm=main_llm,
-                browser=webui_manager.bu_browser,
-                browser_context=webui_manager.bu_browser_context,
-                controller=webui_manager.bu_controller,
-                register_new_step_callback=step_callback_wrapper,
-                register_done_callback=done_callback_wrapper,
-                use_vision=use_vision,
-                override_system_message=override_system_prompt,
-                extend_system_message=extend_system_prompt,
-                max_input_tokens=max_input_tokens,
-                max_actions_per_step=max_actions,
-                tool_calling_method=tool_calling_method,
-                planner_llm=planner_llm,
-                use_vision_for_planner=planner_use_vision if planner_llm else False,
-                confirmer_llm=confirmer_llm,
-                confirmer_strictness=confirmer_strictness,
-                use_vision_for_confirmer=confirmer_use_vision,
-                smart_retry_llm=smart_retry_llm,
-                auto_save_on_stuck=auto_save_on_stuck,
-                cheap_llm=cheap_llm,
-                enable_cost_saver=enable_cost_saver,
-                source="webui",
-                history=getattr(webui_manager, "bu_resumed_history", None)
-            )
-            webui_manager.bu_agent.state.agent_id = webui_manager.bu_agent_task_id
-            webui_manager.bu_agent.settings.generate_gif = gif_path
-        else:
-            webui_manager.bu_agent.state.agent_id = webui_manager.bu_agent_task_id
-            webui_manager.bu_agent.add_new_task(task)
-            webui_manager.bu_agent.settings.generate_gif = gif_path
-            webui_manager.bu_agent.browser = webui_manager.bu_browser
-            webui_manager.bu_agent.browser_context = webui_manager.bu_browser_context
-            webui_manager.bu_agent.controller = webui_manager.bu_controller
-
-        # Clear resumed history after using it
-        webui_manager.bu_resumed_history = None
+        agent_callbacks = {
+            "step_callback": step_callback_wrapper,
+            "done_callback": done_callback_wrapper
+        }
+        
+        await construct_agent(
+            webui_manager, 
+            task, 
+            agent_settings, 
+            llms, 
+            history_file, 
+            gif_path, 
+            agent_callbacks
+        )
 
         # --- 6. Run Agent Task and Stream Updates ---
         agent_run_coro = webui_manager.bu_agent.run(max_steps=max_steps)
@@ -856,19 +547,21 @@ async def run_agent_task(
         webui_manager.bu_latest_screenshot = None # Reset screenshot
 
         # --- Start Background Screenshot Task ---
+        stream_vw = 70
+        stream_vh = int(70 * browser_settings["window_h"] // browser_settings["window_w"])
         async def screenshot_loop():
             while not agent_task.done():
-                if headless and webui_manager.bu_browser_context:
+                if browser_settings["headless"] and webui_manager.bu_browser_context:
                     try:
                         webui_manager.bu_latest_screenshot = await webui_manager.bu_browser_context.take_screenshot()
                     except Exception: pass
                 
                 # Dynamic sleep based on state to save resources
-                sleep_time = 0.1
+                sleep_time = 0.5
                 if webui_manager.bu_agent and webui_manager.bu_agent.state.paused:
                     sleep_time = 1.0
                 await asyncio.sleep(sleep_time)
-        screenshot_task = asyncio.create_task(screenshot_loop())
+        screenshot_task = asyncio.create_task(screenshot_loop()) if browser_settings["headless"] else None
 
         last_chat_len = len(webui_manager.bu_chat_history)
         last_status = webui_manager.bu_agent_status
@@ -989,8 +682,15 @@ async def run_agent_task(
             if getattr(webui_manager.bu_agent, "using_cheap_model", False) and "Cost Saver Active" not in webui_manager.bu_agent_status:
                  webui_manager.bu_agent_status = "<span class='retry-badge' style='background-color: #10b981;'>💰 Cost Saver Active</span>\n" + webui_manager.bu_agent_status
 
+            # Update Plan View
+            if getattr(webui_manager, "bu_plan_updated", False):
+                plan_md = render_plan_markdown(webui_manager.bu_plan)
+                update_dict[plan_status_comp] = gr.update(value=plan_md)
+                update_dict[plan_editor_comp] = gr.update(value=json.dumps(webui_manager.bu_plan, indent=2))
+                webui_manager.bu_plan_updated = False
+
             # Update Browser View
-            if headless and webui_manager.bu_browser_context:
+            if browser_settings["headless"] and webui_manager.bu_browser_context:
                 screenshot_b64 = webui_manager.bu_latest_screenshot
                 if screenshot_b64:
                     if screenshot_b64 != last_screenshot_b64:
@@ -1014,7 +714,7 @@ async def run_agent_task(
             if update_dict:
                 yield update_dict
 
-            await asyncio.sleep(0.05)  # Polling interval
+            await asyncio.sleep(0.2)  # Polling interval - increased to prevent UI flooding
 
         # --- 7. Task Finalization ---
         webui_manager.bu_agent.state.paused = False
@@ -1034,6 +734,33 @@ async def run_agent_task(
 
             if os.path.exists(history_file):
                 final_update[history_file_comp] = gr.File(value=history_file)
+
+            # --- Knowledge Generation ---
+            if main_llm and webui_manager.bu_agent.state.history.history:
+                kb_result = await process_knowledge_generation(
+                    webui_manager.bu_agent.state.history,
+                    main_llm,
+                    agent_settings["enable_kb_auto_save"],
+                    memory_file
+                )
+
+                if kb_result["status"] == "saved":
+                    webui_manager.bu_chat_history.append({"role": "assistant", "content": kb_result["message"]})
+                    final_update[chatbot_comp] = gr.update(value=webui_manager.bu_chat_history)
+                    # Auto-refresh the dropdown
+                    if memory_file:
+                        base_dir = os.path.dirname(memory_file)
+                        try:
+                            files = list_kb_files(base_dir)
+                            final_update[kb_files_dropdown_comp] = gr.update(choices=files)
+                        except Exception: pass
+                elif kb_result["status"] == "generated":
+                    final_update[kb_gen_title_comp] = gr.update(value=kb_result["title"])
+                    final_update[kb_gen_content_comp] = gr.update(value=kb_result["content"])
+                    final_update[kb_gen_acc_comp] = gr.update(visible=True, open=True)
+                    webui_manager.bu_chat_history.append({"role": "assistant", "content": kb_result["message"]})
+                    final_update[chatbot_comp] = gr.update(value=webui_manager.bu_chat_history)
+
 
             if gif_path and os.path.exists(gif_path):
                 logger.info(f"GIF found at: {gif_path}")
@@ -1069,7 +796,7 @@ async def run_agent_task(
         finally:
             webui_manager.bu_current_task = None  # Clear the task reference
             
-            if not screenshot_task.done():
+            if screenshot_task and not screenshot_task.done():
                 screenshot_task.cancel()
 
             # Close browser/context if requested
@@ -1185,7 +912,6 @@ async def handle_submit(
             
             yield {
                 user_input_comp: gr.update(value=""),
-                webui_manager.get_component_by_id("browser_use_agent.chatbot"): gr.update(value=webui_manager.bu_chat_history)
             }
         else:
             yield {} # No change if empty input
@@ -1225,37 +951,11 @@ async def handle_stop(webui_manager: WebuiManager):
         # Signal the agent to stop by setting its internal flag
         agent.state.stopped = True
         agent.state.paused = False  # Ensure not paused if stopped
-        return {
-            webui_manager.get_component_by_id(
-                "browser_use_agent.stop_button"
-            ): gr.update(interactive=False, value="⏹️ Stopping..."),
-            webui_manager.get_component_by_id(
-                "browser_use_agent.pause_resume_button"
-            ): gr.update(interactive=False),
-            webui_manager.get_component_by_id(
-                "browser_use_agent.run_button"
-            ): gr.update(interactive=False),
-        }
+        # UI updates are handled by the main run loop polling the state
+        return None
     else:
         logger.warning("Stop clicked but agent is not running or task is already done.")
-        # Reset UI just in case it's stuck
-        return {
-            webui_manager.get_component_by_id(
-                "browser_use_agent.run_button"
-            ): gr.update(interactive=True, value="▶️ Submit Task", variant="primary"),
-            webui_manager.get_component_by_id(
-                "browser_use_agent.retry_button"
-            ): gr.update(interactive=True),
-            webui_manager.get_component_by_id(
-                "browser_use_agent.stop_button"
-            ): gr.update(interactive=False),
-            webui_manager.get_component_by_id(
-                "browser_use_agent.pause_resume_button"
-            ): gr.update(interactive=False),
-            webui_manager.get_component_by_id(
-                "browser_use_agent.clear_button"
-            ): gr.update(interactive=True),
-        }
+        return None
 
 
 async def handle_pause_resume(webui_manager: WebuiManager):
@@ -1267,25 +967,16 @@ async def handle_pause_resume(webui_manager: WebuiManager):
         if agent.state.paused:
             logger.info("Resume button clicked.")
             agent.resume()
-            # UI update happens in main loop
-            return {
-                webui_manager.get_component_by_id(
-                    "browser_use_agent.pause_resume_button"
-                ): gr.update(value="⏸️ Pause", interactive=True)
-            }  # Optimistic update
+            return None
         else:
             logger.info("Pause button clicked.")
             agent.pause()
-            return {
-                webui_manager.get_component_by_id(
-                    "browser_use_agent.pause_resume_button"
-                ): gr.update(value="▶️ Resume", interactive=True)
-            }  # Optimistic update
+            return None
     else:
         logger.warning(
             "Pause/Resume clicked but agent is not running or doesn't support state."
         )
-        return {}  # No change
+        return None
 
 
 async def handle_reload_memory(webui_manager: WebuiManager, memory_file_path: str):
@@ -1299,13 +990,8 @@ async def handle_reload_memory(webui_manager: WebuiManager, memory_file_path: st
     if not os.path.exists(memory_file_path):
         return {memory_content_comp: gr.update(value="Memory file does not exist yet.")}
 
-    try:
-        with open(memory_file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        return {memory_content_comp: gr.update(value=content)}
-    except Exception as e:
-        logger.error(f"Failed to read memory file: {e}")
-        return {memory_content_comp: gr.update(value=f"Error reading file: {e}")}
+    content = read_text_file(memory_file_path)
+    return {memory_content_comp: gr.update(value=content)}
 
 async def handle_update_kb_list(memory_file_path: str):
     """Scans the directory of the memory file for other knowledge bases."""
@@ -1313,15 +999,11 @@ async def handle_update_kb_list(memory_file_path: str):
         return gr.update(choices=[])
     
     base_dir = os.path.dirname(os.path.abspath(memory_file_path))
-    if not os.path.exists(base_dir):
-        return gr.update(choices=[])
-    
-    try:
-        files = [f for f in os.listdir(base_dir) if os.path.isfile(os.path.join(base_dir, f)) and (f.endswith('.md') or f.endswith('.txt'))]
-        files.sort()
+    files = list_kb_files(base_dir)
+    # Ensure files is a list of strings to avoid [object Object] in UI
+    if files and isinstance(files, list):
         return gr.update(choices=files)
-    except Exception as e:
-        logger.error(f"Error scanning KB directory: {e}")
+    else:
         return gr.update(choices=[])
 
 async def handle_load_kb_file(webui_manager: WebuiManager, memory_file_path: str, selected_file: str):
@@ -1331,17 +1013,9 @@ async def handle_load_kb_file(webui_manager: WebuiManager, memory_file_path: str
         return {memory_content_comp: gr.update(value="")}
         
     base_dir = os.path.dirname(os.path.abspath(memory_file_path))
-    filepath = os.path.join(base_dir, selected_file)
+    content = load_kb_content(base_dir, selected_file)
     
-    if not os.path.exists(filepath):
-        return {memory_content_comp: gr.update(value="File not found.")}
-        
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            content = f.read()
-        return {memory_content_comp: gr.update(value=content)}
-    except Exception as e:
-        return {memory_content_comp: gr.update(value=f"Error reading file: {e}")}
+    return {memory_content_comp: gr.update(value=content)}
 
 async def handle_save_chat(webui_manager: WebuiManager):
     """Handles clicks on the 'Save Chat' button."""
@@ -1464,6 +1138,52 @@ async def handle_refresh_history_files(save_agent_history_path: str):
     choices = [f[0] for f in files]
     return gr.update(choices=choices)
 
+async def handle_update_plan(webui_manager: WebuiManager, new_plan_json: str):
+    """Updates the plan from the editor."""
+    plan_status_comp = webui_manager.get_component_by_id("browser_use_agent.plan_status")
+    
+    if not new_plan_json:
+        return {}
+        
+    try:
+        new_plan = json.loads(new_plan_json)
+        if isinstance(new_plan, list):
+            webui_manager.bu_plan = new_plan
+            webui_manager.bu_plan_updated = True
+            
+            # Notify agent of the change
+            if webui_manager.bu_agent:
+                msg = f"NOTE: The plan has been manually updated by the user. Current Plan Status: {json.dumps(new_plan)}"
+                if hasattr(webui_manager.bu_agent, "message_manager"):
+                     webui_manager.bu_agent.message_manager.add_user_message(msg)
+            
+            plan_md = render_plan_markdown(new_plan)
+            return {
+                plan_status_comp: gr.update(value=plan_md)
+            }
+        else:
+            gr.Warning("Plan must be a JSON list.")
+            return {}
+    except Exception as e:
+        gr.Warning(f"Invalid JSON: {e}")
+        return {}
+
+async def handle_save_generated_kb(webui_manager: WebuiManager, title: str, content: str, memory_file_path: str):
+    """Saves the generated knowledge to a file."""
+    if not title or not content:
+        gr.Warning("Title or content is missing.")
+        return {webui_manager.get_component_by_id("browser_use_agent.kb_gen_accordion"): gr.update(open=True)}
+    
+    base_dir = os.path.dirname(memory_file_path) if memory_file_path else "./tmp/memory"
+    os.makedirs(base_dir, exist_ok=True)
+    
+    save_path = os.path.join(base_dir, title)
+    if save_text_file(save_path, content):
+        gr.Info(f"Saved knowledge to {title}")
+        return {webui_manager.get_component_by_id("browser_use_agent.kb_gen_accordion"): gr.update(visible=False, open=False)}
+    else:
+        gr.Error("Failed to save file.")
+        return {webui_manager.get_component_by_id("browser_use_agent.kb_gen_accordion"): gr.update(open=True)}
 
 # --- Tab Creation Function ---
 
@@ -1481,13 +1201,26 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
         # Left Column: Chat & Controls
         with gr.Column(scale=3):
             agent_status = gr.Markdown(value="### Agent Status\nReady", label="Agent Status")
+            plan_status = gr.Markdown(value="", visible=False, label="Current Plan")
+            
+            with gr.Accordion("📝 Edit Plan", open=False, visible=False) as plan_editor_accordion:
+                plan_editor = gr.Code(language="json", label="Plan JSON", interactive=True)
+                update_plan_btn = gr.Button("Update Plan", variant="secondary")
+
+            with gr.Accordion("🧠 Knowledge Generation Proposal", open=False, visible=False) as kb_gen_accordion:
+                kb_gen_title = gr.Textbox(label="Suggested Title")
+                kb_gen_content = gr.Code(label="Suggested Content", language="markdown", interactive=True)
+                with gr.Row():
+                    kb_gen_save_btn = gr.Button("💾 Save to KB", variant="primary")
+                    kb_gen_discard_btn = gr.Button("🗑️ Discard", variant="stop")
+
             chatbot = gr.Chatbot(
                 lambda: webui_manager.bu_chat_history,  # Load history dynamically
                 elem_id="browser_use_chatbot",
                 label="Agent Interaction",
                 type="messages",
                 height=600,
-                show_copy_button=True,
+                allow_tags=True,
             )
             user_input = gr.Textbox(
                 label="Your Task or Response",
@@ -1496,16 +1229,24 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
                 interactive=True,
                 elem_id="user_input",
             )
+            
+            with gr.Accordion("📚 Prompt Library", open=False):
+                with gr.Row():
+                    prompt_selector = gr.Dropdown(
+                        label="Select a Prompt", 
+                        choices=[p[0] for p in get_all_prompts()],
+                        interactive=True,
+                        scale=3
+                    )
+                    refresh_prompts_btn = gr.Button("🔄", scale=0)
+                    delete_prompt_btn = gr.Button("🗑️", scale=0, variant="stop")
+                with gr.Accordion("➕ Add Custom Prompt", open=False):
+                    with gr.Row():
+                        new_prompt_name = gr.Textbox(label="Name", placeholder="My Custom Task", scale=3)
+                        save_prompt_btn = gr.Button("💾 Save Current Task", scale=1)
+
             with gr.Row():
-                stop_button = gr.Button(
-                    "⏹️ Stop", interactive=False, variant="stop", scale=1
-                )
-                pause_resume_button = gr.Button(
-                    "⏸️ Pause", interactive=False, variant="secondary", scale=1, visible=True
-                )
-                clear_button = gr.Button(
-                    "🗑️ Clear", interactive=True, variant="secondary", scale=1
-                )
+                stop_button, pause_resume_button, clear_button = create_agent_control_buttons("browser_use_agent")
                 save_chat_button = gr.Button(
                     "💾 Save Chat", interactive=True, variant="secondary", scale=1
                 )
@@ -1516,17 +1257,22 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
             
             with gr.Accordion("🧠 Brain & Memory", open=False):
                 with gr.Row():
-                    brain_file = gr.Textbox(label="Brain File (System Prompt)", value="./brain.md", placeholder="Path to markdown file")
-                    memory_file = gr.Textbox(label="Memory File (Read/Write)", value="./memory.txt", placeholder="Path to text file")
+                    brain_file = gr.Textbox(label="Brain File (System Prompt)", value="./brain.md", placeholder="Path to markdown file", scale=2)
+                    memory_file = gr.Textbox(label="Memory File (Read/Write)", value="./tmp/memory/memory.txt", placeholder="Path to text file", scale=2)
+                    reload_memory_btn = gr.Button("📂 View Memory", variant="secondary", scale=0)
                 with gr.Row():
-                    kb_files_dropdown = gr.Dropdown(label="Knowledge Base Files", choices=[], value=None, interactive=True, scale=3)
+                    kb_files_dropdown = gr.Dropdown(label="Knowledge Base Files", choices=[], value=None, interactive=True, scale=3, allow_custom_value=True)
                     refresh_kb_btn = gr.Button("🔄 Scan Files", variant="secondary", scale=1)
                     load_kb_btn = gr.Button("📂 Load Content", variant="secondary", scale=1)
                 memory_content = gr.TextArea(label="Memory Content", interactive=False, lines=10)
             
+            with gr.Accordion("📊 Extraction Model", open=False):
+                extraction_model_dropdown = gr.Dropdown(label="Select Extraction Model", choices=[], value=None, interactive=True)
+                refresh_extraction_btn = gr.Button("🔄 Refresh Models", variant="secondary", scale=0)
+            
             with gr.Accordion("📂 Session Management", open=False):
                 with gr.Row():
-                    history_files_dropdown = gr.Dropdown(label="Saved Sessions", choices=[], interactive=True, scale=3)
+                    history_files_dropdown = gr.Dropdown(label="Saved Sessions", choices=[], interactive=True, scale=3, allow_custom_value=True)
                     refresh_history_btn = gr.Button("🔄 Scan", variant="secondary", scale=1)
                     resume_session_btn = gr.Button("📂 Resume Session", variant="secondary", scale=1)
 
@@ -1537,6 +1283,7 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
                 label="Browser Live View",
                 elem_id="browser_view",
                 visible=False,
+                padding=False,
             )
             with gr.Group():
                 gr.Markdown("### Task Outputs")
@@ -1554,6 +1301,13 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
         dict(
             chatbot=chatbot,
             agent_status=agent_status,
+            plan_status=plan_status,
+            plan_editor=plan_editor,
+            plan_editor_accordion=plan_editor_accordion,
+            kb_gen_accordion=kb_gen_accordion,
+            kb_gen_title=kb_gen_title,
+            kb_gen_content=kb_gen_content,
+            kb_gen_save_btn=kb_gen_save_btn,
             user_input=user_input,
             clear_button=clear_button,
             run_button=run_button,
@@ -1566,7 +1320,10 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
             kb_files_dropdown=kb_files_dropdown,
             refresh_kb_btn=refresh_kb_btn,
             load_kb_btn=load_kb_btn,
+            reload_memory_btn=reload_memory_btn,
             memory_content=memory_content,
+            extraction_model_dropdown=extraction_model_dropdown,
+            refresh_extraction_btn=refresh_extraction_btn,
             agent_history_file=agent_history_file,
             chat_log_file=chat_log_file,
             recording_gif=recording_gif,
@@ -1583,86 +1340,116 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
     all_managed_components = list(
         webui_manager.get_components()
     )  # Get all components known to manager
+    
+    # Filter out layout components that cannot be used as inputs
+    input_components = get_valid_input_components(all_managed_components)
+    
     run_tab_outputs = list(tab_components.values())
 
     async def submit_wrapper(
             *args
-    ) -> AsyncGenerator[Dict[Component, Any], None]:
+    ) -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_submit that yields its results."""
-        components_dict = dict(zip(all_managed_components, args))
-        async for update in handle_submit(webui_manager, components_dict):
-            yield update
+        components_dict = dict(zip(input_components, args))
+        async for update in safe_execution(handle_submit, webui_manager, components_dict):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
     async def retry_wrapper(
             *args
-    ) -> AsyncGenerator[Dict[Component, Any], None]:
+    ) -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_retry."""
-        components_dict = dict(zip(all_managed_components, args))
-        async for update in handle_retry(webui_manager, components_dict):
-            yield update
+        components_dict = dict(zip(input_components, args))
+        async for update in safe_execution(handle_retry, webui_manager, components_dict):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
-    async def stop_wrapper() -> AsyncGenerator[Dict[Component, Any], None]:
+    async def stop_wrapper():
         """Wrapper for handle_stop."""
-        update_dict = await handle_stop(webui_manager)
-        yield update_dict
+        await handle_stop(webui_manager)
+        # No yield, side effect only
 
-    async def pause_resume_wrapper() -> AsyncGenerator[Dict[Component, Any], None]:
+    async def pause_resume_wrapper():
         """Wrapper for handle_pause_resume."""
-        update_dict = await handle_pause_resume(webui_manager)
-        yield update_dict
+        await handle_pause_resume(webui_manager)
+        # No yield, side effect only
 
-    async def clear_wrapper() -> AsyncGenerator[Dict[Component, Any], None]:
+    async def clear_wrapper() -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_clear."""
-        update_dict = await handle_clear(webui_manager)
-        yield update_dict
+        async for update in safe_execution(handle_clear, webui_manager):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
-    async def save_chat_wrapper() -> AsyncGenerator[Dict[Component, Any], None]:
+    async def save_chat_wrapper() -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_save_chat."""
-        update_dict = await handle_save_chat(webui_manager)
-        yield update_dict
+        async for update in safe_execution(handle_save_chat, webui_manager):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
-    async def reload_memory_wrapper(path: str) -> AsyncGenerator[Dict[Component, Any], None]:
+    async def reload_memory_wrapper(path: str) -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_reload_memory."""
-        update_dict = await handle_reload_memory(webui_manager, path)
-        yield update_dict
+        async for update in safe_execution(handle_reload_memory, webui_manager, path):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
-    async def update_kb_list_wrapper(path: str) -> AsyncGenerator[Dict[Component, Any], None]:
+    async def update_kb_list_wrapper(path: str) -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_update_kb_list."""
-        update = await handle_update_kb_list(path)
-        yield {kb_files_dropdown: update}
+        async def _logic():
+            update = await handle_update_kb_list(path)
+            yield {kb_files_dropdown: update}
+        async for update in safe_execution(_logic):
+            yield map_dict_to_gradio_outputs(update, [kb_files_dropdown])
 
-    async def load_kb_file_wrapper(path: str, filename: str) -> AsyncGenerator[Dict[Component, Any], None]:
+    async def load_kb_file_wrapper(path: str, filename: str) -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_load_kb_file."""
-        update_dict = await handle_load_kb_file(webui_manager, path, filename)
-        yield update_dict
+        async for update in safe_execution(handle_load_kb_file, webui_manager, path, filename):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
-    async def refresh_history_wrapper(path: str) -> AsyncGenerator[Dict[Component, Any], None]:
+    async def refresh_history_wrapper(path: str) -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_refresh_history_files."""
-        update = await handle_refresh_history_files(path)
-        yield {history_files_dropdown: update}
+        async def _logic():
+            update = await handle_refresh_history_files(path)
+            yield {history_files_dropdown: update}
+        async for update in safe_execution(_logic):
+            yield map_dict_to_gradio_outputs(update, [history_files_dropdown])
 
-    async def resume_session_wrapper(history_file: str, *args) -> AsyncGenerator[Dict[Component, Any], None]:
+    async def resume_session_wrapper(history_file: str, *args) -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_resume_session."""
-        components_dict = dict(zip(all_managed_components, args))
-        async for update in handle_resume_session(webui_manager, history_file, components_dict):
-            yield update
+        components_dict = dict(zip(input_components, args))
+        async for update in safe_execution(handle_resume_session, webui_manager, history_file, components_dict):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def update_plan_wrapper(new_plan_json: str) -> AsyncGenerator[List[Any], None]:
+        """Wrapper for handle_update_plan."""
+        async for update in safe_execution(handle_update_plan, webui_manager, new_plan_json):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def save_kb_wrapper(title: str, content: str, mem_path: str) -> AsyncGenerator[List[Any], None]:
+        """Wrapper for handle_save_generated_kb."""
+        async for update in safe_execution(handle_save_generated_kb, webui_manager, title, content, mem_path):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def refresh_extraction_models_wrapper():
+        models = []
+        path = "./tmp/extraction_models"
+        if os.path.exists(path):
+             models = [f.replace(".json", "") for f in os.listdir(path) if f.endswith(".json")]
+        return gr.update(choices=sorted(models))
 
     # --- Connect Event Handlers using the Wrappers --
     run_button.click(
-        fn=submit_wrapper, inputs=all_managed_components, outputs=run_tab_outputs, trigger_mode="multiple"
+        fn=submit_wrapper, inputs=input_components, outputs=run_tab_outputs, trigger_mode="multiple"
     )
     user_input.submit(
-        fn=submit_wrapper, inputs=all_managed_components, outputs=run_tab_outputs
+        fn=submit_wrapper, inputs=input_components, outputs=run_tab_outputs, trigger_mode="multiple"
     )
-    retry_button.click(fn=retry_wrapper, inputs=all_managed_components, outputs=run_tab_outputs)
-    stop_button.click(fn=stop_wrapper, inputs=None, outputs=run_tab_outputs)
-    pause_resume_button.click(
-        fn=pause_resume_wrapper, inputs=None, outputs=run_tab_outputs
-    )
+    retry_button.click(fn=retry_wrapper, inputs=input_components, outputs=run_tab_outputs)
+    stop_button.click(fn=stop_wrapper, inputs=None, outputs=[])
+    pause_resume_button.click(fn=pause_resume_wrapper, inputs=None, outputs=[])
     save_chat_button.click(fn=save_chat_wrapper, inputs=None, outputs=run_tab_outputs)
     clear_button.click(fn=clear_wrapper, inputs=None, outputs=run_tab_outputs)
     refresh_kb_btn.click(fn=update_kb_list_wrapper, inputs=[memory_file], outputs=[kb_files_dropdown])
     load_kb_btn.click(fn=load_kb_file_wrapper, inputs=[memory_file, kb_files_dropdown], outputs=run_tab_outputs)
+    reload_memory_btn.click(fn=reload_memory_wrapper, inputs=[memory_file], outputs=run_tab_outputs)
+    update_plan_btn.click(fn=update_plan_wrapper, inputs=[plan_editor], outputs=run_tab_outputs)
+    kb_gen_save_btn.click(fn=save_kb_wrapper, inputs=[kb_gen_title, kb_gen_content, memory_file], outputs=run_tab_outputs)
+    kb_gen_discard_btn.click(fn=lambda: {kb_gen_accordion: gr.update(visible=False, open=False)}, outputs=[kb_gen_accordion])
+    refresh_extraction_btn.click(fn=refresh_extraction_models_wrapper, outputs=[extraction_model_dropdown])
     refresh_history_btn.click(fn=refresh_history_wrapper, inputs=[agent_history_file], outputs=[history_files_dropdown]) # Note: agent_history_file is the output file component, we need the path setting.
     # We need the save path setting. It's not directly exposed as a component input here easily without getting it from settings.
     # Let's use a lambda to get it from the manager's components or just pass the default path for now, or better, bind to the settings component if possible.
@@ -1673,13 +1460,60 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
     
     # Re-binding refresh_history_btn to use a function that looks up the path
     async def refresh_history_click_handler(*args):
-        # Find the save path from components
-        components_dict = dict(zip(all_managed_components, args))
-        # We need to find the component ID "browser_settings.save_agent_history_path"
-        save_path_comp = webui_manager.id_to_component.get("browser_settings.save_agent_history_path")
-        save_path = components_dict.get(save_path_comp, "./tmp/agent_history")
-        update = await handle_refresh_history_files(save_path)
-        yield {history_files_dropdown: update}
+        async def _logic():
+            # Find the save path from components
+            components_dict = dict(zip(input_components, args))
+            # We need to find the component ID "browser_settings.save_agent_history_path"
+            save_path_comp = webui_manager.id_to_component.get("browser_settings.save_agent_history_path")
+            save_path = components_dict.get(save_path_comp) or "./tmp/agent_history"
+            update = await handle_refresh_history_files(save_path)
+            yield {history_files_dropdown: update}
+        async for update in safe_execution(_logic):
+            yield map_dict_to_gradio_outputs(update, [history_files_dropdown])
 
-    refresh_history_btn.click(fn=refresh_history_click_handler, inputs=all_managed_components, outputs=[history_files_dropdown])
-    resume_session_btn.click(fn=resume_session_wrapper, inputs=[history_files_dropdown] + all_managed_components, outputs=run_tab_outputs)
+    refresh_history_btn.click(fn=refresh_history_click_handler, inputs=input_components, outputs=[history_files_dropdown])
+    resume_session_btn.click(fn=resume_session_wrapper, inputs=[history_files_dropdown] + input_components, outputs=run_tab_outputs)
+
+    def refresh_prompts_handler():
+        return gr.update(choices=[p[0] for p in get_all_prompts()], value=None)
+
+    def save_prompt_handler(name, content):
+        if not name or not content:
+            gr.Warning("Name and content are required.")
+            return gr.update()
+        if save_custom_prompt(name, content):
+            gr.Info(f"Saved prompt: {name}")
+            return refresh_prompts_handler()
+        else:
+            gr.Error("Failed to save prompt.")
+            return gr.update()
+
+    def delete_prompt_handler(prompt_name):
+        if not prompt_name:
+            return gr.update()
+        
+        if delete_custom_prompt(prompt_name):
+            gr.Info(f"Deleted prompt: {prompt_name}")
+            return refresh_prompts_handler()
+        else:
+            if not prompt_name.startswith("[Custom] "):
+                gr.Warning("Cannot delete built-in prompts.")
+            else:
+                gr.Error("Failed to delete prompt.")
+            return gr.update()
+
+    def prompt_selection_handler(prompt_name):
+        content = get_prompt_by_name(prompt_name)
+        if content:
+            return content
+        return gr.update()
+
+    refresh_prompts_btn.click(fn=refresh_prompts_handler, outputs=[prompt_selector])
+    save_prompt_btn.click(fn=save_prompt_handler, inputs=[new_prompt_name, user_input], outputs=[prompt_selector])
+    delete_prompt_btn.click(fn=delete_prompt_handler, inputs=[prompt_selector], outputs=[prompt_selector])
+
+    prompt_selector.change(
+        fn=prompt_selection_handler,
+        inputs=[prompt_selector],
+        outputs=[user_input]
+    )
