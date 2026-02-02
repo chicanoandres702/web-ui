@@ -33,7 +33,7 @@ from src.agent.browser_use.browser_use_agent import BrowserUseAgent
 from src.controller.custom_controller import CustomController
 from src.utils.prompts import FULL_SYSTEM_PROMPT
 from src.utils.mcp_client import setup_mcp_client_and_tools
-from src.utils.utils import retry_async
+from src.utils.utils import retry_async, clean_json_string
 from src.agent.deep_research.types import (
     DeepResearchState, 
     ResearchCategoryItem, 
@@ -93,12 +93,7 @@ async def planning_node(state: DeepResearchState) -> Dict[str, Any]:
 
     try:
         response = await retry_async(llm.ainvoke, messages, logger=logger, error_message="Planning LLM call failed")
-        raw_content = response.content
-        # The LLM might wrap the JSON in backticks
-        if raw_content.strip().startswith("```json"):
-            raw_content = raw_content.strip()[7:-3].strip()
-        elif raw_content.strip().startswith("```"):
-            raw_content = raw_content.strip()[3:-3].strip()
+        raw_content = clean_json_string(response.content)
 
         logger.debug(f"LLM response for plan: {raw_content}")
         parsed_plan_from_llm = json.loads(raw_content)
