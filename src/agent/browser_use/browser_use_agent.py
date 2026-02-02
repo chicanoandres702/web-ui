@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import datetime
 
 # from lmnr.sdk.decorators import observe
 from browser_use.agent.gif import create_history_gif
@@ -10,6 +11,7 @@ from browser_use.agent.service import Agent, AgentHookFunc
 from browser_use.agent.views import (
     ActionResult,
     AgentHistory,
+    AgentOutput,
     AgentHistoryList,
     AgentStepInfo,
     ToolCallingMethod,
@@ -18,6 +20,8 @@ from browser_use.browser.views import BrowserStateHistory
 from browser_use.utils import time_execution_async
 from dotenv import load_dotenv
 from browser_use.agent.message_manager.utils import is_model_without_tool_support
+from langchain_core.messages import HumanMessage, SystemMessage
+from src.utils.utils import save_text_to_file
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -28,6 +32,36 @@ SKIP_LLM_API_KEY_VERIFICATION = (
 
 
 class BrowserUseAgent(Agent):
+    def __init__(self, confirmer_llm=None, confirmer_strictness=None, use_vision_for_confirmer=True, smart_retry_llm=None, cheap_llm=None, enable_cost_saver=False, auto_save_on_stuck=False, source=None, history: AgentHistoryList = None, **kwargs):
+        self.confirmer_llm = confirmer_llm
+        self.confirmer_strictness = confirmer_strictness
+        self.use_vision_for_confirmer = use_vision_for_confirmer
+        self.smart_retry_llm = smart_retry_llm
+        self.cheap_llm = cheap_llm
+        self.enable_cost_saver = enable_cost_saver
+        self.auto_save_on_stuck = auto_save_on_stuck
+        self.source = source
+        self.is_validating = False
+        self.switched_to_retry_model = False
+        self.using_cheap_model = False
+        if confirmer_llm:
+            kwargs['validate_output'] = True
+        
+        # Ensure these are not passed to parent Agent if they somehow ended up in kwargs
+        kwargs.pop('confirmer_llm', None)
+        kwargs.pop('confirmer_strictness', None)
+        kwargs.pop('use_vision_for_confirmer', None)
+        kwargs.pop('smart_retry_llm', None)
+        kwargs.pop('cheap_llm', None)
+        kwargs.pop('enable_cost_saver', None)
+        kwargs.pop('auto_save_on_stuck', None)
+        kwargs.pop('source', None)
+
+        super().__init__(**kwargs)
+        self.main_llm = self.llm  # Store the primary (high-quality) LLM
+        if history:
+            self.history = history
+
     def _set_tool_calling_method(self) -> ToolCallingMethod | None:
         tool_calling_method = self.settings.tool_calling_method
         if tool_calling_method == 'auto':
@@ -79,9 +113,48 @@ class BrowserUseAgent(Agent):
                     signal_handler.wait_for_resume()
                     signal_handler.reset()
 
+                # Cost Saver Logic: Use cheap model by default, switch to main on failure
+                if self.enable_cost_saver and self.cheap_llm and not self.switched_to_retry_model:
+                    if self.state.consecutive_failures == 0:
+                        if self.llm != self.cheap_llm:
+                            logger.info('💰 Cost Saver: Switching to Cheap LLM.')
+                            self.llm = self.cheap_llm
+                            self.using_cheap_model = True
+                    else:
+                        # If we have failures, switch back to main LLM to recover
+                        if self.llm != self.main_llm:
+                            logger.info(f'⚠️ Cost Saver: Detected {self.state.consecutive_failures} failures. Switching to Main LLM.')
+                            self.llm = self.main_llm
+                            self.using_cheap_model = False
+
+                # Smart Retry Logic: Switch model if failures persist
+                if self.smart_retry_llm and not self.switched_to_retry_model and self.state.consecutive_failures >= 2:
+                    logger.warning(f'⚠️ Detected {self.state.consecutive_failures} consecutive failures. Switching to Smart Retry Model.')
+                    self.llm = self.smart_retry_llm
+                    self.switched_to_retry_model = True
+                    # Add a system message to inform the new model of the situation
+                    if hasattr(self, "message_manager"):
+                        self.message_manager.add_state_message(self.state, result=[ActionResult(error=f"Previous model failed {self.state.consecutive_failures} times. You are now in control. Please analyze the situation carefully and try a different approach.", include_in_memory=True)])
+                    
+                    self.using_cheap_model = False # Ensure we don't show cost saver badge
+                    self.state.consecutive_failures = 0  # Reset counter to give new model a chance
+
                 # Check if we should stop due to too many failures
                 if self.state.consecutive_failures >= self.settings.max_failures:
                     logger.error(f'❌ Stopping due to {self.settings.max_failures} consecutive failures')
+                    if self.auto_save_on_stuck:
+                        logger.info("💾 Auto-saving page content due to failure...")
+                        try:
+                            page = await self.browser_context.get_current_page()
+                            content = await page.evaluate("document.body.innerText")
+                            title = await page.title()
+                            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            filename = f"stuck_{timestamp}.txt"
+                            path = os.path.join("./tmp/agent_history", self.state.agent_id, filename)
+                            save_text_to_file(path, f"URL: {page.url}\nTitle: {title}\n\n{content}")
+                            logger.info(f"Saved stuck page content to {path}")
+                        except Exception as e:
+                            logger.error(f"Failed to auto-save stuck page: {e}")
                     break
 
                 # Check control flags before each step
@@ -167,3 +240,79 @@ class BrowserUseAgent(Agent):
                     output_path = self.settings.generate_gif
 
                 create_history_gif(task=self.task, history=self.state.history, output_path=output_path)
+
+    async def _validate_output(self) -> bool:
+        """
+        Validate the output of the agent using the confirmer LLM if available.
+        """
+        if not self.confirmer_llm:
+            return await super()._validate_output()
+
+        self.is_validating = True
+        try:
+            logger.info(f"🔍 Validating output with Confirmer LLM (Strictness: {self.confirmer_strictness})")
+
+            # Optimize prompt for speed if strictness is low (Fast Mode)
+            if self.confirmer_strictness and self.confirmer_strictness <= 3:
+                system_prompt = (
+                    f"Quickly verify if the task '{self.task}' is done based on the screenshot/text.\n"
+                    "Respond 'YES' if it looks mostly correct. Respond 'NO' only if clearly wrong.\n"
+                    "Be brief."
+                )
+            else:
+                system_prompt = (
+                    "You are a quality assurance validator for a browser automation agent.\n"
+                    f"Your task is to verify if the agent has successfully completed the user's request: '{self.task}'.\n"
+                    f"Strictness Level: {self.confirmer_strictness or 5}/10 (10 being extremely strict, 1 being lenient).\n"
+                    "Analyze the agent's last action and the current browser state.\n"
+                    "1. VISUAL INSPECTION: Look at the screenshot (if provided). Does the page visually confirm the task is done? Check for specific elements (e.g., 'Order Confirmed', specific data, green checks) implied by the task.\n"
+                    "2. CONTEXT CHECK: Do the URL and page title match the expected outcome?\n"
+                    "If the task is completed successfully, respond with 'YES'. If incomplete, incorrect, or needs more steps, respond with 'NO' followed by a short reason."
+                )
+
+            history = self.state.history
+            last_item = history.history[-1] if history.history else None
+
+            content = []
+            content.append({"type": "text", "text": f"User Task: {self.task}"})
+
+            if last_item:
+                state_desc = f"Current URL: {last_item.state.url}\nPage Title: {last_item.state.title}\n"
+                if last_item.model_output:
+                    try:
+                        thought = getattr(last_item.model_output, "thought", None)
+                        if thought:
+                            state_desc += f"Agent Thought: {thought}\n"
+                    except Exception:
+                        pass
+
+                content.append({"type": "text", "text": state_desc})
+
+                if last_item.state.screenshot and self.use_vision_for_confirmer:
+                    image_url = f"data:image/jpeg;base64,{last_item.state.screenshot}"
+                    content.append({"type": "image_url", "image_url": {"url": image_url}})
+
+            messages = [SystemMessage(content=system_prompt), HumanMessage(content=content)]
+
+            try:
+                response = await self.confirmer_llm.ainvoke(messages)
+                response_text = response.content.strip()
+                logger.info(f"✅ Confirmer response: {response_text}")
+
+                if response_text.upper().startswith("YES"):
+                    return True
+                else:
+                    msg = f"Confirmer rejected completion: {response_text}"
+                    if hasattr(self, "message_manager"):
+                        self.message_manager.add_state_message(
+                            state=last_item.state,
+                            result=[ActionResult(error=msg, include_in_memory=True)],
+                            step_info=AgentStepInfo(step_number=len(history.history), max_steps=100),
+                        )
+                    return False
+
+            except Exception as e:
+                logger.error(f"Error during confirmation: {e}")
+                return True
+        finally:
+            self.is_validating = False

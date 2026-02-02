@@ -10,46 +10,10 @@ from typing import Any, Dict, AsyncGenerator, Optional, Tuple, Union
 import asyncio
 import json
 from src.agent.deep_research.deep_research_agent import DeepResearchAgent
-from src.utils import llm_provider
+from src.webui.llm_helper import initialize_llm
+from src.utils.utils import read_file_safe, get_progress_bar_html
 
 logger = logging.getLogger(__name__)
-
-
-async def _initialize_llm(provider: Optional[str], model_name: Optional[str], temperature: float,
-                          base_url: Optional[str], api_key: Optional[str], num_ctx: Optional[int] = None):
-    """Initializes the LLM based on settings. Returns None if provider/model is missing."""
-    if not provider or not model_name:
-        logger.info("LLM Provider or Model Name not specified, LLM will be None.")
-        return None
-    try:
-        logger.info(f"Initializing LLM: Provider={provider}, Model={model_name}, Temp={temperature}")
-        # Use your actual LLM provider logic here
-        llm = llm_provider.get_llm_model(
-            provider=provider,
-            model_name=model_name,
-            temperature=temperature,
-            base_url=base_url or None,
-            api_key=api_key or None,
-            num_ctx=num_ctx if provider == "ollama" else None
-        )
-        return llm
-    except Exception as e:
-        logger.error(f"Failed to initialize LLM: {e}", exc_info=True)
-        gr.Warning(
-            f"Failed to initialize LLM '{model_name}' for provider '{provider}'. Please check settings. Error: {e}")
-        return None
-
-
-def _read_file_safe(file_path: str) -> Optional[str]:
-    """Safely read a file, returning None if it doesn't exist or on error."""
-    if not os.path.exists(file_path):
-        return None
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except Exception as e:
-        logger.error(f"Error reading file {file_path}: {e}")
-        return None
 
 
 # --- Deep Research Agent Specific Logic ---
@@ -69,6 +33,8 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
     markdown_display_comp = webui_manager.get_component_by_id("deep_research_agent.markdown_display")
     markdown_download_comp = webui_manager.get_component_by_id("deep_research_agent.markdown_download")
     mcp_server_config_comp = webui_manager.get_component_by_id("deep_research_agent.mcp_server_config")
+    progress_bar_comp = webui_manager.get_component_by_id("deep_research_agent.progress_bar")
+    memory_file_comp = webui_manager.get_component_by_id("deep_research_agent.memory_file")
 
     # --- 1. Get Task and Settings ---
     task_topic = components.get(research_task_comp, "").strip()
@@ -83,6 +49,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
     base_save_dir = normalized_base_save_dir
     mcp_server_config_str = components.get(mcp_server_config_comp)
     mcp_config = json.loads(mcp_server_config_str) if mcp_server_config_str else None
+    memory_file = components.get(memory_file_comp, "./memory.txt")
 
     if not task_topic:
         gr.Warning("Please enter a research task.")
@@ -102,7 +69,8 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
         parallel_num_comp: gr.update(interactive=False),
         save_dir_comp: gr.update(interactive=False),
         markdown_display_comp: gr.update(value="Starting research..."),
-        markdown_download_comp: gr.update(value=None, interactive=False)
+        markdown_download_comp: gr.update(value=None, interactive=False),
+        progress_bar_comp: gr.update(value="", visible=True)
     }
 
     agent_task = None
@@ -117,7 +85,8 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
         # Access settings values via components dict, getting IDs from webui_manager
         def get_setting(tab: str, key: str, default: Any = None):
             comp = webui_manager.id_to_component.get(f"{tab}.{key}")
-            return components.get(comp, default) if comp else default
+            val = components.get(comp, default) if comp else default
+            return val if val is not None else default
 
         # LLM Config (from agent_settings tab)
         llm_provider_name = get_setting("agent_settings", "llm_provider")
@@ -127,7 +96,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
         llm_api_key = get_setting("agent_settings", "llm_api_key")
         ollama_num_ctx = get_setting("agent_settings", "ollama_num_ctx")
 
-        llm = await _initialize_llm(
+        llm = await initialize_llm(
             llm_provider_name, llm_model_name, llm_temperature, llm_base_url, llm_api_key,
             ollama_num_ctx if llm_provider_name == "ollama" else None
         )
@@ -151,7 +120,8 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
             webui_manager.dr_agent = DeepResearchAgent(
                 llm=llm,
                 browser_config=browser_config_dict,
-                mcp_server_config=mcp_config
+                mcp_server_config=mcp_config,
+                memory_file=memory_file
             )
             logger.info("DeepResearchAgent initialized.")
 
@@ -208,10 +178,21 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
                     current_mtime = os.path.getmtime(plan_file_path) if os.path.exists(plan_file_path) else 0
                     if current_mtime > last_plan_mtime:
                         logger.info(f"Detected change in {plan_file_path}")
-                        plan_content = _read_file_safe(plan_file_path)
+                        plan_content = read_file_safe(plan_file_path)
                         if last_plan_content is None or (
                                 plan_content is not None and plan_content != last_plan_content):
                             update_dict[markdown_display_comp] = gr.update(value=plan_content)
+                            
+                            # Calculate progress
+                            total_tasks = plan_content.count("- [ ]") + plan_content.count("- [x]") + plan_content.count("- [-]")
+                            completed_tasks = plan_content.count("- [x]") + plan_content.count("- [-]")
+                            progress = 0
+                            if total_tasks > 0:
+                                progress = int((completed_tasks / total_tasks) * 100)
+                            
+                            # Create HTML for progress bar
+                            update_dict[progress_bar_comp] = gr.update(value=get_progress_bar_html(progress))
+
                             last_plan_content = plan_content
                             last_plan_mtime = current_mtime
                         elif plan_content is None:
@@ -244,7 +225,7 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
         final_ui_update = {}
         if report_file_path and os.path.exists(report_file_path):
             logger.info(f"Loading final report from: {report_file_path}")
-            report_content = _read_file_safe(report_file_path)
+            report_content = read_file_safe(report_file_path)
             if report_content:
                 final_ui_update[markdown_display_comp] = gr.update(value=report_content)
                 final_ui_update[markdown_download_comp] = gr.File(value=report_file_path,
@@ -263,6 +244,8 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
         else:
             logger.warning("Final report file not found and not in result dict.")
             final_ui_update[markdown_display_comp] = gr.update(value="# Research Complete\n\n*Final report not found.*")
+        
+        final_ui_update[progress_bar_comp] = gr.update(visible=False)
 
         yield final_ui_update
 
@@ -286,7 +269,8 @@ async def run_deep_research(webui_manager: WebuiManager, components: Dict[Compon
             save_dir_comp: gr.update(interactive=True),
             # Keep download button enabled if file exists
             markdown_download_comp: gr.update() if report_file_path and os.path.exists(report_file_path) else gr.update(
-                interactive=False)
+                interactive=False),
+            progress_bar_comp: gr.update(visible=False)
         }
 
 
@@ -325,7 +309,7 @@ async def stop_deep_research(webui_manager: WebuiManager) -> Dict[Component, Any
             report_file_path = os.path.join(base_save_dir, str(task_id), "report.md")
 
         if report_file_path and os.path.exists(report_file_path):
-            report_content = _read_file_safe(report_file_path)
+            report_content = read_file_safe(report_file_path)
             if report_content:
                 final_update[markdown_display_comp] = gr.update(
                     value=report_content + "\n\n---\n*Research stopped by user.*")
@@ -363,7 +347,10 @@ async def update_mcp_server(mcp_file: str, webui_manager: WebuiManager):
         logger.warning("⚠️ Close controller because mcp file has changed!")
         await webui_manager.dr_agent.close_mcp_client()
 
-    if not mcp_file or not os.path.exists(mcp_file) or not mcp_file.endswith('.json'):
+    if not mcp_file:
+        return None, gr.update(visible=False)
+
+    if not os.path.exists(mcp_file) or not mcp_file.endswith('.json'):
         logger.warning(f"{mcp_file} is not a valid MCP file.")
         return None, gr.update(visible=False)
 
@@ -395,11 +382,13 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
             parallel_num = gr.Number(label="Parallel Agent Num", value=1,
                                      precision=0,
                                      interactive=True)
+            memory_file = gr.Textbox(label="Memory File", value="./memory.txt", interactive=True)
             max_query = gr.Textbox(label="Research Save Dir", value="./tmp/deep_research",
                                    interactive=True)
     with gr.Row():
         stop_button = gr.Button("⏹️ Stop", variant="stop", scale=2)
         start_button = gr.Button("▶️ Run", variant="primary", scale=3)
+    progress_bar = gr.HTML(visible=False)
     with gr.Group():
         markdown_display = gr.Markdown(label="Research Report")
         markdown_download = gr.File(label="Download Research Report", interactive=False)
@@ -407,6 +396,7 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
         dict(
             research_task=research_task,
             parallel_num=parallel_num,
+            memory_file=memory_file,
             max_query=max_query,
             start_button=start_button,
             stop_button=stop_button,
@@ -415,6 +405,7 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
             resume_task_id=resume_task_id,
             mcp_json_file=mcp_json_file,
             mcp_server_config=mcp_server_config,
+            progress_bar=progress_bar,
         )
     )
     webui_manager.add_components("deep_research_agent", tab_components)

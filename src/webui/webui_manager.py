@@ -8,6 +8,7 @@ from typing import Optional, Dict, List
 import uuid
 import asyncio
 import time
+from typing import Any
 
 from gradio.components import Component
 from browser_use.browser.browser import Browser
@@ -40,6 +41,10 @@ class WebuiManager:
         self.bu_user_help_response: Optional[str] = None
         self.bu_current_task: Optional[asyncio.Task] = None
         self.bu_agent_task_id: Optional[str] = None
+        self.bu_agent_status: str = "Ready"
+        self.bu_latest_screenshot: Optional[str] = None
+        self.bu_last_task_prompt: Optional[str] = None
+        self.bu_max_steps: int = 100
 
     def init_deep_research_agent(self) -> None:
         """
@@ -98,6 +103,9 @@ class WebuiManager:
         """
         Load config
         """
+        if not config_path:
+            return
+
         with open(config_path, "r") as fr:
             ui_settings = json.load(fr)
 
@@ -105,18 +113,52 @@ class WebuiManager:
         for comp_id, comp_val in ui_settings.items():
             if comp_id in self.id_to_component:
                 comp = self.id_to_component[comp_id]
+
+                # Skip buttons to prevent overwriting labels
+                if isinstance(comp, gr.Button):
+                    continue
+
+                if comp_val is None and isinstance(comp, (gr.Slider, gr.Number)):
+                    comp_val = comp.value if comp.value is not None else 0
+
                 if comp.__class__.__name__ == "Chatbot":
-                    update_components[comp] = comp.__class__(value=comp_val, type="messages")
+                    update_components[comp] = gr.update(value=comp_val, type="messages")
                 else:
-                    update_components[comp] = comp.__class__(value=comp_val)
-                    if comp_id == "agent_settings.planner_llm_provider":
+                    update_components[comp] = gr.update(value=comp_val)
+                    if comp_id in ["agent_settings.planner_llm_provider", "agent_settings.confirmer_llm_provider"]:
                         yield update_components  # yield provider, let callback run
                         time.sleep(0.1)  # wait for Gradio UI callback
 
         config_status = self.id_to_component["load_save_config.config_status"]
         update_components.update(
             {
-                config_status: config_status.__class__(value=f"Successfully loaded config: {config_path}")
+                config_status: gr.update(value=f"Successfully loaded config: {config_path}")
             }
         )
         yield update_components
+
+    def update_parameter(self, comp: Component, value: Any):
+        """
+        Update a single parameter in the config file
+        """
+        comp_id = self.get_id_by_component(comp)
+        config_path = os.path.join(self.settings_save_dir, "last_config.json")
+        
+        settings = {}
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r") as f:
+                    settings = json.load(f)
+            except Exception:
+                pass
+        
+        settings[comp_id] = value
+        
+        with open(config_path, "w") as f:
+            json.dump(settings, f, indent=4)
+
+    def load_last_config(self):
+        """Load the last saved config"""
+        config_path = os.path.join(self.settings_save_dir, "last_config.json")
+        if os.path.exists(config_path):
+            yield from self.load_config(config_path)
