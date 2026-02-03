@@ -2,6 +2,7 @@ import logging
 import json
 import os
 from browser_use.browser.context import BrowserContext
+from langchain_core.messages import HumanMessage
 from src.utils.utils import retry_async, save_text_to_file as utils_save_text
 from src.utils.browser_scripts import (
     JS_EXTRACT_LINKS,
@@ -20,7 +21,9 @@ from src.utils.browser_scripts import (
     JS_FIND_TEXT_ELEMENTS,
     JS_GET_DROPDOWN_OPTIONS,
     JS_ASSESS_SECTION,
-    JS_CHECK_TEXT_ELEMENT_STATUS
+    JS_CHECK_TEXT_ELEMENT_STATUS,
+    JS_MONITOR_MUTATIONS,
+    JS_IDENTIFY_MAIN_CONTAINER
 )
 from src.controller.helpers import smart_scan
 from src.agent.browser_use.smart_focus import focus_on_content
@@ -442,7 +445,8 @@ class ExtractionActionsMixin:
             page = await browser.get_current_page()
             try:
                 content = await page.evaluate("document.body.innerText")
-                return f"Page Content ({len(content)} chars):\n{content[:5000]}..." # Truncate for log, but agent gets it
+                # Increased limit for academic papers and long threads
+                return f"Page Content ({len(content)} chars):\n{content[:32000]}..." 
             except Exception as e:
                 return f"Error reading page content: {e}"
 
@@ -463,3 +467,201 @@ class ExtractionActionsMixin:
                 return f"Saved page content to {filepath}"
             except Exception as e:
                 return f"Error saving page content: {e}"
+
+        @self.registry.action("Extract APA citation from Google Scholar result")
+        async def get_google_scholar_citation(browser: BrowserContext, result_index: int = 0, title_text: str = None):
+            page = await browser.get_current_page()
+            if "scholar.google" not in page.url:
+                return "Error: Current page is not Google Scholar."
+            
+            try:
+                target_button = None
+                if title_text:
+                    # Find the result row containing the title, then the cite button within it
+                    result_row = page.locator(f"div.gs_r:has(h3.gs_rt:has-text('{title_text}'))").first
+                    if await result_row.count() > 0:
+                        target_button = result_row.locator(".gs_or_cit").first
+                    else:
+                        return f"Could not find result with title '{title_text}'"
+                else:
+                    # Use index
+                    buttons = page.locator(".gs_or_cit")
+                    count = await buttons.count()
+                    if result_index >= count:
+                        return f"Index {result_index} out of bounds. Found {count} results."
+                    target_button = buttons.nth(result_index)
+                
+                if not target_button:
+                    return "Cite button not found."
+
+                await target_button.click()
+                await page.wait_for_selector("#gs_citt", state="visible", timeout=3000)
+                
+                citation = await page.evaluate("""() => {
+                    const rows = document.querySelectorAll('#gs_citt tr');
+                    for (const row of rows) {
+                        const header = row.querySelector('th');
+                        if (header && header.innerText.includes('APA')) {
+                            const content = row.querySelector('div.gs_citr');
+                            return content ? content.innerText : null;
+                        }
+                    }
+                    return null;
+                }""")
+                
+                # Close modal
+                try:
+                    await page.click("#gs_cit-x", timeout=2000)
+                    await page.wait_for_selector("#gs_citt", state="hidden", timeout=2000)
+                except:
+                    await page.keyboard.press("Escape")
+                
+                if citation:
+                    return f"APA Citation: {citation}"
+                return "APA citation not found in the modal."
+                
+            except Exception as e:
+                try: await page.keyboard.press("Escape") 
+                except: pass
+                return f"Error extracting citation: {e}"
+
+        @self.registry.action("Monitor page for dynamic changes (e.g. chat messages, feed updates)")
+        async def monitor_page_activity(browser: BrowserContext, timeout: int = 5):
+            """
+            Watches the page for a few seconds to detect which element is updating the most.
+            Useful for finding chat windows, live feeds, or logs.
+            """
+            page = await browser.get_current_page()
+            try:
+                # Convert seconds to ms for JS
+                result = await page.evaluate(JS_MONITOR_MUTATIONS, timeout * 1000)
+                if result and result.get('detected'):
+                    return f"Activity Detected:\nSelector: {result['selector']}\nChanges: {result['change_count']}\nPreview: {result['new_content_preview']}"
+                return "No significant activity detected during the monitoring period."
+            except Exception as e:
+                return f"Error monitoring page: {e}"
+
+        @self.registry.action("Identify the main content container on the page")
+        async def identify_main_content_area(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                result = await page.evaluate(JS_IDENTIFY_MAIN_CONTAINER)
+                return f"Main Content Area:\nSelector: {result['selector']}\nPreview: {result['text_preview']}..."
+            except Exception as e:
+                return f"Error identifying main content: {e}"
+
+        @self.registry.action("Analyze the page layout using an LLM to understand structure")
+        async def analyze_page_layout(browser: BrowserContext):
+            if not self.webui_manager or not self.webui_manager.bu_agent:
+                return "LLM not available for analysis."
+            
+            page = await browser.get_current_page()
+            try:
+                # Get structural data
+                structure = await smart_scan(page, JS_ANALYZE_STRUCTURE)
+                structure_str = json.dumps(structure, indent=2)[:15000] # Truncate to avoid context limits
+                
+                from src.utils.prompts import PAGE_LAYOUT_ANALYSIS_PROMPT
+                
+                prompt = PAGE_LAYOUT_ANALYSIS_PROMPT.format(structure_json=structure_str)
+                
+                # Use the agent's main LLM
+                llm = self.webui_manager.bu_agent.llm
+                response = await llm.ainvoke([HumanMessage(content=prompt)])
+                
+                return f"Layout Analysis:\n{response.content}"
+            except Exception as e:
+                return f"Error analyzing layout: {e}"
+
+        @self.registry.action("Bulk extract APA citations from Google Scholar")
+        async def get_google_scholar_citations(browser: BrowserContext, indices_str: str):
+            """
+            Extracts APA citations for multiple results.
+            Args:
+                indices_str: Comma-separated list of indices (e.g., "0, 1, 2")
+            """
+            try:
+                indices = [int(i.strip()) for i in indices_str.split(",") if i.strip().isdigit()]
+            except ValueError:
+                return "Error: indices_str must be a comma-separated list of integers."
+
+            results = []
+            for idx in indices:
+                # Reuse the single extraction logic but handle it sequentially
+                res = await get_google_scholar_citation(browser, result_index=idx)
+                if "APA Citation:" in res:
+                    clean_cite = res.replace("APA Citation:", "").strip()
+                    results.append(f"[{idx}] {clean_cite}")
+                else:
+                    results.append(f"[{idx}] Failed: {res}")
+                
+                # Small delay to be polite and ensure UI stability
+                await browser.get_current_page().wait_for_timeout(500)
+            
+            return "Bulk Extraction Results:\n" + "\n".join(results)
+
+        @self.registry.action("Extract APA citation from Google Scholar result")
+        async def get_google_scholar_citation(browser: BrowserContext, result_index: int = 0, title_text: str = None):
+            page = await browser.get_current_page()
+            if "scholar.google" not in page.url:
+                return "Error: Current page is not Google Scholar."
+            
+            try:
+                target_button = None
+                
+                if title_text:
+                    # Find the result with this title
+                    # Results are usually in div.gs_r
+                    # Title is in h3.gs_rt
+                    # Cite button is .gs_or_cit in the same result div
+                    
+                    # We can use a locator strategy
+                    # Find the row that contains the title text
+                    result_row = page.locator(f"div.gs_r:has(h3.gs_rt:has-text('{title_text}'))").first
+                    if await result_row.count() > 0:
+                        target_button = result_row.locator(".gs_or_cit").first
+                    else:
+                        return f"Could not find result with title '{title_text}'"
+                else:
+                    # Use index
+                    buttons = page.locator(".gs_or_cit")
+                    count = await buttons.count()
+                    if result_index >= count:
+                        return f"Index {result_index} out of bounds. Found {count} results."
+                    target_button = buttons.nth(result_index)
+                
+                if not target_button:
+                    return "Cite button not found."
+
+                await target_button.click()
+                
+                # Wait for modal
+                await page.wait_for_selector("#gs_citt", state="visible", timeout=5000)
+                
+                # Extract APA
+                citation = await page.evaluate("""() => {
+                    const rows = document.querySelectorAll('#gs_citt tr');
+                    for (const row of rows) {
+                        const header = row.querySelector('th');
+                        if (header && header.innerText.includes('APA')) {
+                            const content = row.querySelector('div.gs_citr');
+                            return content ? content.innerText : null;
+                        }
+                    }
+                    return null;
+                }""")
+                
+                # Close modal
+                try:
+                    await page.click("#gs_cit-x", timeout=2000)
+                except:
+                    await page.keyboard.press("Escape")
+                
+                if citation:
+                    return f"APA Citation: {citation}"
+                return "APA citation not found in the modal."
+                
+            except Exception as e:
+                try: await page.keyboard.press("Escape") 
+                except: pass
+                return f"Error extracting citation: {e}"

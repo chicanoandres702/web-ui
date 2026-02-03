@@ -2,24 +2,29 @@ import logging
 import json
 from browser_use.browser.context import BrowserContext
 from src.utils.browser_scripts import (
-    COMMON_CLOSE_SELECTORS,
-    JS_REMOVE_OVERLAYS,
     JS_SCROLL_SLOW,
-    JS_REMOVE_ADS,
     JS_GET_SCROLL_INFO,
-    JS_HANDLE_VIGNETTE,
-    JS_CLOSE_NEWSLETTER,
-    JS_HANDLE_RATE_EXPERIENCE,
-    JS_HANDLE_NOTIFICATIONS_PROMPT,
-    JS_HANDLE_INSTALL_APP,
-    JS_HANDLE_AGE_GATE,
     JS_SCROLL_TO_TEXT,
-    JS_SCROLL_TO_SELECTOR
+    JS_SCROLL_TO_SELECTOR,
+    JS_MONITOR_MUTATIONS,
+    JS_WAIT_FOR_DOM_STABILITY,
+    JS_DETECT_BLOCKING_ELEMENTS
 )
 from src.utils.utils import retry_async
 from src.agent.browser_use.dom_purification import purify_page
 from src.agent.browser_use.smart_focus import wait_for_text
-from src.controller.helpers import attempt_close_cookie_banner
+from src.controller.helpers import (
+    attempt_close_cookie_banner,
+    dismiss_vignette,
+    dismiss_notification_prompt,
+    dismiss_app_banner,
+    dismiss_age_gate,
+    remove_ads_from_page,
+    remove_overlays_from_page,
+    close_common_modals,
+    close_newsletter,
+    dismiss_rating_popup
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +39,69 @@ class NavigationActionsMixin:
                 return f"URL '{url}' is flagged as SUSPICIOUS (potential distraction). Proceed with caution."
             return f"URL '{url}' is EXTERNAL. Verify relevance to task."
 
+        @self.registry.action("Smartly navigate to a URL with full validation")
+        async def smart_navigate(browser: BrowserContext, url: str):
+            page = await browser.get_current_page()
+            try:
+                # 1. Navigate
+                response = await page.goto(url, wait_until="domcontentloaded")
+                
+                # 2. Check HTTP Status
+                if response and response.status >= 400:
+                    return f"Navigation failed. HTTP Status: {response.status} {response.status_text}"
+
+                # 3. Wait for Stability
+                await page.wait_for_load_state("networkidle", timeout=5000)
+                try:
+                    await page.evaluate(JS_WAIT_FOR_DOM_STABILITY)
+                except: pass
+
+                # 4. Check for Blocking Elements
+                blocked = await page.evaluate(JS_DETECT_BLOCKING_ELEMENTS)
+                block_msg = " (Blocking element detected - consider 'clear_view')" if blocked else ""
+
+                # 5. Get Context
+                title = await page.title()
+                return f"Navigated to {url}. Title: '{title}'. Page appears stable.{block_msg}"
+            except Exception as e:
+                return f"Error during smart navigation: {e}"
+
+        @self.registry.action("Click an element and wait for a specific condition (navigation or visual change)")
+        async def smart_click(browser: BrowserContext, selector: str, wait_for: str = "navigation"):
+            """
+            Clicks an element and waits for a condition.
+            wait_for: 'navigation' (default), 'dom_change', 'none'
+            """
+            page = await browser.get_current_page()
+            try:
+                loc = page.locator(selector).first
+                if not await loc.is_visible():
+                    # Try text match if selector fails
+                    loc = page.locator(f"text={selector}").first
+                    if not await loc.is_visible():
+                        return f"Element '{selector}' not found or not visible."
+                
+                if wait_for == "navigation":
+                    try:
+                        async with page.expect_navigation(timeout=5000):
+                            await loc.click()
+                        return f"Clicked '{selector}' and navigated to {page.url}."
+                    except Exception:
+                        return f"Clicked '{selector}', but no navigation occurred within 5s."
+                elif wait_for == "dom_change":
+                    content_before = await page.content()
+                    await loc.click()
+                    await page.wait_for_timeout(2000)
+                    content_after = await page.content()
+                    if content_before != content_after:
+                        return f"Clicked '{selector}' and page content updated."
+                    return f"Clicked '{selector}' but page content did not seem to change."
+                else:
+                    await loc.click()
+                    return f"Clicked '{selector}'."
+            except Exception as e:
+                return f"Error in smart_click: {e}"
+
         @self.registry.action("Clear all blocking elements (popups, ads, cookie banners) to restore view")
         async def clear_view(browser: BrowserContext):
             page = await browser.get_current_page()
@@ -41,7 +109,7 @@ class NavigationActionsMixin:
             
             # 0. Google Vignette (High priority)
             try:
-                if await page.evaluate(JS_HANDLE_VIGNETTE):
+                if await dismiss_vignette(page):
                     results.append("Dismissed Google Vignette")
                     await page.wait_for_timeout(500)
             except Exception: pass
@@ -55,37 +123,28 @@ class NavigationActionsMixin:
             
             # 1.5 Notification Prompts
             try:
-                if await page.evaluate(JS_HANDLE_NOTIFICATIONS_PROMPT):
+                if await dismiss_notification_prompt(page):
                     results.append("Dismissed notification prompt")
                     await page.wait_for_timeout(500)
             except Exception: pass
             
             # 1.6 App Banners
             try:
-                if await page.evaluate(JS_HANDLE_INSTALL_APP):
+                if await dismiss_app_banner(page):
                     results.append("Dismissed 'Install App' banner")
                     await page.wait_for_timeout(500)
             except Exception: pass
             
             # 1.7 Age Gates
             try:
-                if await page.evaluate(JS_HANDLE_AGE_GATE):
+                if await dismiss_age_gate(page):
                     results.append("Dismissed age gate")
                     await page.wait_for_timeout(500)
             except Exception: pass
 
             # 2. Common Close Buttons (Popups/Ads)
             try:
-                clicked_close = False
-                for selector in COMMON_CLOSE_SELECTORS:
-                    try:
-                        loc = page.locator(selector).first
-                        if await loc.is_visible(timeout=200):
-                            await loc.click(timeout=500)
-                            clicked_close = True
-                            await page.wait_for_timeout(500)
-                    except Exception: continue
-                if clicked_close:
+                if await close_common_modals(page):
                     results.append("Clicked close button(s)")
             except Exception: pass
             
@@ -100,7 +159,7 @@ class NavigationActionsMixin:
 
             # 4. Ads (Legacy check)
             try:
-                ads_removed = await page.evaluate(JS_REMOVE_ADS)
+                ads_removed = await remove_ads_from_page(page)
                 if ads_removed > 0:
                     results.append(f"Removed {ads_removed} ads")
             except Exception: pass
@@ -109,7 +168,7 @@ class NavigationActionsMixin:
             try:
                 # Try Escape first
                 await page.keyboard.press("Escape")
-                overlays_removed = await page.evaluate(JS_REMOVE_OVERLAYS)
+                overlays_removed = await remove_overlays_from_page(page)
                 if overlays_removed > 0:
                     results.append(f"Removed {overlays_removed} overlays")
             except Exception: pass
@@ -129,26 +188,12 @@ class NavigationActionsMixin:
                 pass
 
             # Strategy 2: Click common close buttons
-            clicked = False
-            for selector in COMMON_CLOSE_SELECTORS:
-                try:
-                    # Short timeout to check visibility
-                    loc = page.locator(selector).first
-                    if await loc.is_visible(timeout=200):
-                        await loc.click(timeout=500)
-                        clicked = True
-                        logger.info(f"Clicked popup close button: {selector}")
-                        await page.wait_for_timeout(500)
-                        break
-                except Exception:
-                    continue
-            
-            if clicked:
+            if await close_common_modals(page):
                 return "Clicked a close button."
 
             # Strategy 3: Remove aggressive overlays via JS
             try:
-                removed = await page.evaluate(JS_REMOVE_OVERLAYS)
+                removed = await remove_overlays_from_page(page)
                 if removed > 0:
                     return f"Removed {removed} full-screen overlay(s) via JavaScript."
             except Exception as e:
@@ -160,7 +205,7 @@ class NavigationActionsMixin:
         async def remove_ads(browser: BrowserContext):
             page = await browser.get_current_page()
             try:
-                count = await page.evaluate(JS_REMOVE_ADS)
+                count = await remove_ads_from_page(page)
                 return f"Removed {count} ad/tracking elements."
             except Exception as e:
                 return f"Error removing ads: {e}"
@@ -180,7 +225,7 @@ class NavigationActionsMixin:
         async def dismiss_google_vignette(browser: BrowserContext):
             page = await browser.get_current_page()
             try:
-                if await page.evaluate(JS_HANDLE_VIGNETTE):
+                if await dismiss_vignette(page):
                     return "Dismissed Google Vignette and restored scrolling."
                 return "No Google Vignette found."
             except Exception as e:
@@ -190,7 +235,7 @@ class NavigationActionsMixin:
         async def close_newsletter_modal(browser: BrowserContext):
             page = await browser.get_current_page()
             try:
-                if await page.evaluate(JS_CLOSE_NEWSLETTER):
+                if await close_newsletter(page):
                     return "Closed a newsletter/subscription modal."
                 return "No obvious newsletter modal found."
             except Exception as e:
@@ -200,7 +245,7 @@ class NavigationActionsMixin:
         async def dismiss_rating_popup(browser: BrowserContext):
             page = await browser.get_current_page()
             try:
-                if await page.evaluate(JS_HANDLE_RATE_EXPERIENCE):
+                if await dismiss_rating_popup(page):
                     return "Dismissed a rating/feedback popup."
                 return "No rating popup found."
             except Exception as e:
@@ -210,7 +255,7 @@ class NavigationActionsMixin:
         async def dismiss_notification_prompt(browser: BrowserContext):
             page = await browser.get_current_page()
             try:
-                if await page.evaluate(JS_HANDLE_NOTIFICATIONS_PROMPT):
+                if await dismiss_notification_prompt(page):
                     return "Dismissed a notification prompt."
                 return "No notification prompt found."
             except Exception as e:
@@ -220,7 +265,7 @@ class NavigationActionsMixin:
         async def dismiss_app_banner(browser: BrowserContext):
             page = await browser.get_current_page()
             try:
-                if await page.evaluate(JS_HANDLE_INSTALL_APP):
+                if await dismiss_app_banner(page):
                     return "Dismissed an 'Install App' banner."
                 return "No app banner found."
             except Exception as e:
@@ -230,7 +275,7 @@ class NavigationActionsMixin:
         async def dismiss_age_gate(browser: BrowserContext):
             page = await browser.get_current_page()
             try:
-                if await page.evaluate(JS_HANDLE_AGE_GATE):
+                if await dismiss_age_gate(page):
                     return "Clicked an age verification button."
                 return "No age gate found."
             except Exception as e:
@@ -384,3 +429,15 @@ class NavigationActionsMixin:
                     return f"Element '{selector}' not found after scrolling."
             except Exception as e:
                 return f"Error scrolling to element: {e}"
+
+        @self.registry.action("Wait for dynamic content updates (e.g. loading spinner to finish, new items)")
+        async def wait_for_dynamic_update(browser: BrowserContext, timeout: int = 10):
+            page = await browser.get_current_page()
+            try:
+                # Reuse the mutation monitor but with longer timeout
+                result = await page.evaluate(JS_MONITOR_MUTATIONS, timeout * 1000)
+                if result and result.get('detected'):
+                    return f"Update Detected in '{result['selector']}': {result['new_content_preview'][:100]}..."
+                return "No dynamic updates detected."
+            except Exception as e:
+                return f"Error waiting for update: {e}"

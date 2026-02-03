@@ -26,6 +26,10 @@ def evaluate_site_state(page_content: str, current_step_index: int, total_steps:
     # Check for empty/blank page
     is_blank = "about:blank" in content_lower or not content_lower.strip()
     
+    # Check for common error pages
+    is_error_page = any(x in content_lower for x in ["404 not found", "500 internal server error", "access denied", "site can't be reached", "dns_probe_finished", "bad gateway", "service unavailable"])
+    is_captcha = "captcha" in content_lower or "verify you are human" in content_lower or "security check" in content_lower
+
     assessment = {
         "status": "on_track",
         "action_required": None,
@@ -36,6 +40,14 @@ def evaluate_site_state(page_content: str, current_step_index: int, total_steps:
         assessment["status"] = "lost"
         assessment["action_required"] = "RENAVIGATE"
         assessment["reason"] = "Browser is on about:blank. Navigation likely failed."
+    elif is_error_page:
+        assessment["status"] = "failed"
+        assessment["action_required"] = "GO_BACK_AND_RETRY"
+        assessment["reason"] = "Browser encountered a critical error page (404/500/Access Denied)."
+    elif is_captcha:
+        assessment["status"] = "blocked"
+        assessment["action_required"] = "SOLVE_CAPTCHA"
+        assessment["reason"] = "CAPTCHA detected."
     elif is_vignette:
         assessment["status"] = "blocked"
         assessment["action_required"] = "CLOSE_OVERLAY"

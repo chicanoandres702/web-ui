@@ -1227,3 +1227,74 @@ JS_INJECT_HUD = """(data) => {
         statusColumn.appendChild(logBox);
     }
 }"""
+
+JS_MONITOR_MUTATIONS = """(timeout) => {
+    return new Promise((resolve) => {
+        let activeContainer = null;
+        let maxChanges = 0;
+        const mutationCounts = new Map();
+        
+        const observer = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                let target = m.target;
+                if (target.nodeType === 3) target = target.parentElement;
+                
+                let curr = target;
+                let depth = 0;
+                while (curr && curr.tagName !== 'BODY' && depth < 5) {
+                    if (['DIV', 'ARTICLE', 'SECTION', 'MAIN', 'UL', 'OL', 'TBODY'].includes(curr.tagName)) {
+                        const count = (mutationCounts.get(curr) || 0) + 1;
+                        mutationCounts.set(curr, count);
+                        if (count > maxChanges) {
+                            maxChanges = count;
+                            activeContainer = curr;
+                        }
+                        break; 
+                    }
+                    curr = curr.parentElement;
+                    depth++;
+                }
+            }
+        });
+        
+        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+        
+        setTimeout(() => {
+            observer.disconnect();
+            if (activeContainer && maxChanges > 1) { // Threshold for noise
+                let selector = activeContainer.tagName.toLowerCase();
+                if (activeContainer.id) selector += '#' + activeContainer.id;
+                else if (activeContainer.className && typeof activeContainer.className === 'string') {
+                     const classes = activeContainer.className.trim().split(/\\s+/).filter(c => c.length > 0);
+                     if (classes.length > 0) selector += '.' + classes.join('.');
+                }
+                
+                resolve({
+                    detected: true,
+                    selector: selector,
+                    change_count: maxChanges,
+                    new_content_preview: activeContainer.innerText ? activeContainer.innerText.substring(0, 500) : "No text"
+                });
+            } else {
+                resolve({ detected: false });
+            }
+        }, timeout);
+    });
+}"""
+
+JS_IDENTIFY_MAIN_CONTAINER = """() => {
+    const candidates = ['article', 'main', '[role="main"]', '#content', '.content', '#main', '.main', '.feed', '[role="feed"]', '.timeline'];
+    for (const selector of candidates) {
+        const el = document.querySelector(selector);
+        if (el && el.offsetHeight > 200 && el.innerText.length > 200) {
+            let path = el.tagName.toLowerCase();
+            if (el.id) path += '#' + el.id;
+            else if (el.className && typeof el.className === 'string') {
+                const classes = el.className.trim().split(/\\s+/).filter(c => c.length > 0);
+                if (classes.length > 0) path += '.' + classes.join('.');
+            }
+            return { selector: path, text_preview: el.innerText.substring(0, 200) };
+        }
+    }
+    return { selector: 'body', text_preview: document.body.innerText.substring(0, 200) };
+}"""

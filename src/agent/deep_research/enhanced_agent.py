@@ -19,7 +19,8 @@ from src.utils.prompts import (
     ENHANCED_AGENT_ACTION_USER_PROMPT,
     ENHANCED_AGENT_DISCOVERY_PROMPT,
     ENHANCED_AGENT_CHECK_LINK_PROMPT,
-    SUBTASK_EXTRACTION_PROMPT
+    SUBTASK_EXTRACTION_PROMPT,
+    RUBRIC_EXTRACTION_PROMPT
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class EnhancedDeepResearchAgent:
         self._stop_requested = False
         self.discovery_completed = False
         self.consecutive_failures = 0
+        self.rubric_constraints = None
 
     async def stop(self):
         """Signals the agent to stop its execution loop."""
@@ -59,6 +61,7 @@ class EnhancedDeepResearchAgent:
         self._stop_requested = False
         self.history = []
         self.consecutive_failures = 0
+        self.rubric_constraints = None
 
         try:
             page = await self.browser_context.get_current_page()
@@ -88,6 +91,13 @@ class EnhancedDeepResearchAgent:
                 if subtasks:
                     self._add_history_step("Planning", "info", f"Extracted {len(subtasks)} subtasks from page: {subtasks}")
                     await self._add_subtasks_to_plan(subtasks)
+                
+                # --- PHASE 1.6: RUBRIC ANALYSIS ---
+                # Check for assignment rubrics to guide quality
+                rubric_data = await self._extract_rubric_constraints(page_content, goal)
+                if rubric_data and rubric_data.get("is_assignment"):
+                    self.rubric_constraints = rubric_data
+                    self._add_history_step("Rubric Analysis", "info", f"Extracted rubric: {len(rubric_data.get('scoring_criteria', []))} criteria found.")
 
             for step in range(max_steps):
                 if self._stop_requested:
@@ -101,7 +111,7 @@ class EnhancedDeepResearchAgent:
                     await self._handle_focus(goal, page_content, page)
 
                 # 2. Decide
-                action_decision = await self._decide_next_action(goal, page_content, last_result, pagination_info)
+                action_decision = await self._decide_next_action(goal, page_content, last_result, pagination_info, analyzed_url)
                 
                 # 3. Execute
                 last_result = await self._execute_decision(action_decision, goal, analyzed_url)
@@ -277,6 +287,18 @@ class EnhancedDeepResearchAgent:
             logger.warning(f"Subtask extraction failed: {e}")
             return []
 
+    async def _extract_rubric_constraints(self, page_content: str, goal: str) -> Dict[str, Any]:
+        """Analyzes page content to find grading rubrics and requirements."""
+        try:
+            content_sample = page_content[:8000] # Rubrics can be verbose
+            prompt = RUBRIC_EXTRACTION_PROMPT.format(goal=goal, content_sample=content_sample)
+            response = await self.llm.ainvoke([HumanMessage(content=prompt)])
+            data = parse_json_safe(response.content)
+            return data if isinstance(data, dict) and data.get("is_assignment") else None
+        except Exception as e:
+            logger.warning(f"Rubric extraction failed: {e}")
+            return None
+
     async def _add_subtasks_to_plan(self, subtasks: List[str]):
         """Adds extracted subtasks to the webui manager's plan."""
         if not subtasks: return
@@ -343,11 +365,20 @@ class EnhancedDeepResearchAgent:
             logger.warning(f"Failed to decide focus: {e}")
             return ""
 
-    async def _decide_next_action(self, goal: str, page_content: str, last_result: str, pagination_info: str) -> Dict[str, str]:
+    async def _decide_next_action(self, goal: str, page_content: str, last_result: str, pagination_info: str, current_url: str = "") -> Dict[str, str]:
         """Asks the LLM to decide the next action to take."""
         
         # Inject strategy hint if multiple failures occurred
         strategy_hint = ""
+        
+        # Context-specific hints for academic/social flows
+        if "yellowdig" in current_url.lower():
+             strategy_hint += "\n\n[Yellowdig Mode]: Use 'post_to_yellowdig' for posts/comments. Ensure content is 40+ words, formal, and professional."
+        elif "scholar.google" in current_url.lower():
+             strategy_hint += "\n\n[Scholar Mode]: Use 'get_google_scholar_citation' for precision. Use 'get_google_scholar_citations' for bulk extraction."
+        elif any(x in current_url.lower() for x in ["canvas", "blackboard", "moodle", "brightspace"]):
+             strategy_hint += "\n\n[LMS Mode]: Check 'Modules' or 'Assignments' for tasks. Look for 'Submit Assignment' buttons."
+
         if self.consecutive_failures >= 2:
             strategy_hint = (
                 f"\n\n⚠️ CRITICAL: The previous {self.consecutive_failures} actions failed. "
@@ -355,10 +386,18 @@ class EnhancedDeepResearchAgent:
                 "Examples: Use a different selector, try searching instead of clicking, scroll to find the element, or check for popups."
             )
 
+        # Format rubric info for the prompt if available
+        rubric_info = "None"
+        if self.rubric_constraints:
+            criteria = self.rubric_constraints.get('scoring_criteria', [])
+            rules = self.rubric_constraints.get('formatting_rules', [])
+            rubric_info = f"Formatting: {rules}. Criteria: {json.dumps(criteria[:3])}..." # Truncate to save tokens
+
         user_prompt = ENHANCED_AGENT_ACTION_USER_PROMPT.format(
             goal=goal,
             status_summary=self.state_manager.get_status_summary(),
             last_result=last_result,
+            rubric_constraints=rubric_info,
             page_content=page_content[:2000] + (f"\n\n[System Note]: {pagination_info}" if pagination_info else "")
         ) + strategy_hint
 

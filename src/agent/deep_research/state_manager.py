@@ -12,6 +12,7 @@ from src.agent.deep_research.types import (
     SEARCH_INFO_FILENAME, 
     REPORT_FILENAME
 )
+from src.agent.deep_research.task_manager import TaskManager
 
 logger = logging.getLogger(__name__)
 
@@ -164,59 +165,11 @@ class DeepResearchStateManager:
         except Exception as e:
             logger.error(f"Failed to archive report: {e}")
 
+# Backward compatibility wrappers using TaskManager
 def get_next_task_indices(plan: List[ResearchCategoryItem], current_cat_idx: int, current_task_idx: int) -> Tuple[int, int]:
-    """Calculates the indices for the next task in the plan."""
-    next_task_idx = current_task_idx + 1
-    next_cat_idx = current_cat_idx
-    
-    if next_cat_idx < len(plan):
-        current_category = plan[next_cat_idx]
-        if next_task_idx >= len(current_category["tasks"]):
-            next_cat_idx += 1
-            next_task_idx = 0
-            
-    return next_cat_idx, next_task_idx
+    """Delegates to TaskManager for index calculation."""
+    return TaskManager(plan).get_next_task_indices(current_cat_idx, current_task_idx)
 
 def parse_research_plan(parsed_plan_from_llm: Any) -> List[ResearchCategoryItem]:
-    """Parses the JSON output from the LLM into a structured research plan."""
-    new_plan: List[ResearchCategoryItem] = []
-    
-    if not isinstance(parsed_plan_from_llm, list):
-        logger.warning(f"Expected list for plan, got {type(parsed_plan_from_llm)}")
-        return []
-
-    for category_data in parsed_plan_from_llm:
-        if not isinstance(category_data, dict) or "category_name" not in category_data or "tasks" not in category_data:
-            logger.warning(f"Skipping invalid category data: {category_data}")
-            continue
-
-        tasks: List[ResearchTaskItem] = []
-        for task_desc in category_data["tasks"]:
-            if isinstance(task_desc, str):
-                tasks.append(
-                    ResearchTaskItem(
-                        task_description=task_desc,
-                        status="pending",
-                        queries=None,
-                        result_summary=None,
-                    )
-                )
-            elif isinstance(task_desc, dict):
-                desc = task_desc.get("task_description") or task_desc.get("task")
-                if desc:
-                    tasks.append(
-                        ResearchTaskItem(
-                            task_description=desc,
-                            status="pending",
-                            queries=None,
-                            result_summary=None,
-                        )
-                    )
-
-        new_plan.append(
-            ResearchCategoryItem(
-                category_name=category_data["category_name"],
-                tasks=tasks,
-            )
-        )
-    return new_plan
+    """Delegates to TaskManager for parsing."""
+    return TaskManager.parse_plan_json(parsed_plan_from_llm)

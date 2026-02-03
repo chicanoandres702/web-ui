@@ -106,3 +106,5 @@ DISTRACTION_DOMAINS = [
 EXTRANEOUS_URL_PATTERNS = [
     "google_vignette", "share", "about:blank", "doubleclick", "ads", "tracking", "popup", "overlay"
 ]
+
+DEFAULT_BROWSER_SESSION_DIR = "./browser_session"

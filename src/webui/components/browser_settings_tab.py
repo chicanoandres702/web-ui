@@ -1,6 +1,7 @@
 import os
 from distutils.util import strtobool
 import gradio as gr
+import shutil
 import logging
 from gradio.components import Component
 
@@ -27,9 +28,30 @@ async def close_browser(webui_manager: WebuiManager):
         await webui_manager.bu_browser.close()
         webui_manager.bu_browser = None
 
+async def clear_browser_session(webui_manager: WebuiManager, user_data_dir: str):
+    """Clears the browser session directory."""
+    # Close browser first to release file locks
+    await close_browser(webui_manager)
+    
+    path = user_data_dir if user_data_dir and user_data_dir.strip() else config.DEFAULT_BROWSER_SESSION_DIR
+    abs_path = os.path.abspath(path)
+    
+    if os.path.exists(abs_path):
+        try:
+            # Basic safety check to prevent deleting root or short paths
+            if len(abs_path.split(os.sep)) <= 2:
+                 return f"❌ Safety Block: Path too short/root, refusing to delete: {abs_path}"
+            
+            shutil.rmtree(abs_path)
+            os.makedirs(abs_path, exist_ok=True)
+            return f"✅ Session cleared and recreated: {abs_path}"
+        except Exception as e:
+            return f"❌ Error clearing session: {e}"
+    return f"⚠️ Session directory not found: {abs_path}"
+
 def get_session_info(user_data_dir):
     """Checks the session directory size and existence."""
-    path = user_data_dir if user_data_dir and user_data_dir.strip() else "./browser_session"
+    path = user_data_dir if user_data_dir and user_data_dir.strip() else config.DEFAULT_BROWSER_SESSION_DIR
     abs_path = os.path.abspath(path)
     
     if not os.path.exists(abs_path):
@@ -69,10 +91,11 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
                 label="Browser User Data Dir",
                 lines=1,
                 interactive=True,
-                placeholder="Defaults to ./browser_session if empty (Recommended for persistence)",
+                placeholder=f"Defaults to {config.DEFAULT_BROWSER_SESSION_DIR} if empty (Recommended for persistence)",
             )
         with gr.Row():
             verify_session_btn = gr.Button("🔍 Verify Session Storage", size="sm", scale=0)
+            clear_session_btn = gr.Button("🗑️ Clear Session", size="sm", scale=0, variant="stop")
             session_status = gr.Textbox(show_label=False, interactive=False, lines=1, scale=4, placeholder="Click verify to check storage usage...")
     with gr.Group():
         with gr.Row():
@@ -85,7 +108,7 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
             enable_persistent_session = gr.Checkbox(
                 label="Enable Persistent Session",
                 value=bool(strtobool(os.getenv("ENABLE_PERSISTENT_SESSION", "true"))),
-                info="Retain cookies, logins, and session data between runs. Uses ./browser_session by default.",
+                info=f"Retain cookies, logins, and session data between runs. Uses {config.DEFAULT_BROWSER_SESSION_DIR} by default.",
                 interactive=True
             )
             keep_browser_open = gr.Checkbox(
@@ -121,7 +144,7 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
                 info="Browser window height",
                 interactive=True
             )
-    with gr.Group():
+        
         with gr.Row():
             cdp_url = gr.Textbox(
                 label="CDP URL",
@@ -134,7 +157,32 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
                 info="WSS URL for browser remote debugging",
                 interactive=True,
             )
+
+    # --- Group 2: Session Persistence ---
     with gr.Group():
+        gr.Markdown("### 💾 Session Persistence")
+        enable_persistent_session = gr.Checkbox(
+            label="Enable Persistent Session",
+            value=bool(strtobool(os.getenv("ENABLE_PERSISTENT_SESSION", "true"))),
+            info=f"Retain cookies, logins, and session data between runs. Uses {config.DEFAULT_BROWSER_SESSION_DIR} by default.",
+            interactive=True
+        )
+        
+        with gr.Column(visible=True) as persistence_options:
+            browser_user_data_dir = gr.Textbox(
+                label="Browser User Data Dir",
+                lines=1,
+                interactive=True,
+                placeholder=f"Defaults to {config.DEFAULT_BROWSER_SESSION_DIR} if empty",
+            )
+            with gr.Row():
+                verify_session_btn = gr.Button("🔍 Verify Session Storage", size="sm", scale=0)
+                clear_session_btn = gr.Button("🗑️ Clear Session", size="sm", scale=0, variant="stop")
+                session_status = gr.Textbox(show_label=False, interactive=False, lines=1, scale=4, placeholder="Click verify to check storage usage...")
+
+    # --- Group 3: Recording & Debugging ---
+    with gr.Group():
+        gr.Markdown("### 📹 Recording & Debugging")
         with gr.Row():
             save_recording_path = gr.Textbox(
                 label="Recording Path",
@@ -196,4 +244,16 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
     use_own_browser.change(close_wrapper)
     enable_persistent_session.change(close_wrapper)
     
+    # Toggle persistence options visibility
+    enable_persistent_session.change(
+        fn=lambda x: gr.update(visible=x),
+        inputs=[enable_persistent_session],
+        outputs=[persistence_options]
+    )
+    
     verify_session_btn.click(fn=get_session_info, inputs=[browser_user_data_dir], outputs=[session_status])
+
+    async def clear_session_wrapper(user_data_dir):
+        return await clear_browser_session(webui_manager, user_data_dir)
+
+    clear_session_btn.click(fn=clear_session_wrapper, inputs=[browser_user_data_dir], outputs=[session_status])

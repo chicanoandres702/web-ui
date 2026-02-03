@@ -6,6 +6,7 @@ from playwright.async_api import async_playwright
 from browser_use.browser.browser import BrowserConfig
 from browser_use.browser.context import BrowserContextConfig, BrowserContext
 from src.browser.custom_browser import CustomBrowser
+from src.utils import config as app_config
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +21,8 @@ def create_browser(config: dict) -> CustomBrowser:
         browser_binary_path = None
 
     use_own_browser = config.get("use_own_browser", False)
-    enable_persistent_session = config.get("enable_persistent_session", False)
     browser_user_data = config.get("browser_user_data_dir")
+    enable_persistent_session = config.get("enable_persistent_session", True)
 
     extra_browser_args = []
 
@@ -36,10 +37,13 @@ def create_browser(config: dict) -> CustomBrowser:
         if not browser_user_data:
             browser_user_data = os.getenv("BROWSER_USER_DATA", None)
 
-    # Automatic persistence logic: Use default ./browser_session if enabled and no path provided
-    if enable_persistent_session and not browser_user_data:
-        browser_user_data = os.path.abspath("./browser_session")
+    # Handle persistence logic
+    if enable_persistent_session:
+        if not browser_user_data or not browser_user_data.strip():
+            browser_user_data = os.path.abspath(app_config.DEFAULT_BROWSER_SESSION_DIR)
         os.makedirs(browser_user_data, exist_ok=True)
+    else:
+        browser_user_data = None
 
     disable_security = config.get("disable_security", False)
     if disable_security:

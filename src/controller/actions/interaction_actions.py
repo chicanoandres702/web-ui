@@ -279,3 +279,54 @@ class InteractionActionsMixin:
                 return "No simple CAPTCHA found. If a complex CAPTCHA is present, please ask the user for help."
             except Exception as e:
                 return f"Error attempting to solve CAPTCHA: {e}"
+
+        @self.registry.action("Post content to Yellowdig (handles word count and posting)")
+        async def post_to_yellowdig(browser: BrowserContext, content: str):
+            """
+            Posts content to Yellowdig. Validates word count (>=40).
+            Ensures content is typed into the editor and the Post button is clicked.
+            """
+            # 1. Validate Word Count & Quality Heuristics
+            word_count = len(content.split())
+            if word_count < 40:
+                return f"Error: Content is too short ({word_count} words). Yellowdig requires 40+ words for points. Please expand your post to be formal and professional."
+
+            page = await browser.get_current_page()
+            try:
+                # 2. Locate Editor (Yellowdig often uses Quill or contenteditable divs)
+                editor_locators = [
+                    ".ql-editor", 
+                    "div[contenteditable='true']", 
+                    "textarea[placeholder*='Post']",
+                    "textarea[placeholder*='Share']"
+                ]
+                
+                editor = None
+                for selector in editor_locators:
+                    loc = page.locator(selector).first
+                    if await loc.is_visible():
+                        editor = loc
+                        break
+                
+                if not editor:
+                    return "Error: Could not find a visible post editor. Ensure you have clicked 'Create' or 'Post' to open the dialog first."
+
+                # 3. Input Content
+                await editor.click()
+                await page.wait_for_timeout(500)
+                await editor.fill(content)
+                
+                # 4. Click Post
+                post_btn = page.locator("button:has-text('Post'), button:has-text('Create Post')").first
+                
+                if await post_btn.is_visible():
+                    if await post_btn.is_disabled():
+                        return "Error: 'Post' button is disabled. You may need to select a Topic or Tag manually before I can post."
+                    await post_btn.click()
+                    await page.wait_for_timeout(3000) # Wait for post to process
+                    return f"Successfully posted to Yellowdig. Word count: {word_count}."
+                
+                return "Error: Content typed, but 'Post' button not found."
+
+            except Exception as e:
+                return f"Error executing post_to_yellowdig: {e}"

@@ -2,7 +2,19 @@ import logging
 import base64
 import aiohttp
 import os
-from src.utils.browser_scripts import JS_WAIT_FOR_DOM_STABILITY, JS_CLOSE_COOKIE_BANNERS
+from src.utils.browser_scripts import (
+    JS_WAIT_FOR_DOM_STABILITY, 
+    JS_CLOSE_COOKIE_BANNERS,
+    JS_HANDLE_VIGNETTE,
+    JS_HANDLE_NOTIFICATIONS_PROMPT,
+    JS_HANDLE_INSTALL_APP,
+    JS_HANDLE_AGE_GATE,
+    JS_REMOVE_ADS,
+    JS_REMOVE_OVERLAYS,
+    COMMON_CLOSE_SELECTORS,
+    JS_CLOSE_NEWSLETTER,
+    JS_HANDLE_RATE_EXPERIENCE
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,3 +110,67 @@ async def download_resource(page, url: str, filepath: str) -> str:
                     raise Exception(f"Status code: {response.status}")
     except Exception as e:
         raise Exception(f"All download strategies failed. Last error: {e}")
+
+async def dismiss_vignette(page):
+    try:
+        if await page.evaluate(JS_HANDLE_VIGNETTE):
+            return True
+    except Exception: pass
+    return False
+
+async def dismiss_notification_prompt(page):
+    try:
+        if await page.evaluate(JS_HANDLE_NOTIFICATIONS_PROMPT):
+            return True
+    except Exception: pass
+    return False
+
+async def dismiss_app_banner(page):
+    try:
+        if await page.evaluate(JS_HANDLE_INSTALL_APP):
+            return True
+    except Exception: pass
+    return False
+
+async def dismiss_age_gate(page):
+    try:
+        if await page.evaluate(JS_HANDLE_AGE_GATE):
+            return True
+    except Exception: pass
+    return False
+
+async def remove_ads_from_page(page):
+    try:
+        return await page.evaluate(JS_REMOVE_ADS)
+    except Exception: return 0
+
+async def remove_overlays_from_page(page):
+    try:
+        return await page.evaluate(JS_REMOVE_OVERLAYS)
+    except Exception: return 0
+
+async def close_common_modals(page):
+    clicked = False
+    for selector in COMMON_CLOSE_SELECTORS:
+        try:
+            loc = page.locator(selector).first
+            if await loc.is_visible(timeout=200):
+                await loc.click(timeout=500)
+                clicked = True
+                await page.wait_for_timeout(500)
+        except Exception: continue
+    return clicked
+
+async def close_newsletter(page):
+    try:
+        if await page.evaluate(JS_CLOSE_NEWSLETTER):
+            return True
+    except Exception: pass
+    return False
+
+async def dismiss_rating_popup(page):
+    try:
+        if await page.evaluate(JS_HANDLE_RATE_EXPERIENCE):
+            return True
+    except Exception: pass
+    return False

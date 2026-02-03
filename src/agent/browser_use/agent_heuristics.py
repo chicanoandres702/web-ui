@@ -138,13 +138,23 @@ class AgentHeuristics:
             if self.agent.state.history.is_done():
                 return
 
-            if "quiz" in self.agent.task.lower() or "test" in self.agent.task.lower():
-                page = await self._get_current_page()
-                content = await page.evaluate("document.body.innerText")
-                content_lower = content.lower()
-                indicators = ["quiz complete", "your score", "results:", "you scored", "thank you for playing", "100%", "completed"]
+            page = await self._get_current_page()
+            content = await page.evaluate("document.body.innerText")
+            content_lower = content.lower()
+
+            # 1. Quiz/Test/Course Completion
+            if any(kw in self.agent.task.lower() for kw in ["quiz", "test", "exam", "course", "module"]):
+                indicators = ["quiz complete", "your score", "results:", "you scored", "thank you for playing", "100%", "completed", "congratulations", "certificate"]
                 if any(ind in content_lower for ind in indicators):
-                     self.inject_message("System Notification: The page seems to indicate the quiz is complete (found score/results). If you have answered all questions, please mark the task as Done.")
+                     self.inject_message("System Notification: The page indicates the task/quiz is complete. If you have the results, please mark the task as Done.")
+                     return
+
+            # 2. General Success/Submission
+            success_indicators = ["thank you for your order", "order confirmed", "submission received", "successfully", "message sent", "you are now logged in", "payment successful", "setup complete"]
+            if any(ind in content_lower for ind in success_indicators):
+                self.inject_message("System Notification: I detected a success message on the page. If the task was to submit or order, it appears complete. Verify and finish.")
+                return
+
         except Exception:
             pass
 
