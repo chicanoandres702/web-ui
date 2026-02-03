@@ -1,6 +1,7 @@
 import logging
 import os
-from typing import Optional
+from typing import Optional, Dict, Any
+from playwright.async_api import async_playwright
 
 from browser_use.browser.browser import BrowserConfig
 from browser_use.browser.context import BrowserContextConfig
@@ -19,6 +20,9 @@ def create_browser(config: dict) -> CustomBrowser:
         browser_binary_path = None
 
     use_own_browser = config.get("use_own_browser", False)
+    enable_persistent_session = config.get("enable_persistent_session", False)
+    browser_user_data = config.get("browser_user_data_dir")
+
     extra_browser_args = []
 
     # Add stealth arguments to avoid detection by CAPTCHAs
@@ -29,12 +33,16 @@ def create_browser(config: dict) -> CustomBrowser:
         if not browser_binary_path:
             browser_binary_path = os.getenv("BROWSER_PATH", None)
 
-        browser_user_data = config.get("browser_user_data_dir")
         if not browser_user_data:
             browser_user_data = os.getenv("BROWSER_USER_DATA", None)
 
-        if browser_user_data:
-            extra_browser_args.append(f"--user-data-dir={browser_user_data}")
+    # Automatic persistence logic: Use default ./browser_session if enabled and no path provided
+    if enable_persistent_session and not browser_user_data:
+        browser_user_data = os.path.abspath("./browser_session")
+        os.makedirs(browser_user_data, exist_ok=True)
+
+    # NOTE: We do NOT add --user-data-dir to extra_browser_args because we use launch_persistent_context
+    # which requires user_data_dir as a positional argument, not a flag.
 
     disable_security = config.get("disable_security", False)
     if disable_security:
@@ -64,7 +72,8 @@ def create_browser(config: dict) -> CustomBrowser:
         ),
     )
 
-    return CustomBrowser(config=browser_config)
+    # Pass user_data_dir to CustomBrowser so it can use launch_persistent_context
+    return CustomBrowser(config=browser_config, user_data_dir=browser_user_data)
 
 
 async def create_context(browser: CustomBrowser, config: dict):
@@ -86,3 +95,48 @@ async def create_context(browser: CustomBrowser, config: dict):
     )
 
     return await browser.new_context(config=context_config)
+
+
+class BrowserFactory:
+    """
+    Manages browser instances with persistent context support.
+    """
+    def __init__(self, user_data_dir: str = "./browser_session"):
+        # Ensure the session directory exists
+        self.user_data_dir = os.path.abspath(user_data_dir)
+        if not os.path.exists(self.user_data_dir):
+            os.makedirs(self.user_data_dir)
+        self.playwright = None
+        self.browser_context = None
+
+    async def setup_persistent_browser(self, headless: bool = False, viewport: Dict[str, int] = None, extra_args: list = None):
+        """
+        Launches a browser with a persistent context to save cookies/logins.
+        """
+        if not self.playwright:
+            self.playwright = await async_playwright().start()
+
+        if viewport is None:
+            viewport = {'width': 1280, 'height': 720}
+
+        args = [
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox"
+        ]
+        if extra_args:
+            args.extend(extra_args)
+
+        # Using launch_persistent_context saves all cookies, local storage, etc.
+        self.browser_context = await self.playwright.chromium.launch_persistent_context(
+            user_data_dir=self.user_data_dir,
+            headless=headless,
+            args=args,
+            viewport=viewport
+        )
+        return self.browser_context
+
+    async def close(self):
+        if self.browser_context:
+            await self.browser_context.close()
+        if self.playwright:
+            await self.playwright.stop()

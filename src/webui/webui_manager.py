@@ -9,6 +9,8 @@ import uuid
 import asyncio
 import time
 from typing import Any
+import logging
+import shutil
 
 from gradio.components import Component
 from browser_use.browser.browser import Browser
@@ -19,6 +21,7 @@ from src.browser.custom_context import CustomBrowserContext
 from src.controller.custom_controller import CustomController
 from src.agent.deep_research.deep_research_agent import DeepResearchAgent
 
+logger = logging.getLogger(__name__)
 
 class WebuiManager:
     def __init__(self, settings_save_dir: str = "./tmp/webui_settings"):
@@ -54,6 +57,13 @@ class WebuiManager:
         self.dr_current_task = None
         self.dr_agent_task_id: Optional[str] = None
         self.dr_save_dir: Optional[str] = None
+
+    def init_enhanced_agent(self) -> None:
+        """
+        init enhanced agent
+        """
+        self.enhanced_agent: Optional[Any] = None # Using Any to avoid circular import
+        self.enhanced_agent_task: Optional[asyncio.Task] = None
 
     def add_components(self, tab_name: str, components_dict: dict[str, "Component"]) -> None:
         """
@@ -94,8 +104,27 @@ class WebuiManager:
                 cur_settings[comp_id] = components[comp]
 
         config_name = datetime.now().strftime("%Y%m%d-%H%M%S")
-        with open(os.path.join(self.settings_save_dir, f"{config_name}.json"), "w") as fw:
-            json.dump(cur_settings, fw, indent=4)
+        file_path = os.path.join(self.settings_save_dir, f"{config_name}.json")
+        temp_path = f"{file_path}.tmp"
+
+        try:
+            with open(temp_path, "w") as fw:
+                json.dump(cur_settings, fw, indent=4)
+            
+            # Retry logic for file operations on Windows
+            for i in range(3):
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                    os.rename(temp_path, file_path)
+                    break
+                except OSError:
+                    time.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Failed to save config to {file_path}: {e}")
+            if os.path.exists(temp_path):
+                try: os.remove(temp_path)
+                except: pass
 
         return os.path.join(self.settings_save_dir, f"{config_name}.json")
 
@@ -106,8 +135,12 @@ class WebuiManager:
         if not config_path:
             return
 
-        with open(config_path, "r") as fr:
-            ui_settings = json.load(fr)
+        try:
+            with open(config_path, "r") as fr:
+                ui_settings = json.load(fr)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to load config from {config_path}: {e}")
+            return
 
         update_components = {}
         for comp_id, comp_val in ui_settings.items():
@@ -119,7 +152,11 @@ class WebuiManager:
                     continue
 
                 if comp_val is None and isinstance(comp, (gr.Slider, gr.Number)):
-                    comp_val = comp.value if comp.value is not None else 0
+                    # Fallback to default value or 0 if None to prevent TypeError
+                    if hasattr(comp, 'value') and comp.value is not None:
+                        comp_val = comp.value
+                    else:
+                        comp_val = 0
 
                 if comp.__class__.__name__ == "Chatbot":
                     update_components[comp] = gr.update(value=comp_val, type="messages")
@@ -143,19 +180,35 @@ class WebuiManager:
         """
         comp_id = self.get_id_by_component(comp)
         config_path = os.path.join(self.settings_save_dir, "last_config.json")
+        temp_path = f"{config_path}.tmp"
         
         settings = {}
         if os.path.exists(config_path):
             try:
                 with open(config_path, "r") as f:
                     settings = json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not read existing config to update parameter: {e}")
+                # If the file is corrupted, we might start fresh or backup. 
+                # For now, starting fresh settings dict is safer than crashing.
         
         settings[comp_id] = value
         
-        with open(config_path, "w") as f:
-            json.dump(settings, f, indent=4)
+        try:
+            with open(temp_path, "w") as f:
+                json.dump(settings, f, indent=4)
+            
+            # Retry logic for file operations on Windows
+            for i in range(3):
+                try:
+                    if os.path.exists(config_path):
+                        os.remove(config_path)
+                    os.rename(temp_path, config_path)
+                    break
+                except OSError:
+                    time.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Failed to update parameter in config: {e}")
 
     def load_last_config(self):
         """Load the last saved config"""

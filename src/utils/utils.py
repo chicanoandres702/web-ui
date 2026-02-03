@@ -11,6 +11,12 @@ import uuid
 import logging
 import asyncio
 from datetime import datetime
+import sys
+
+try:
+    import json_repair
+except ImportError:
+    json_repair = None
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +82,20 @@ def sanitize_filename(name: str) -> str:
     """Sanitize a string to be safe for use as a filename."""
     return "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_').lower()
 
+def resolve_file_path(filename: str) -> Optional[str]:
+    """Helper to resolve file paths from common directories."""
+    if not filename:
+        return None
+    
+    # Check absolute path, downloads, uploads, and current working directory
+    paths_to_check = [
+        os.path.abspath(filename),
+        os.path.join(os.path.abspath("./tmp/downloads"), os.path.basename(filename)),
+        os.path.join(os.path.abspath("./tmp/uploads"), os.path.basename(filename)),
+        os.path.join(os.getcwd(), os.path.basename(filename))
+    ]
+    
+    return next((p for p in paths_to_check if os.path.exists(p)), None)
 
 def save_to_knowledge_base_file(text: str, topic: str, memory_file_path: str) -> Optional[str]:
     """Appends text to a knowledge base file derived from the topic."""
@@ -160,12 +180,12 @@ def parse_agent_thought(thought: str) -> Dict[str, str]:
 
 async def retry_async(
     func: Callable[..., Any],
+    *args,
     retries: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
     logger: Optional[logging.Logger] = None,
     error_message: str = "Operation failed",
-    *args,
     **kwargs
 ) -> Any:
     """Retries an async function with exponential backoff."""
@@ -212,9 +232,40 @@ def clean_json_string(content: str) -> str:
         end_index = max(last_brace, last_bracket)
         if end_index != -1:
             content = content[:end_index+1]
+    
+    # Robustness: If content looks like it was cut off (unterminated string), try to patch it
+    # This is a heuristic for common LLM cutoff issues
+    if content.count('"') % 2 != 0:
+        if content.strip().endswith('"}'):
+            pass # Might be okay
+        else:
+            content += '"}' # Attempt to close the JSON object
             
     return content
 
+def extract_quoted_text(text: str) -> Optional[str]:
+    """Extracts text inside single or double quotes."""
+    if not text: return None
+    match = re.search(r"['\"](.*?)['\"]", text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def parse_json_safe(content: str) -> Any:
+    """
+    Parses a JSON string, attempting to repair it if necessary.
+    """
+    cleaned = clean_json_string(content)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        if json_repair:
+            try:
+                return json_repair.loads(cleaned)
+            except Exception:
+                pass
+        raise
 
 async def run_tasks_in_parallel(
     task_factories: List[Callable[[], Any]],
@@ -227,3 +278,100 @@ async def run_tasks_in_parallel(
         async with semaphore:
             return await factory()
     return await asyncio.gather(*(worker(f) for f in task_factories), return_exceptions=return_exceptions)
+
+
+def ensure_default_extraction_models():
+    """Creates default extraction model JSONs if they don't exist."""
+    models_dir = "./tmp/extraction_models"
+    os.makedirs(models_dir, exist_ok=True)
+    
+    default_models = [
+        {
+            "name": "ProductDetails",
+            "fields": [
+                {"name": "product_name", "type": "str", "description": "The name of the product"},
+                {"name": "price", "type": "float", "description": "The price of the product"},
+                {"name": "currency", "type": "str", "description": "The currency of the price (e.g., USD, EUR)"},
+                {"name": "availability", "type": "str", "description": "Availability status (e.g., In Stock, Out of Stock)"},
+                {"name": "rating", "type": "float", "description": "Product rating (0-5)"},
+                {"name": "review_count", "type": "int", "description": "Number of reviews"}
+            ]
+        },
+        {
+            "name": "JobPosting",
+            "fields": [
+                {"name": "job_title", "type": "str", "description": "Title of the job position"},
+                {"name": "company", "type": "str", "description": "Name of the hiring company"},
+                {"name": "location", "type": "str", "description": "Job location"},
+                {"name": "salary_range", "type": "str", "description": "Salary range if available"},
+                {"name": "description", "type": "str", "description": "Brief summary of the job description"},
+                {"name": "requirements", "type": "List[str]", "description": "List of key requirements or skills"}
+            ]
+        },
+        {
+            "name": "NewsArticle",
+            "fields": [
+                {"name": "headline", "type": "str", "description": "The main headline of the article"},
+                {"name": "author", "type": "str", "description": "Name of the author"},
+                {"name": "publication_date", "type": "str", "description": "Date of publication"},
+                {"name": "summary", "type": "str", "description": "A concise summary of the article content"},
+                {"name": "topics", "type": "List[str]", "description": "List of main topics or tags"}
+            ]
+        },
+        {
+            "name": "SearchResult",
+            "fields": [
+                {"name": "title", "type": "str", "description": "Title of the search result"},
+                {"name": "url", "type": "str", "description": "URL of the result"},
+                {"name": "snippet", "type": "str", "description": "Snippet or description text"}
+            ]
+        },
+        {
+            "name": "Recipe",
+            "fields": [
+                {"name": "name", "type": "str", "description": "Name of the recipe"},
+                {"name": "ingredients", "type": "List[str]", "description": "List of ingredients"},
+                {"name": "prep_time", "type": "str", "description": "Preparation time"},
+                {"name": "cook_time", "type": "str", "description": "Cooking time"},
+                {"name": "servings", "type": "int", "description": "Number of servings"}
+            ]
+        },
+        {
+            "name": "Event",
+            "fields": [
+                {"name": "title", "type": "str", "description": "Title of the event"},
+                {"name": "date", "type": "str", "description": "Date and time of the event"},
+                {"name": "location", "type": "str", "description": "Location or venue"},
+                {"name": "description", "type": "str", "description": "Description of the event"},
+                {"name": "price", "type": "str", "description": "Ticket price or cost"}
+            ]
+        }
+    ]
+
+    for model in default_models:
+        filename = f"{model['name']}.json"
+        filepath = os.path.join(models_dir, filename)
+        if not os.path.exists(filepath):
+            try:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    json.dump(model, f, indent=2)
+            except Exception as e:
+                logger.error(f"Failed to create default extraction model {filename}: {e}")
+
+def suppress_asyncio_cleanup_errors():
+    """
+    Suppresses 'I/O operation on closed pipe' errors on Windows during asyncio cleanup.
+    This is a known issue with ProactorEventLoop on Windows when processes are terminated abruptly.
+    """
+    if sys.platform == 'win32':
+        try:
+            from asyncio.proactor_events import _ProactorBasePipeTransport
+            
+            # Monkey-patch __del__ to silence the ValueError
+            def silence_del(self):
+                if hasattr(self, '_sock') and self._sock is not None:
+                    try: self._sock.close()
+                    except: pass
+            _ProactorBasePipeTransport.__del__ = silence_del
+        except (ImportError, AttributeError):
+            pass

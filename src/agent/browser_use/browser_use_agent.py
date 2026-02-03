@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime
 
 # from lmnr.sdk.decorators import observe
@@ -23,7 +24,8 @@ from browser_use.agent.message_manager.utils import is_model_without_tool_suppor
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from src.utils.utils import save_text_to_file, retry_async
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
-from src.utils.memory_utils import configure_mem0
+from src.utils.memory_utils import get_memory_manager
+from src.agent.browser_use.agent_heuristics import AgentHeuristics
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -47,6 +49,7 @@ class BrowserUseAgent(Agent):
         history: AgentHistoryList = None,
         save_history_path: str = None,
         system_prompt: str = None,
+        inhibit_close: bool = False,
         **kwargs
     ):
         self.confirmer_llm = confirmer_llm
@@ -58,6 +61,7 @@ class BrowserUseAgent(Agent):
         self.auto_save_on_stuck = auto_save_on_stuck
         self.source = source
         self.save_history_path = save_history_path
+        self.inhibit_close = inhibit_close
         self.is_validating = False
         self.switched_to_retry_model = False
         self.using_cheap_model = False
@@ -66,16 +70,16 @@ class BrowserUseAgent(Agent):
         agent_kwargs = kwargs.copy()
         
         # Extract use_memory to avoid passing it to parent Agent which doesn't support it
-        use_memory = agent_kwargs.pop('use_memory', False)
+        # We intercept 'use_memory' to use our own SimpleMemoryManager instead of mem0
+        self.use_custom_memory = agent_kwargs.pop('use_memory', False)
+        
+        # Note: We do NOT pass 'use_memory' to super().__init__ to avoid TypeError if the parent class doesn't support it.
 
         if confirmer_llm:
             agent_kwargs['validate_output'] = True
             
         if history:
             agent_kwargs['history'] = history
-
-        if use_memory:
-            configure_mem0()
 
         super().__init__(**agent_kwargs)
         
@@ -85,6 +89,9 @@ class BrowserUseAgent(Agent):
                 self.message_manager.system_message = SystemMessage(content=system_prompt)
 
         self.main_llm = self.llm  # Store the primary (high-quality) LLM
+        self.last_domain = None
+        self.memory_manager = get_memory_manager() if self.use_custom_memory else None
+        self.heuristics = AgentHeuristics(self)
 
     def _set_tool_calling_method(self) -> ToolCallingMethod | None:
         tool_calling_method = self.settings.tool_calling_method
@@ -229,97 +236,20 @@ class BrowserUseAgent(Agent):
     def _handle_confirmer_rejection(self, response_text: str):
         """Handles the logic when the confirmer rejects the completion."""
         msg = f"Confirmer rejected completion: {response_text}"
-        if hasattr(self, "message_manager"):
-            history = self.state.history
-            last_item = history.history[-1] if history.history else None
-            if last_item:
-                self.message_manager.add_state_message(
-                    state=last_item.state,
-                    result=[ActionResult(error=msg, include_in_memory=True)],
-                    step_info=AgentStepInfo(step_number=len(history.history), max_steps=100),
-                )
+        
+        # Inject strategy hint to force re-assessment
+        strategy_hint = " STRATEGY UPDATE: Task not confirmed. STOP and RE-ASSESS. 1. Use `assess_page_section` or `get_page_structure` to understand the current state. 2. Use `find_navigation_options` to find the correct path. 3. Scroll if needed."
+        full_msg = msg + strategy_hint
+
+        self.heuristics.inject_message(full_msg)
 
     def _manage_model_switching(self):
         """Handles Cost Saver and Smart Retry logic."""
-        # Cost Saver Logic
-        if self.enable_cost_saver and self.cheap_llm and not self.switched_to_retry_model:
-            if self.state.consecutive_failures == 0:
-                if self.llm != self.cheap_llm:
-                    logger.info('💰 Cost Saver: Switching to Cheap LLM.')
-                    self.llm = self.cheap_llm
-                    self.using_cheap_model = True
-            else:
-                # If we have failures, switch back to main LLM to recover
-                if self.llm != self.main_llm:
-                    logger.info(f'⚠️ Cost Saver: Detected {self.state.consecutive_failures} failures. Switching to Main LLM.')
-                    self.llm = self.main_llm
-                    self.using_cheap_model = False
-
-        # Smart Retry Logic
-        if self.smart_retry_llm and not self.switched_to_retry_model and self.state.consecutive_failures >= 2:
-            logger.warning(f'⚠️ Detected {self.state.consecutive_failures} consecutive failures. Switching to Smart Retry Model.')
-            self.llm = self.smart_retry_llm
-            self.switched_to_retry_model = True
-            # Add a system message to inform the new model of the situation
-            if hasattr(self, "message_manager"):
-                try:
-                    self.message_manager.add_state_message(self.state, result=[ActionResult(error=f"Previous model failed {self.state.consecutive_failures} times. You are now in control. Please analyze the situation carefully and try a different approach.", include_in_memory=True)])
-                except Exception as e:
-                    logger.warning(f"Failed to add retry state message: {e}")
-            
-            self.using_cheap_model = False # Ensure we don't show cost saver badge
-            self.state.consecutive_failures = 0  # Reset counter to give new model a chance
+        self.heuristics.manage_model_switching()
             
     def _suggest_alternative_strategy(self):
         """Injects strategy hints if the agent is failing."""
-        # If consecutive failures is 0, everything is fine (or just reset by model switcher)
-        if self.state.consecutive_failures == 0:
-            return
-
-        # If we have failures, inject a hint
-        if self.state.consecutive_failures == 1:
-            msg = "⚠️ Action failed. Strategy Hint: Check if the element is covered by a popup, try scrolling to make it visible, or use a different selector."
-            self._inject_message(msg)
-        elif self.state.consecutive_failures > 1:
-             msg = f"⚠️ Action failed {self.state.consecutive_failures} times. STOP repeating the same action. You MUST try a different strategy (e.g. search instead of click, go back, or use a different tool)."
-             self._inject_message(msg)
-
-    def _inject_message(self, content: str):
-        if hasattr(self, "message_manager"):
-             try:
-                step = len(self.state.history.history) + 1
-                self.message_manager.add_state_message(
-                    self.state, 
-                    result=[ActionResult(error=content, include_in_memory=True)],
-                    step_info=AgentStepInfo(step_number=step, max_steps=100)
-                )
-             except Exception as e:
-                 logger.warning(f"Failed to inject strategy hint via state message: {e}")
-                 try:
-                     # Fallback: Try adding as a user message if state injection fails
-                     self.message_manager.add_user_message(f"System Notification: {content}")
-                 except Exception as inner_e:
-                     logger.warning(f"Failed to inject strategy hint via fallback: {inner_e}")
-
-    async def _check_max_failures(self) -> bool:
-        """Checks if max failures reached and handles auto-save."""
-        if self.state.consecutive_failures >= self.settings.max_failures:
-            logger.error(f'❌ Stopping due to {self.settings.max_failures} consecutive failures')
-            if self.auto_save_on_stuck:
-                logger.info("💾 Auto-saving page content due to failure...")
-                try:
-                    page = await self.browser_context.get_current_page()
-                    content = await page.evaluate("document.body.innerText")
-                    title = await page.title()
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    filename = f"stuck_{timestamp}.txt"
-                    path = os.path.join("./tmp/agent_history", self.state.agent_id, filename)
-                    save_text_to_file(path, f"URL: {page.url}\nTitle: {title}\n\n{content}")
-                    logger.info(f"Saved stuck page content to {path}")
-                except Exception as e:
-                    logger.error(f"Failed to auto-save stuck page: {e}")
-            return True
-        return False
+        self.heuristics.suggest_alternative_strategy()
 
     async def _execute_step_callbacks(self, step: int):
         """Executes registered step callbacks."""
@@ -362,8 +292,16 @@ class BrowserUseAgent(Agent):
         # Suggest alternative strategies on failure
         self._suggest_alternative_strategy()
 
+        # Close extraneous tabs (e.g. ads, social shares)
+        await self._manage_tabs()
+
+        # Custom Memory Injection
+        if self.use_custom_memory and self.memory_manager:
+            await self._inject_site_knowledge()
+
         # Check if we should stop due to too many failures
-        if await self._check_max_failures():
+        # Note: self.heuristics is a direct attribute of BrowserUseAgent
+        if await self.heuristics.check_max_failures():
             return True
 
         # Check control flags before each step
@@ -377,6 +315,34 @@ class BrowserUseAgent(Agent):
                 return True
         
         return False
+
+    async def _manage_tabs(self):
+        """Closes extraneous tabs to keep the agent focused."""
+        if self.controller and hasattr(self.controller, "nav_controller"):
+            await self.controller.nav_controller.manage_tabs(self.browser_context)
+
+    async def _inject_site_knowledge(self):
+        """Checks if we have entered a new domain and injects relevant knowledge."""
+        try:
+            if not self.state.history.history:
+                return
+                
+            current_url = self.state.history.history[-1].state.url
+            if not current_url:
+                return
+
+            from urllib.parse import urlparse
+            domain = urlparse(current_url).netloc.replace("www.", "")
+            
+            if domain != self.last_domain:
+                self.last_domain = domain
+                knowledge = self.memory_manager.get_site_knowledge(current_url)
+                if knowledge:
+                    msg = f"🧠 Memory Retrieval: I have previous knowledge about {domain}:\n{knowledge}"
+                    self._inject_message(msg)
+                    logger.info(f"Injected site knowledge for {domain}")
+        except Exception as e:
+            logger.warning(f"Failed to inject site knowledge: {e}")
 
     async def _handle_post_step(self, step: int, max_steps: int) -> bool:
         """
@@ -392,6 +358,42 @@ class BrowserUseAgent(Agent):
                 self.save_history(self.save_history_path)
             except Exception as e:
                 logger.warning(f"Failed to auto-save history: {e}")
+
+        # Heuristic check for completion (e.g. Quiz done)
+        await self.heuristics.check_completion_heuristics()
+
+        # Check for loops
+        self.heuristics.detect_loop()
+
+        # Check for progress indicators
+        await self.heuristics.detect_progress()
+
+        # Check for blocking elements
+        await self.heuristics.check_blocking_elements()
+
+        # Check navigation recovery
+        await self.heuristics.check_navigation_recovery()
+
+        # Check for complex page structure and add subtasks
+        await self.heuristics.check_and_add_subtasks()
+
+        # Check login status (New)
+        await self.heuristics.check_login_status()
+
+        # Refresh HUD
+        if self.controller and hasattr(self.controller, "refresh_hud"):
+            last_action_str = ""
+            if self.state.history.history:
+                last_model_output = self.state.history.history[-1].model_output
+                if last_model_output:
+                    try:
+                        actions = last_model_output.action
+                        if isinstance(actions, list):
+                            last_action_str = " | ".join([str(a) for a in actions])
+                        else:
+                            last_action_str = str(actions)
+                    except: pass
+            await self.controller.refresh_hud(self.browser_context, last_action=last_action_str[:100])
 
         if self.state.history.is_done():
             if self.settings.validate_output and step < max_steps - 1:
@@ -424,7 +426,14 @@ class BrowserUseAgent(Agent):
 
     async def _handle_cleanup(self):
         """Handles cleanup after run."""
-        await self.close()
+        if self.inhibit_close:
+            logger.info("🚫 Cleanup inhibited: Browser will remain open.")
+        else:
+            try:
+                await self.close()
+            except Exception as e:
+                # Log as debug to avoid noise during forced shutdowns/interrupts
+                logger.debug(f"Error during agent cleanup (likely benign): {e}")
 
         if self.settings.generate_gif:
             output_path: str = 'agent_history.gif'

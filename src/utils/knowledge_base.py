@@ -47,11 +47,12 @@ def search_kb_files(dir_path: str, query: str) -> List[str]:
                     
                 path = os.path.join(root, filename)
                 try:
-                    with open(path, 'r', encoding='utf-8') as file:
-                        if query.lower() in file.read().lower():
-                            rel_path = os.path.relpath(path, dir_path)
-                            rel_path = rel_path.replace("\\", "/")
-                            matches.append(str(rel_path))
+                    # Use read_file_safe which handles utf-8
+                    content = read_file_safe(path)
+                    if content and query.lower() in content.lower():
+                        rel_path = os.path.relpath(path, dir_path)
+                        rel_path = rel_path.replace("\\", "/")
+                        matches.append(str(rel_path))
                 except Exception: pass
         return sorted(matches)
     except Exception as e:
@@ -62,5 +63,9 @@ def load_kb_content(dir_path: str, filename: str) -> str:
     """Loads content of a specific file."""
     if not dir_path or not filename:
         return ""
+        
+    if isinstance(filename, dict):
+        filename = filename.get('name', '') or str(filename.get('value', ''))
+        
     filepath = os.path.join(dir_path, filename)
     return read_file_safe(filepath) or ""

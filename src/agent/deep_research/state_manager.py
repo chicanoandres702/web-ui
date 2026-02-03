@@ -66,6 +66,11 @@ class DeepResearchStateManager:
 
                 for line in lines:
                     line = line.strip()
+                    
+                    # Handle current task marker (lines starting with "> ")
+                    if line.startswith("> "):
+                        line = line[2:].strip()
+
                     if line.startswith("## "):  # Category
                         if current_category:
                             loaded_plan.append(current_category)
@@ -83,9 +88,6 @@ class DeepResearchStateManager:
                         # Clean up markers added during save
                         if "**(Current)**" in task_desc:
                             task_desc = task_desc.replace("**(Current)**", "").strip()
-                        if line.startswith("> "):
-                            # If it was marked as current with blockquote
-                            task_desc = line[7:].replace("**(Current)**", "").strip()
 
                         current_category["tasks"].append(
                             ResearchTaskItem(task_description=task_desc, status=status, queries=None, result_summary=None)

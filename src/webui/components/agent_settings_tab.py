@@ -34,8 +34,9 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
     llm_comps, _ = create_llm_settings_ui(
         prefix="llm",
         label="LLM",
-        default_provider=os.getenv("DEFAULT_LLM", "ollama"),
+        default_provider="ollama",
         include_vision=True,
+        default_vision=False,
         include_ctx=True
     )
 
@@ -43,10 +44,12 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
     confirmer_comps, _ = create_llm_settings_ui(
         prefix="confirmer_llm",
         label="Confirmer LLM",
+        default_provider="ollama",
         include_vision=True,
+        default_vision=False,
         include_ctx=True,
         include_strictness=True,
-        default_strictness=10
+        default_strictness=7
     )
 
     with gr.Group():
@@ -63,6 +66,7 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         smart_retry_comps, smart_retry_container = create_llm_settings_ui(
             prefix="smart_retry_llm",
             label="Retry",
+            default_provider="ollama",
             visible=False
         )
 
@@ -82,6 +86,7 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         cheap_comps, cheap_container = create_llm_settings_ui(
             prefix="cheap_llm",
             label="Cheap",
+            default_provider="ollama",
             visible=False
         )
 
@@ -91,7 +96,9 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
     planner_comps, _ = create_llm_settings_ui(
         prefix="planner_llm",
         label="Planner LLM",
+        default_provider="ollama",
         include_vision=True,
+        default_vision=False,
         include_ctx=True
     )
 
@@ -159,7 +166,7 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         fast_mode = gr.Checkbox(
             label="Fast Mode",
             value=True,
-            info="Reduces delays and lowers strictness for faster execution.",
+            info="Reduces delays for faster execution.",
             interactive=True
         )
 
@@ -181,6 +188,13 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
             label="Require Confirmation (Human in the Loop)",
             value=False,
             info="Pause and ask for permission before executing critical actions (click, type, navigate).",
+            interactive=True
+        )
+
+        disable_hud = gr.Checkbox(
+            label="Disable HUD",
+            value=False,
+            info="Disable the in-browser Heads Up Display overlay.",
             interactive=True
         )
         
@@ -225,6 +239,7 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         enable_memory=enable_memory,
         auto_save_on_stuck=auto_save_on_stuck,
         require_confirmation=require_confirmation,
+        disable_hud=disable_hud,
         restrict_to_knowledge_base=restrict_to_knowledge_base,
         tool_calling_method=tool_calling_method,
         mcp_json_file=mcp_json_file,
@@ -257,3 +272,4 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         inputs=[mcp_json_file],
         outputs=[mcp_server_config, mcp_server_config]
     )
+    return tab_components

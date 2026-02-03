@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 POPULAR_PROMPTS = [
     [
         "Academic Research (Google Scholar)",
-        "Go to Google Scholar (scholar.google.com). Search for 'impact of artificial intelligence on healthcare'. For the top 3 results, extract the title, authors, and the APA citation (click the 'Cite' button). If a PDF is available, download it."
+        "Go to Google Scholar. Search for 'impact of artificial intelligence on healthcare'. For the top 3 results, extract the title, authors, and the APA citation (click the 'Cite' button). If a PDF is available, download it."
     ],
     [
         "YouTube Video Summary",
@@ -19,7 +19,7 @@ POPULAR_PROMPTS = [
     ],
     [
         "News Aggregation (Hacker News)",
-        "Navigate to 'https://news.ycombinator.com/'. Extract the titles and URLs of the top 10 stories. Save this list to a file named 'hackernews_top10.txt' in the downloads folder."
+        "Navigate to Hacker News. Extract the titles and URLs of the top 10 stories. Save this list to a file named 'hackernews_top10.txt' in the downloads folder."
     ],
     [
         "Shopping Price Comparison",
@@ -39,7 +39,7 @@ POPULAR_PROMPTS = [
     ],
     [
         "Google Docs Report Writing",
-        "Navigate to 'https://docs.new'. Write a short report about 'The Future of Space Exploration'. Use 'Times New Roman', size 12. Create a title, introduction, and 3 bullet points. Ensure you handle any sign-in prompts if they appear."
+        "Create a new Google Doc. Write a short report about 'The Future of Space Exploration'. Use 'Times New Roman', size 12. Create a title, introduction, and 3 bullet points. Ensure you handle any sign-in prompts if they appear."
     ]
 ]
 
@@ -123,4 +123,4 @@ def delete_custom_prompt(name: str) -> bool:
             logger.warning(f"Custom prompt file not found: {filepath}")
     except Exception as e:
         logger.error(f"Error deleting custom prompt: {e}")
-    return False
+    return False/streamline two brow

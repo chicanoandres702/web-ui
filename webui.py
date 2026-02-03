@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 import argparse
 from src.webui.interface import theme_map, create_ui
+from src.utils.utils import ensure_default_extraction_models, suppress_asyncio_cleanup_errors
 
 
 def main():
@@ -11,6 +12,8 @@ def main():
     parser.add_argument("--theme", type=str, default="Ocean", choices=theme_map.keys(), help="Theme to use for the UI")
     args = parser.parse_args()
 
+    suppress_asyncio_cleanup_errors()
+    ensure_default_extraction_models()
     demo = create_ui(theme_name=args.theme)
     demo.queue().launch(server_name=args.ip, server_port=args.port)
 

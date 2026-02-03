@@ -1,0 +1,508 @@
+import logging
+import json
+import os
+import base64
+import aiohttp
+from browser_use.browser.context import BrowserContext
+from src.utils.utils import save_text_to_file as utils_save_text, sanitize_filename
+from src.utils.memory_utils import reset_mem0, get_memory_manager
+from src.utils.knowledge_base import search_kb_files, load_kb_content, list_kb_files
+
+logger = logging.getLogger(__name__)
+
+class SystemActionsMixin:
+    def _register_system_actions(self):
+        @self.registry.action("Update the HUD (Heads Up Display) overlay on the page")
+        async def update_hud(browser: BrowserContext, data_json: str):
+            try:
+                data = json.loads(data_json)
+                return await self._update_hud_impl(browser, data)
+            except Exception as e:
+                return f"Error parsing HUD data: {e}"
+
+        @self.registry.action("Add a new step to the agent's execution plan")
+        async def add_plan_step(browser: BrowserContext, step_description: str):
+            if self.webui_manager and hasattr(self.webui_manager, "bu_plan"):
+                new_step = {"step": step_description, "status": "pending"}
+                self.webui_manager.bu_plan.append(new_step)
+                self.webui_manager.bu_plan_updated = True
+                # Also update the overlay immediately if possible
+                try:
+                    hud_data = {
+                        "plan": self.webui_manager.bu_plan,
+                        "goal": getattr(self.webui_manager, "current_goal", "Processing..."),
+                        "last_action": f"Added step: {step_description}"
+                    }
+                    await self._update_hud_impl(browser, hud_data)
+                except: pass
+                return f"Added step to plan: '{step_description}'"
+            return "Plan manager not available."
+
+        @self.registry.action("Update the status of a plan step. Status options: 'pending', 'in_progress', 'completed', 'failed'")
+        async def update_plan_step(browser: BrowserContext, step_index: int, status: str):
+            if not (self.webui_manager and hasattr(self.webui_manager, "bu_plan")):
+                return "Plan manager not available."
+
+            try:
+                step_index = int(step_index)
+            except ValueError:
+                return f"Invalid step_index: {step_index}. Must be an integer."
+
+            plan = self.webui_manager.bu_plan
+            idx = step_index - 1  # Convert 1-based to 0-based
+
+            if not (0 <= idx < len(plan)):
+                return f"Step index {step_index} out of bounds."
+
+            # Update status
+            plan[idx]["status"] = status
+            self.webui_manager.bu_plan_updated = True
+
+            # Trigger callback if registered
+            if hasattr(self, "callbacks") and "update_plan" in self.callbacks:
+                try:
+                    await self.callbacks["update_plan"](step_index, status)
+                except Exception as e:
+                    logger.warning(f"Error in update_plan callback: {e}")
+
+            # Construct helpful return message for the agent
+            msg = f"Updated step {step_index} status to '{status}'."
+
+            if status == "completed":
+                # Find next pending step
+                next_step_idx = -1
+                for i in range(idx + 1, len(plan)):
+                    if plan[i]["status"] == "pending":
+                        next_step_idx = i
+                        break
+
+                if next_step_idx != -1:
+                    next_step_num = next_step_idx + 1
+                    next_step_desc = plan[next_step_idx]['step']
+                    msg += f"\n👉 NEXT STEP ({next_step_num}): {next_step_desc}\nProceed to this step immediately."
+                else:
+                    msg += "\n✅ All steps completed. Verify goal and finish."
+            elif status == "failed":
+                msg += "\n❌ Step failed. Re-assess strategy or update plan."
+
+            try:
+                hud_data = {
+                    "plan": plan,
+                    "goal": getattr(self.webui_manager, "current_goal", "Processing..."),
+                    "last_action": msg
+                }
+                await self._update_hud_impl(browser, hud_data)
+            except Exception:
+                pass
+
+            return msg
+
+        @self.registry.action("Mark a specific step in the plan as completed")
+        async def mark_step_complete(browser: BrowserContext, step_index: int):
+            # Alias to update_plan_step for backward compatibility
+            return await update_plan_step(browser, step_index, "completed")
+
+        @self.registry.action("Save text content to a file")
+        async def save_text_to_file(filename: str, content: str, append: bool = False):
+            safe_dir = os.path.abspath("./tmp/downloads")
+            os.makedirs(safe_dir, exist_ok=True)
+            filepath = os.path.join(safe_dir, os.path.basename(filename))
+            mode = "a" if append else "w"
+            utils_save_text(filepath, content, mode)
+            return f"Saved content to {filepath}"
+
+        @self.registry.action("Clear browser cookies and local storage")
+        async def clear_browser_data(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                context = page.context
+                await context.clear_cookies()
+                await page.evaluate("try { window.localStorage.clear(); window.sessionStorage.clear(); } catch (e) {}")
+                return "Cleared cookies and local/session storage."
+            except Exception as e:
+                return f"Error clearing browser data: {e}"
+
+        @self.registry.action("Clear agent memory (Mem0)")
+        async def clear_agent_memory():
+            reset_mem0()
+            return "Agent memory (Mem0) cleared."
+
+        @self.registry.action("Save specific navigation knowledge for a website")
+        async def save_site_knowledge(browser: BrowserContext, domain: str, knowledge: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            # Use the shared memory manager for consistency
+            manager = get_memory_manager(self.kb_dir)
+            
+            if manager.save_site_knowledge(domain, knowledge):
+                 return f"Saved knowledge for {domain}."
+            return f"Failed to save knowledge for {domain}."
+
+        @self.registry.action("Save general knowledge/study notes to the knowledge base")
+        async def save_to_knowledge_base(filename: str, content: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            os.makedirs(self.kb_dir, exist_ok=True)
+            
+            if not (filename.endswith('.md') or filename.endswith('.txt')):
+                filename += '.md'
+            
+            safe_filename = sanitize_filename(filename)
+            filepath = os.path.join(self.kb_dir, safe_filename)
+            utils_save_text(filepath, content, "w")
+            return f"Saved knowledge to {filepath}"
+
+        @self.registry.action("Retrieve stored knowledge for a website")
+        async def get_site_knowledge(browser: BrowserContext, domain: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            manager = get_memory_manager(self.kb_dir)
+            content = manager.get_site_knowledge(domain)
+            
+            if content:
+                return f"Stored Knowledge for {domain}:\n{content}"
+            return f"No specific knowledge found for {domain}."
+
+        @self.registry.action("Download a file from a URL")
+        async def download_file(browser: BrowserContext, url: str, filename: str):
+            path = browser.config.save_downloads_path
+            if not path:
+                return "Error: No download path configured."
+            
+            os.makedirs(path, exist_ok=True)
+            safe_filename = "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')).strip()
+            filepath = os.path.join(path, safe_filename)
+            
+            page = await browser.get_current_page()
+            
+            # Strategy 1: Fetch via Page (Uses Browser Cookies/Session)
+            try:
+                js_script = """
+                    async (url) => {
+                        const response = await fetch(url);
+                        if (!response.ok) throw new Error(response.statusText);
+                        const blob = await response.blob();
+                        return new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
+                        });
+                    }
+                """
+                data_url = await page.evaluate(js_script, url)
+                # data_url is like "data:application/pdf;base64,JVBERi0xLjQK..."
+                if "," in data_url:
+                    _, encoded = data_url.split(",", 1)
+                else:
+                    encoded = data_url
+                
+                data = base64.b64decode(encoded)
+                with open(filepath, 'wb') as f:
+                    f.write(data)
+                return f"Successfully downloaded {url} to {filepath}"
+            except Exception as e_page:
+                logger.warning(f"Page fetch failed for {url}: {e_page}. Trying fallback.")
+            
+            # Strategy 2: Fallback to aiohttp (Manual Cookies)
+            try:
+                cookies = await page.context.cookies()
+                cookie_dict = {c['name']: c['value'] for c in cookies}
+                
+                async with aiohttp.ClientSession(cookies=cookie_dict) as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            content = await response.read()
+                            with open(filepath, 'wb') as f:
+                                f.write(content)
+                            return f"Successfully downloaded {url} to {filepath}"
+                        else:
+                            return f"Failed to download. Status code: {response.status}"
+            except Exception as e:
+                return f"Error downloading file: {e}"
+
+        @self.registry.action("Search the knowledge base for information")
+        async def search_knowledge_base(query: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            matches = search_kb_files(self.kb_dir, query)
+            if not matches:
+                return f"No matches found in knowledge base for query: '{query}'"
+            
+            # If few matches, return content of first few
+            result = f"Found {len(matches)} matches:\n"
+            for filename in matches[:3]: # Limit to top 3
+                content = load_kb_content(self.kb_dir, filename)
+                preview = content[:500] + "..." if len(content) > 500 else content
+                result += f"\n--- File: {filename} ---\n{preview}\n"
+            
+            if len(matches) > 3:
+                result += f"\n...and {len(matches) - 3} more files: {', '.join(matches[3:])}"
+                
+            return result
+
+        @self.registry.action("Read the full content of a specific knowledge base file")
+        async def read_knowledge_base_file(filename: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            content = load_kb_content(self.kb_dir, filename)
+            if not content:
+                return f"File '{filename}' not found or empty."
+            
+            return f"--- File: {filename} ---\n{content}"
+
+        @self.registry.action("List all available knowledge base files")
+        async def list_knowledge_base_files():
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            files = list_kb_files(self.kb_dir)
+            if not files:
+                return "No knowledge base files found."
+            
+            return f"Available Knowledge Base Files:\n" + "\n".join(files)
+import logging
+import json
+import os
+from browser_use.browser.context import BrowserContext
+from src.utils.utils import save_text_to_file as utils_save_text, sanitize_filename
+from src.utils.memory_utils import reset_mem0, get_memory_manager
+from src.utils.knowledge_base import search_kb_files, load_kb_content, list_kb_files
+from src.controller.helpers import download_resource
+
+logger = logging.getLogger(__name__)
+
+class SystemActionsMixin:
+    def _register_system_actions(self):
+        @self.registry.action("Update the HUD (Heads Up Display) overlay on the page")
+        async def update_hud(browser: BrowserContext, data_json: str):
+            try:
+                data = json.loads(data_json)
+                return await self._update_hud_impl(browser, data)
+            except Exception as e:
+                return f"Error parsing HUD data: {e}"
+
+        @self.registry.action("Add a new step to the plan. Optional: provide 'after_index' to insert after a specific step.")
+        async def add_plan_step(browser: BrowserContext, step_description: str, after_index: int = None):
+            if self.webui_manager and hasattr(self.webui_manager, "bu_plan"):
+                new_step = {"step": step_description, "status": "pending"}
+                
+                if after_index is not None:
+                    # Insert after the specified index (1-based)
+                    # e.g. after_index=1 -> insert at index 1 (which is 2nd position)
+                    idx = int(after_index)
+                    if idx < 0: idx = 0
+                    if idx > len(self.webui_manager.bu_plan): idx = len(self.webui_manager.bu_plan)
+                    self.webui_manager.bu_plan.insert(idx, new_step)
+                    actual_index = idx + 1
+                else:
+                    self.webui_manager.bu_plan.append(new_step)
+                    actual_index = len(self.webui_manager.bu_plan)
+
+                self.webui_manager.bu_plan_updated = True
+                
+                msg = f"Added step {actual_index}: '{step_description}'."
+                
+                try:
+                    hud_data = {
+                        "plan": self.webui_manager.bu_plan,
+                        "goal": getattr(self.webui_manager, "current_goal", "Processing..."),
+                        "last_action": msg
+                    }
+                    await self._update_hud_impl(browser, hud_data)
+                except: pass
+                return msg
+            return "Plan manager not available."
+
+        @self.registry.action("Update the status of a plan step. Status options: 'pending', 'in_progress', 'completed', 'failed'")
+        async def update_plan_step(browser: BrowserContext, step_index: int, status: str):
+            if not (self.webui_manager and hasattr(self.webui_manager, "bu_plan")):
+                return "Plan manager not available."
+
+            try:
+                step_index = int(step_index)
+            except ValueError:
+                return f"Invalid step_index: {step_index}. Must be an integer."
+
+            plan = self.webui_manager.bu_plan
+            idx = step_index - 1  # Convert 1-based to 0-based
+
+            if not (0 <= idx < len(plan)):
+                return f"Step index {step_index} out of bounds."
+
+            # Update status
+            plan[idx]["status"] = status
+            self.webui_manager.bu_plan_updated = True
+
+            # Trigger callback if registered
+            if hasattr(self, "callbacks") and "update_plan" in self.callbacks:
+                try:
+                    await self.callbacks["update_plan"](step_index, status)
+                except Exception as e:
+                    logger.warning(f"Error in update_plan callback: {e}")
+
+            # Construct helpful return message for the agent
+            msg = f"Updated step {step_index} status to '{status}'."
+
+            if status == "completed":
+                # Find next pending step
+                next_step_idx = -1
+                for i in range(idx + 1, len(plan)):
+                    if plan[i]["status"] == "pending":
+                        next_step_idx = i
+                        break
+
+                if next_step_idx != -1:
+                    next_step_num = next_step_idx + 1
+                    next_step_desc = plan[next_step_idx]['step']
+                    msg += f"\n👉 NEXT STEP ({next_step_num}): {next_step_desc}\nProceed to this step immediately."
+                else:
+                    msg += "\n✅ All steps completed. Verify goal and finish."
+            elif status == "failed":
+                msg += "\n❌ Step failed. Re-assess strategy or update plan."
+
+            try:
+                hud_data = {
+                    "plan": plan,
+                    "goal": getattr(self.webui_manager, "current_goal", "Processing..."),
+                    "last_action": msg
+                }
+                await self._update_hud_impl(browser, hud_data)
+            except Exception:
+                pass
+
+            return msg
+
+        @self.registry.action("Mark a specific step in the plan as completed")
+        async def mark_step_complete(browser: BrowserContext, step_index: int):
+            # Alias to update_plan_step for backward compatibility
+            return await update_plan_step(browser, step_index, "completed")
+
+        @self.registry.action("Save text content to a file")
+        async def save_text_to_file(filename: str, content: str, append: bool = False):
+            safe_dir = os.path.abspath("./tmp/downloads")
+            os.makedirs(safe_dir, exist_ok=True)
+            filepath = os.path.join(safe_dir, os.path.basename(filename))
+            mode = "a" if append else "w"
+            utils_save_text(filepath, content, mode)
+            return f"Saved content to {filepath}"
+
+        @self.registry.action("Clear browser cookies and local storage")
+        async def clear_browser_data(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                context = page.context
+                await context.clear_cookies()
+                await page.evaluate("try { window.localStorage.clear(); window.sessionStorage.clear(); } catch (e) {}")
+                return "Cleared cookies and local/session storage."
+            except Exception as e:
+                return f"Error clearing browser data: {e}"
+
+        @self.registry.action("Clear agent memory (Mem0)")
+        async def clear_agent_memory():
+            reset_mem0()
+            return "Agent memory (Mem0) cleared."
+
+        @self.registry.action("Save specific navigation knowledge for a website")
+        async def save_site_knowledge(browser: BrowserContext, domain: str, knowledge: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            # Use the shared memory manager for consistency
+            manager = get_memory_manager(self.kb_dir)
+            
+            if manager.save_site_knowledge(domain, knowledge):
+                 return f"Saved knowledge for {domain}."
+            return f"Failed to save knowledge for {domain}."
+
+        @self.registry.action("Save general knowledge/study notes to the knowledge base")
+        async def save_to_knowledge_base(filename: str, content: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            os.makedirs(self.kb_dir, exist_ok=True)
+            
+            if not (filename.endswith('.md') or filename.endswith('.txt')):
+                filename += '.md'
+            
+            safe_filename = sanitize_filename(filename)
+            filepath = os.path.join(self.kb_dir, safe_filename)
+            utils_save_text(filepath, content, "w")
+            return f"Saved knowledge to {filepath}"
+
+        @self.registry.action("Retrieve stored knowledge for a website")
+        async def get_site_knowledge(browser: BrowserContext, domain: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            manager = get_memory_manager(self.kb_dir)
+            content = manager.get_site_knowledge(domain)
+            
+            if content:
+                return f"Stored Knowledge for {domain}:\n{content}"
+            return f"No specific knowledge found for {domain}."
+
+        @self.registry.action("Download a file from a URL")
+        async def download_file(browser: BrowserContext, url: str, filename: str):
+            path = browser.config.save_downloads_path
+            if not path:
+                return "Error: No download path configured."
+            
+            os.makedirs(path, exist_ok=True)
+            safe_filename = "".join(c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')).strip()
+            filepath = os.path.join(path, safe_filename)
+            
+            page = await browser.get_current_page()
+            
+            try:
+                return await download_resource(page, url, filepath)
+            except Exception as e:
+                return f"Error downloading file: {e}"
+
+        @self.registry.action("Search the knowledge base for information")
+        async def search_knowledge_base(query: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            matches = search_kb_files(self.kb_dir, query)
+            if not matches:
+                return f"No matches found in knowledge base for query: '{query}'"
+            
+            # If few matches, return content of first few
+            result = f"Found {len(matches)} matches:\n"
+            for filename in matches[:3]: # Limit to top 3
+                content = load_kb_content(self.kb_dir, filename)
+                preview = content[:500] + "..." if len(content) > 500 else content
+                result += f"\n--- File: {filename} ---\n{preview}\n"
+            
+            if len(matches) > 3:
+                result += f"\n...and {len(matches) - 3} more files: {', '.join(matches[3:])}"
+                
+            return result
+
+        @self.registry.action("Read the full content of a specific knowledge base file")
+        async def read_knowledge_base_file(filename: str):
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            content = load_kb_content(self.kb_dir, filename)
+            if not content:
+                return f"File '{filename}' not found or empty."
+            
+            return f"--- File: {filename} ---\n{content}"
+
+        @self.registry.action("List all available knowledge base files")
+        async def list_knowledge_base_files():
+            if not self.kb_dir:
+                return "Knowledge base directory not configured."
+            
+            files = list_kb_files(self.kb_dir)
+            if not files:
+                return "No knowledge base files found."
+            
+            return f"Available Knowledge Base Files:\n" + "\n".join(files)

@@ -33,7 +33,7 @@ from src.agent.browser_use.browser_use_agent import BrowserUseAgent
 from src.controller.custom_controller import CustomController
 from src.utils.prompts import FULL_SYSTEM_PROMPT
 from src.utils.mcp_client import setup_mcp_client_and_tools
-from src.utils.utils import retry_async, clean_json_string
+from src.utils.utils import retry_async, clean_json_string, parse_json_safe
 from src.agent.deep_research.types import (
     DeepResearchState, 
     ResearchCategoryItem, 
@@ -76,7 +76,7 @@ async def planning_node(state: DeepResearchState) -> Dict[str, Any]:
     output_dir = state["output_dir"]
     state_manager = DeepResearchStateManager(output_dir)
 
-    if existing_plan and (state.get("current_category_index", 0) > 0 or state.get("current_task_index_in_category", 0) > 0):
+    if existing_plan:
         logger.info("Resuming with existing plan.")
         await asyncio.to_thread(state_manager.save_plan, existing_plan)  # Ensure it's saved initially
         # current_category_index and current_task_index_in_category should be set by _load_previous_state
@@ -92,13 +92,8 @@ async def planning_node(state: DeepResearchState) -> Dict[str, Any]:
 
     try:
         response = await retry_async(llm.ainvoke, messages, logger=logger, error_message="Planning LLM call failed")
-        raw_content = clean_json_string(response.content)
         
-        if not raw_content:
-            return {"error_message": "LLM returned empty content for research plan."}
-
-        logger.debug(f"LLM response for plan: {raw_content}")
-        parsed_plan_from_llm = json.loads(raw_content)
+        parsed_plan_from_llm = parse_json_safe(response.content)
         new_plan = parse_research_plan(parsed_plan_from_llm)
 
         if not new_plan:
@@ -116,7 +111,7 @@ async def planning_node(state: DeepResearchState) -> Dict[str, Any]:
         }
 
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON from LLM for plan: {e}. Response was: {raw_content}", exc_info=True)
+        logger.error(f"Failed to parse JSON from LLM for plan: {e}. Response was: {response.content}", exc_info=True)
         return {"error_message": f"LLM generated invalid JSON for research plan: {e}"}
     except Exception as e:
         logger.error(f"Error during planning: {e}", exc_info=True)
@@ -405,8 +400,8 @@ async def publish_node(state: DeepResearchState) -> Dict[str, Any]:
         browser_config = state["browser_config"]
         task_id = state["task_id"]
         
-        # Use the template URL from state, defaulting to docs.new
-        template_url = state.get("google_docs_template_url") or "https://docs.new"
+        # Use the template URL from state, defaulting to a new doc
+        template_url = state.get("google_docs_template_url") or "a new Google Doc"
         
         publish_task = f"""
         Create a new Google Doc based on the assignment requirements and write the research report into it.
@@ -612,7 +607,7 @@ class DeepResearchAgent:
             task_id: Optional[str] = None,
             save_dir: str = "./tmp/deep_research",
             max_parallel_browsers: int = 1,
-            google_docs_template_url: str = "https://docs.new",
+            google_docs_template_url: str = "a new Google Doc",
     ) -> Dict[str, Any]:
         """
         Starts the deep research process (Async Generator Version).

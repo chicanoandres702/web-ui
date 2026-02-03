@@ -302,7 +302,24 @@ async def run_agent_task(
         planning_llm = planner_llm if planner_llm else main_llm
         if planning_llm:
             from src.agent.planner import generate_hierarchical_plan
-            plan = await generate_hierarchical_plan(planning_llm, task, agent_settings["planner_system_prompt"])
+            
+            # Context Awareness: Check if browser is already open and get state
+            additional_context = None
+            if webui_manager.bu_browser_context:
+                try:
+                    page = await webui_manager.bu_browser_context.get_current_page()
+                    title = await page.title()
+                    url = page.url
+                    additional_context = f"Current Browser State:\nURL: {url}\nTitle: {title}"
+                except Exception as e:
+                    logger.warning(f"Failed to get browser context for planning: {e}")
+
+            plan = await generate_hierarchical_plan(
+                planning_llm, 
+                task, 
+                agent_settings["planner_system_prompt"],
+                additional_context
+            )
             
             if plan:
                 webui_manager.bu_plan = [{"step": step, "status": "pending"} for step in plan]
@@ -320,7 +337,15 @@ async def run_agent_task(
                 })
                 yield {chatbot_comp: gr.update(value=webui_manager.bu_chat_history)}
                 
-                task = f"Goal: {task}\n\nExecute the following plan step-by-step:\n{formatted_plan_text}\n\nIMPORTANT: Use the `update_plan_step(step_index, status)` tool to mark steps as 'in_progress' or 'completed' as you execute them to keep the user informed."
+                task = f"Goal: {task}\n\n"
+                task += f"📋 **Execution Plan**:\n{formatted_plan_text}\n\n"
+                task += "⚙️ **Execution Protocol**:\n"
+                task += "1. **Start Step**: Begin each step by calling `update_plan_step(step_index, 'in_progress')`.\n"
+                task += "2. **Complete Step**: When a step is finished, you MUST call `mark_step_complete(step_index)`.\n"
+                task += "3. **Follow Guidance**: The result of `mark_step_complete` will explicitly tell you the next step to take. You must follow this guidance.\n"
+                task += "4. **Add Subtasks**: If a step is complex, use `add_plan_step(description, after_index=current_index)` to break it down.\n"
+                task += "5. **Handle Failure**: If a step fails, use `update_plan_step(step_index, 'failed')` and reassess your strategy.\n"
+                task += "6. **Stay Sequential**: Do not skip steps unless instructed by a failure or guidance."
                 webui_manager.bu_agent_status = "### Agent Status\nRunning Plan..."
 
     # --- Prepare Directories ---
@@ -360,6 +385,13 @@ async def run_agent_task(
 
     try:
         await initialize_browser_infrastructure(webui_manager, browser_settings)
+        
+        # Inject initial plan overlay if plan exists
+        if hasattr(webui_manager, "bu_plan") and webui_manager.bu_plan:
+             try:
+                page = await webui_manager.bu_browser_context.get_current_page()
+                await webui_manager.bu_controller.execute_action_by_name("update_plan_overlay", {"plan_json": json.dumps(webui_manager.bu_plan)}, webui_manager.bu_browser_context)
+             except Exception: pass
 
         async def step_callback_wrapper(state: BrowserState, output: AgentOutput, step_num: int):
             await _handle_new_step(webui_manager, state, output, step_num)
@@ -693,6 +725,12 @@ async def handle_update_kb_list(memory_file_path: str):
 async def handle_load_kb_file(webui_manager: "WebuiManager", memory_file_path: str, selected_file: str):
     """Loads content of the selected KB file."""
     memory_content_comp = webui_manager.get_component_by_id("browser_use_agent.memory_content")
+    if isinstance(selected_file, list):
+        selected_file = selected_file[0] if selected_file else None
+    
+    if isinstance(selected_file, dict):
+        selected_file = selected_file.get('name', '') or str(selected_file.get('value', ''))
+
     if not memory_file_path or not selected_file:
         return {memory_content_comp: gr.update(value="")}
     base_dir = os.path.dirname(os.path.abspath(memory_file_path))
@@ -814,6 +852,12 @@ async def handle_save_generated_kb(webui_manager: "WebuiManager", title: str, co
 
 async def handle_resume_session(webui_manager: "WebuiManager", history_file: str, components: Dict[gr.components.Component, Any]):
     """Resumes a session from a history file."""
+    if isinstance(history_file, list):
+        history_file = history_file[0] if history_file else None
+    
+    if isinstance(history_file, dict):
+        history_file = history_file.get('name', '') or str(history_file.get('value', ''))
+
     if not history_file or not os.path.exists(history_file):
         gr.Warning("History file not found.")
         yield {}

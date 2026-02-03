@@ -18,6 +18,15 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
+def safe_int(value: Any, default: int) -> int:
+    """Safely converts a value to int, returning default on failure."""
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
+
 def update_model_dropdown(llm_provider):
     """
     Update the model name dropdown with predefined models for the selected provider.
@@ -32,6 +41,7 @@ def create_llm_settings_ui(
     default_provider: str = None,
     default_base_url: str = "http://137.131.201.189:11434",
     include_vision: bool = False,
+    default_vision: bool = False,
     include_ctx: bool = False,
     include_strictness: bool = False,
     default_strictness: int = 5,
@@ -77,7 +87,7 @@ def create_llm_settings_ui(
             if include_vision:
                 vision = gr.Checkbox(
                     label=f"Use Vision ({label})",
-                    value=False,
+                    value=default_vision,
                     interactive=interactive,
                     elem_id=f"{prefix}_use_vision"
                 )
@@ -162,14 +172,15 @@ def get_agent_settings_values(webui_manager, components: Dict[Component, Any]) -
     settings["ollama_num_ctx"] = get_setting("llm_ollama_num_ctx", 16000)
     settings["llm_base_url"] = get_setting("llm_base_url") or None
     settings["llm_api_key"] = get_setting("llm_api_key") or None
-    settings["max_steps"] = get_setting("max_steps", 100)
-    settings["max_actions"] = get_setting("max_actions", 10)
+    settings["max_steps"] = safe_int(get_setting("max_steps"), 100)
+    settings["max_actions"] = safe_int(get_setting("max_actions"), 10)
     settings["fast_mode"] = get_setting("fast_mode", False)
     settings["use_memory"] = get_setting("enable_memory", False)
     settings["auto_save_on_stuck"] = get_setting("auto_save_on_stuck", True)
     settings["require_confirmation"] = get_setting("require_confirmation", False)
+    settings["disable_hud"] = get_setting("disable_hud", False)
     settings["restrict_to_knowledge_base"] = get_setting("restrict_to_knowledge_base", False)
-    settings["max_input_tokens"] = get_setting("max_input_tokens", 128000)
+    settings["max_input_tokens"] = safe_int(get_setting("max_input_tokens"), 128000)
     
     tool_calling_str = get_setting("tool_calling_method", "auto")
     settings["tool_calling_method"] = tool_calling_str if tool_calling_str != "None" else None
@@ -182,7 +193,7 @@ def get_agent_settings_values(webui_manager, components: Dict[Component, Any]) -
     settings["planner_llm_provider_name"] = get_setting("planner_llm_provider") or None
     settings["planner_llm_model_name"] = get_setting("planner_llm_model_name")
     settings["planner_llm_temperature"] = get_setting("planner_llm_temperature", 0.6)
-    settings["planner_ollama_num_ctx"] = get_setting("planner_llm_ollama_num_ctx", 16000)
+    settings["planner_ollama_num_ctx"] = safe_int(get_setting("planner_llm_ollama_num_ctx"), 16000)
     settings["planner_llm_base_url"] = get_setting("planner_llm_base_url") or None
     settings["planner_llm_api_key"] = get_setting("planner_llm_api_key") or None
     settings["planner_use_vision"] = get_setting("planner_llm_use_vision", False)
@@ -195,10 +206,10 @@ def get_agent_settings_values(webui_manager, components: Dict[Component, Any]) -
     settings["confirmer_llm_provider_name"] = get_setting("confirmer_llm_provider") or None
     settings["confirmer_llm_model_name"] = get_setting("confirmer_llm_model_name")
     settings["confirmer_llm_temperature"] = get_setting("confirmer_llm_temperature", 0.6)
-    settings["confirmer_ollama_num_ctx"] = get_setting("confirmer_llm_ollama_num_ctx", 16000)
+    settings["confirmer_ollama_num_ctx"] = safe_int(get_setting("confirmer_llm_ollama_num_ctx"), 16000)
     settings["confirmer_llm_base_url"] = get_setting("confirmer_llm_base_url") or None
     settings["confirmer_llm_api_key"] = get_setting("confirmer_llm_api_key") or None
-    settings["confirmer_strictness"] = get_setting("confirmer_strictness", 5)
+    settings["confirmer_strictness"] = safe_int(get_setting("confirmer_strictness"), 5)
     settings["confirmer_use_vision"] = get_setting("confirmer_llm_use_vision", False)
 
     # Smart Retry
@@ -217,10 +228,6 @@ def get_agent_settings_values(webui_manager, components: Dict[Component, Any]) -
     settings["cheap_llm_base_url"] = get_setting("cheap_llm_base_url") or None
     settings["cheap_llm_api_key"] = get_setting("cheap_llm_api_key") or None
 
-    # Logic adjustments
-    if settings["fast_mode"]:
-        settings["confirmer_strictness"] = 1
-
     return settings
 
 def get_browser_settings_values(webui_manager, components: Dict[Component, Any]) -> Dict[str, Any]:
@@ -234,11 +241,12 @@ def get_browser_settings_values(webui_manager, components: Dict[Component, Any])
     settings["browser_binary_path"] = get_setting("browser_binary_path") or None
     settings["browser_user_data_dir"] = get_setting("browser_user_data_dir") or None
     settings["use_own_browser"] = get_setting("use_own_browser", False)
+    settings["enable_persistent_session"] = get_setting("enable_persistent_session", True)
     settings["keep_browser_open"] = get_setting("keep_browser_open", False)
     settings["headless"] = get_setting("headless", False)
     settings["disable_security"] = get_setting("disable_security", False)
-    settings["window_w"] = int(get_setting("window_w", 1280))
-    settings["window_h"] = int(get_setting("window_h", 1100))
+    settings["window_w"] = safe_int(get_setting("window_w"), 1280)
+    settings["window_h"] = safe_int(get_setting("window_h"), 1100)
     settings["cdp_url"] = get_setting("cdp_url") or None
     settings["wss_url"] = get_setting("wss_url") or None
     settings["save_recording_path"] = get_setting("save_recording_path") or None

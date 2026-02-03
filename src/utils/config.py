@@ -20,7 +20,7 @@ model_names = {
                "gemini-1.5-flash-8b-latest", "gemini-2.0-flash-thinking-exp-01-21", "gemini-2.0-pro-exp-02-05",
                "gemini-2.5-pro-preview-03-25", "gemini-2.5-flash-preview-04-17"],
     "ollama": ["qwen3:8b", "qwen2.5:7b", "qwen2.5:14b", "qwen2.5:32b", "qwen2.5-coder:14b", "qwen2.5-coder:32b", "llama2:7b",
-               "deepseek-r1:14b", "deepseek-r1:32b"],
+               "deepseek-r1:14b", "deepseek-r1:32b", "qwen3:4b", "gemma3:1b"],
     "azure_openai": ["gpt-4o", "gpt-4", "gpt-3.5-turbo"],
     "mistral": ["pixtral-large-latest", "mistral-large-latest", "mistral-small-latest", "ministral-8b-latest"],
     "alibaba": ["qwen-plus", "qwen-max", "qwen-vl-max", "qwen-vl-plus", "qwen-turbo", "qwen-long"],
@@ -98,3 +98,11 @@ model_names = {
         "Qwen/Qwen3-235B-A22B",
     ],
 }
+
+DISTRACTION_DOMAINS = [
+    "facebook.com", "twitter.com", "instagram.com", "reddit.com", "youtube.com", "tiktok.com", "pinterest.com"
+]
+
+EXTRANEOUS_URL_PATTERNS = [
+    "google_vignette", "share", "about:blank", "doubleclick", "ads", "tracking", "popup", "overlay"
+]

@@ -13,6 +13,7 @@ from src.utils.browser_factory import create_browser, create_context
 from src.browser.custom_browser import CustomBrowser
 from src.controller.custom_controller import CustomController
 from src.utils.prompts import FULL_SYSTEM_PROMPT, DEEP_RESEARCH_BROWSER_TASK_PROMPT, DEEP_RESEARCH_ACADEMIC_SEARCH_PROMPT, DEEP_RESEARCH_YOUTUBE_SEARCH_PROMPT
+from src.agent.factory import create_agent
 from src.utils.utils import run_tasks_in_parallel
 logger = logging.getLogger(__name__)
 
@@ -85,28 +86,20 @@ async def run_single_browser_task(
             
         bu_browser_context = await create_context(bu_browser, context_settings)
 
-        # Simple controller example, replace with your actual implementation if needed
-        bu_controller = CustomController()
-        if memory_file:
-            bu_controller.set_memory_file(memory_file)
-
         # Construct the task prompt for BrowserUseAgent
-        # Instruct it to find specific info and return title/URL
         if prompt_template:
             bu_task_prompt = prompt_template.format(task_query=task_data)
         else:
-            # If no template is provided, treat task_data as the full prompt
             bu_task_prompt = task_data
 
-        bu_agent_instance = BrowserUseAgent(
+        bu_agent_instance = await create_agent(
             task=bu_task_prompt,
-            llm=llm,  # Use the passed LLM
+            llm=llm,
             browser=bu_browser,
             browser_context=bu_browser_context,
-            controller=bu_controller,
             use_vision=use_vision,
-            source="webui",
-            extend_system_message=FULL_SYSTEM_PROMPT,
+            memory_file=memory_file,
+            source="deep_research_tool"
         )
 
         # Store instance for potential stop() call

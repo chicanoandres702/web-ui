@@ -16,6 +16,7 @@ from src.webui.components.browser_use_agent_handlers import (
     handle_refresh_history_files, handle_update_plan, handle_save_generated_kb,
     handle_resume_session
 )
+from src.utils.utils import ensure_default_extraction_models
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
     Create the run agent tab, defining UI, state, and handlers.
     """
     webui_manager.init_browser_use_agent()
+    ensure_default_extraction_models()
 
     # --- Define UI Components ---
     tab_components = {}
@@ -98,7 +100,18 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
                 memory_content = gr.TextArea(label="Memory Content", interactive=False, lines=10)
             
             with gr.Accordion("📊 Extraction Model", open=False):
-                extraction_model_dropdown = gr.Dropdown(label="Select Extraction Model", choices=[], value=None, interactive=True)
+                extraction_choices = []
+                ext_path = "./tmp/extraction_models"
+                if os.path.exists(ext_path):
+                    extraction_choices = sorted([f.replace(".json", "") for f in os.listdir(ext_path) if f.endswith(".json")])
+
+                extraction_model_dropdown = gr.Dropdown(
+                    label="Select Extraction Model",
+                    choices=extraction_choices,
+                    value=None,
+                    interactive=True,
+                    allow_custom_value=True
+                )
                 refresh_extraction_btn = gr.Button("🔄 Refresh Models", variant="secondary", scale=0)
             
             with gr.Accordion("📂 Session Management", open=False):

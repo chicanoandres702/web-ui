@@ -357,7 +357,7 @@ def create_deep_research_agent_tab(webui_manager: WebuiManager):
             save_dir = gr.Textbox(label="Research Save Dir", value="./tmp/deep_research",
                                    interactive=True)
         with gr.Row():
-            google_docs_template = gr.Textbox(label="Google Docs Template URL", value="https://docs.new", interactive=True, placeholder="https://docs.google.com/document/d/...")
+            google_docs_template = gr.Textbox(label="Google Docs Template URL", value="a new Google Doc", interactive=True, placeholder="e.g., https://docs.google.com/document/d/...")
     with gr.Row():
         stop_button = gr.Button("⏹️ Stop", variant="stop", scale=2)
         start_button = gr.Button("▶️ Run", variant="primary", scale=3)

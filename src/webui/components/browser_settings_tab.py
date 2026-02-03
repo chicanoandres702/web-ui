@@ -27,6 +27,29 @@ async def close_browser(webui_manager: WebuiManager):
         await webui_manager.bu_browser.close()
         webui_manager.bu_browser = None
 
+def get_session_info(user_data_dir):
+    """Checks the session directory size and existence."""
+    path = user_data_dir if user_data_dir and user_data_dir.strip() else "./browser_session"
+    abs_path = os.path.abspath(path)
+    
+    if not os.path.exists(abs_path):
+        return f"❌ Directory not found: {abs_path}\nSession data is likely not being saved here yet."
+    
+    total_size = 0
+    file_count = 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(abs_path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                if not os.path.islink(fp):
+                    total_size += os.path.getsize(fp)
+                file_count += 1
+    except Exception as e:
+        return f"⚠️ Error reading directory: {e}"
+    
+    size_mb = total_size / (1024 * 1024)
+    return f"✅ Session Directory Exists: {abs_path}\n📁 Files: {file_count} | 💾 Size: {size_mb:.2f} MB"
+
 def create_browser_settings_tab(webui_manager: WebuiManager):
     """
     Creates a browser settings tab.
@@ -40,20 +63,29 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
                 label="Browser Binary Path",
                 lines=1,
                 interactive=True,
-                placeholder="e.g. '/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome'"
+                placeholder="Auto-detected if empty. e.g. 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'"
             )
             browser_user_data_dir = gr.Textbox(
                 label="Browser User Data Dir",
                 lines=1,
                 interactive=True,
-                placeholder="Leave it empty if you use your default user data",
+                placeholder="Defaults to ./browser_session if empty (Recommended for persistence)",
             )
+        with gr.Row():
+            verify_session_btn = gr.Button("🔍 Verify Session Storage", size="sm", scale=0)
+            session_status = gr.Textbox(show_label=False, interactive=False, lines=1, scale=4, placeholder="Click verify to check storage usage...")
     with gr.Group():
         with gr.Row():
             use_own_browser = gr.Checkbox(
                 label="Use Own Browser",
                 value=bool(strtobool(os.getenv("USE_OWN_BROWSER", "false"))),
-                info="Use your existing browser instance",
+                info="Use system Chrome/Edge instead of bundled Chromium. Auto-detects path if empty.",
+                interactive=True
+            )
+            enable_persistent_session = gr.Checkbox(
+                label="Enable Persistent Session",
+                value=bool(strtobool(os.getenv("ENABLE_PERSISTENT_SESSION", "true"))),
+                info="Retain cookies, logins, and session data between runs. Uses ./browser_session by default.",
                 interactive=True
             )
             keep_browser_open = gr.Checkbox(
@@ -136,6 +168,7 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
             browser_binary_path=browser_binary_path,
             browser_user_data_dir=browser_user_data_dir,
             use_own_browser=use_own_browser,
+            enable_persistent_session=enable_persistent_session,
             keep_browser_open=keep_browser_open,
             headless=headless,
             disable_security=disable_security,
@@ -147,6 +180,8 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
             wss_url=wss_url,
             window_h=window_h,
             window_w=window_w,
+            verify_session_btn=verify_session_btn,
+            session_status=session_status,
         )
     )
     webui_manager.add_components("browser_settings", tab_components)
@@ -159,3 +194,6 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
     keep_browser_open.change(close_wrapper)
     disable_security.change(close_wrapper)
     use_own_browser.change(close_wrapper)
+    enable_persistent_session.change(close_wrapper)
+    
+    verify_session_btn.click(fn=get_session_info, inputs=[browser_user_data_dir], outputs=[session_status])
