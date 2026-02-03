@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any
 from playwright.async_api import async_playwright
 
 from browser_use.browser.browser import BrowserConfig
-from browser_use.browser.context import BrowserContextConfig
+from browser_use.browser.context import BrowserContextConfig, BrowserContext
 from src.browser.custom_browser import CustomBrowser
 
 logger = logging.getLogger(__name__)
@@ -41,9 +41,6 @@ def create_browser(config: dict) -> CustomBrowser:
         browser_user_data = os.path.abspath("./browser_session")
         os.makedirs(browser_user_data, exist_ok=True)
 
-    # NOTE: We do NOT add --user-data-dir to extra_browser_args because we use launch_persistent_context
-    # which requires user_data_dir as a positional argument, not a flag.
-
     disable_security = config.get("disable_security", False)
     if disable_security:
         extra_browser_args.extend(
@@ -79,6 +76,7 @@ def create_browser(config: dict) -> CustomBrowser:
 async def create_context(browser: CustomBrowser, config: dict):
     """
     Creates a new browser context.
+    Handles persistent sessions manually to ensure only one browser instance is launched.
     """
     window_w = int(config.get("window_w", 1280))
     window_h = int(config.get("window_h", 1100))
@@ -86,6 +84,67 @@ async def create_context(browser: CustomBrowser, config: dict):
     save_trace_path = config.get("save_trace_path")
     save_downloads_path = config.get("save_downloads_path", "./tmp/downloads")
 
+    # Check if we should launch a persistent context (Local only)
+    # We bypass browser.new_context() here to prevent double-launching (one persistent, one ephemeral)
+    if hasattr(browser, 'user_data_dir') and browser.user_data_dir and not browser.config.wss_url and not browser.config.cdp_url:
+        logger.info(f"Launching persistent browser context from: {browser.user_data_dir}")
+        
+        if not browser.playwright:
+            browser.playwright = await async_playwright().start()
+
+        browser_config = browser.config
+        
+        # Prepare arguments for launch_persistent_context
+        args = {
+            "user_data_dir": browser.user_data_dir,
+            "headless": browser_config.headless,
+            "args": browser_config.extra_browser_args,
+            "viewport": {"width": window_w, "height": window_h},
+            "device_scale_factor": 1,
+            "downloads_path": save_downloads_path,
+        }
+
+        if browser_config.browser_binary_path:
+            args["executable_path"] = browser_config.browser_binary_path
+
+        if save_recording_path:
+            os.makedirs(save_recording_path, exist_ok=True)
+            args["record_video_dir"] = save_recording_path
+            args["record_video_size"] = {"width": window_w, "height": window_h}
+            
+        if hasattr(browser_config, 'proxy') and browser_config.proxy:
+            args["proxy"] = browser_config.proxy
+
+        # Launch the persistent context directly
+        persistent_context = await browser.playwright.chromium.launch_persistent_context(**args)
+        
+        # Enable tracing if requested
+        if save_trace_path:
+            os.makedirs(save_trace_path, exist_ok=True)
+            await persistent_context.tracing.start(screenshots=True, snapshots=True, sources=True)
+            
+        # Wrap in BrowserContext to satisfy Agent interface
+        context_config = BrowserContextConfig(
+            window_width=window_w,
+            window_height=window_h,
+            save_recording_path=save_recording_path,
+            trace_path=save_trace_path,
+            save_downloads_path=save_downloads_path,
+        )
+        
+        browser_context = BrowserContext(browser=browser, config=context_config)
+        browser_context.context = persistent_context
+
+        # Polyfill for missing methods if BrowserContext wrapper is incomplete or version mismatch
+        if not hasattr(browser_context, 'get_current_page'):
+            async def _get_current_page():
+                if persistent_context.pages: return persistent_context.pages[-1]
+                return await persistent_context.new_page()
+            browser_context.get_current_page = _get_current_page
+        
+        return browser_context
+
+    # Fallback to standard ephemeral context (or remote connection)
     context_config = BrowserContextConfig(
         window_width=window_w,
         window_height=window_h,
@@ -95,48 +154,3 @@ async def create_context(browser: CustomBrowser, config: dict):
     )
 
     return await browser.new_context(config=context_config)
-
-
-class BrowserFactory:
-    """
-    Manages browser instances with persistent context support.
-    """
-    def __init__(self, user_data_dir: str = "./browser_session"):
-        # Ensure the session directory exists
-        self.user_data_dir = os.path.abspath(user_data_dir)
-        if not os.path.exists(self.user_data_dir):
-            os.makedirs(self.user_data_dir)
-        self.playwright = None
-        self.browser_context = None
-
-    async def setup_persistent_browser(self, headless: bool = False, viewport: Dict[str, int] = None, extra_args: list = None):
-        """
-        Launches a browser with a persistent context to save cookies/logins.
-        """
-        if not self.playwright:
-            self.playwright = await async_playwright().start()
-
-        if viewport is None:
-            viewport = {'width': 1280, 'height': 720}
-
-        args = [
-            "--disable-blink-features=AutomationControlled",
-            "--no-sandbox"
-        ]
-        if extra_args:
-            args.extend(extra_args)
-
-        # Using launch_persistent_context saves all cookies, local storage, etc.
-        self.browser_context = await self.playwright.chromium.launch_persistent_context(
-            user_data_dir=self.user_data_dir,
-            headless=headless,
-            args=args,
-            viewport=viewport
-        )
-        return self.browser_context
-
-    async def close(self):
-        if self.browser_context:
-            await self.browser_context.close()
-        if self.playwright:
-            await self.playwright.stop()

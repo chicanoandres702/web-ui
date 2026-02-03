@@ -21,6 +21,27 @@ class AgentHeuristics:
         self.cheap_model_probation = 0  # Steps to wait before retrying cheap model after failure
         self.processed_urls_for_subtasks = set()
 
+    async def _get_current_page(self):
+        """Safely retrieves the current page from the browser context."""
+        try:
+            context = self.agent.browser_context
+            # 1. Try standard method
+            if hasattr(context, "get_current_page"):
+                return await context.get_current_page()
+            
+            # 2. Try accessing underlying playwright context directly (if wrapper)
+            if hasattr(context, "context"):
+                playwright_ctx = context.context
+                if playwright_ctx and hasattr(playwright_ctx, "pages") and playwright_ctx.pages:
+                    return playwright_ctx.pages[-1]
+            
+            # 3. Try accessing pages directly (if it IS a Playwright context)
+            if hasattr(context, "pages") and context.pages:
+                return context.pages[-1]
+        except Exception as e:
+            logger.warning(f"Failed to retrieve current page: {e}")
+        return None
+
     def inject_message(self, content: str):
         """Injects a system message or state update into the agent's message manager."""
         if hasattr(self.agent, "message_manager"):
@@ -118,7 +139,7 @@ class AgentHeuristics:
                 return
 
             if "quiz" in self.agent.task.lower() or "test" in self.agent.task.lower():
-                page = await self.agent.browser_context.get_current_page()
+                page = await self._get_current_page()
                 content = await page.evaluate("document.body.innerText")
                 content_lower = content.lower()
                 indicators = ["quiz complete", "your score", "results:", "you scored", "thank you for playing", "100%", "completed"]
@@ -156,7 +177,7 @@ class AgentHeuristics:
     async def check_blocking_elements(self):
         """Checks for blocking elements (ads/popups) and injects a warning."""
         try:
-            page = await self.agent.browser_context.get_current_page()
+            page = await self._get_current_page()
             is_blocked = await page.evaluate(JS_DETECT_BLOCKING_ELEMENTS)
             if is_blocked:
                 msg = "SYSTEM ALERT: A large overlay, ad, or popup seems to be blocking the screen. This may prevent you from interacting with the page. Try using `clear_view` or `close_difficult_popup` to remove it."
@@ -180,7 +201,7 @@ class AgentHeuristics:
     async def check_login_status(self):
         """Checks if the user is logged in and injects a notification."""
         try:
-            page = await self.agent.browser_context.get_current_page()
+            page = await self._get_current_page()
             status_msg = await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
             
             if "User appears to be Logged In" in status_msg:
@@ -197,7 +218,7 @@ class AgentHeuristics:
             return
 
         try:
-            page = await self.agent.browser_context.get_current_page()
+            page = await self._get_current_page()
             content = await page.evaluate("document.body.innerText")
             full_context = f"{page.url}\n{content}"
             
@@ -229,7 +250,7 @@ class AgentHeuristics:
             return # No plan to add to
 
         try:
-            page = await self.agent.browser_context.get_current_page()
+            page = await self._get_current_page()
             url = page.url
             
             if url in self.processed_urls_for_subtasks:
@@ -271,7 +292,7 @@ class AgentHeuristics:
     async def detect_progress(self):
         """Detects progress indicators (e.g. 'Question 3 of 10') and injects them."""
         try:
-            page = await self.agent.browser_context.get_current_page()
+            page = await self._get_current_page()
             text = await page.evaluate("document.body.innerText")
             
             matches = re.findall(r'(?:Question|Step|Page)\s*(\d+)\s*(?:of|/)\s*(\d+)', text, re.IGNORECASE)
@@ -300,7 +321,7 @@ class AgentHeuristics:
             if self.agent.auto_save_on_stuck:
                 logger.info("💾 Auto-saving page content due to failure...")
                 try:
-                    page = await self.agent.browser_context.get_current_page()
+                    page = await self._get_current_page()
                     content = await page.evaluate("document.body.innerText")
                     title = await page.title()
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
