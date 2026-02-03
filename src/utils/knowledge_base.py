@@ -23,7 +23,7 @@ def list_kb_files(dir_path: str) -> List[str]:
                 if filename.endswith(".md") or filename.endswith(".txt"):
                     rel_path = os.path.relpath(os.path.join(root, filename), dir_path)
                     rel_path = rel_path.replace("\\", "/")
-                    files.append(rel_path)
+                    files.append(str(rel_path))
         files.sort()
         return files
     except Exception as e:
@@ -51,7 +51,7 @@ def search_kb_files(dir_path: str, query: str) -> List[str]:
                         if query.lower() in file.read().lower():
                             rel_path = os.path.relpath(path, dir_path)
                             rel_path = rel_path.replace("\\", "/")
-                            matches.append(rel_path)
+                            matches.append(str(rel_path))
                 except Exception: pass
         return sorted(matches)
     except Exception as e:

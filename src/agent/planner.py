@@ -33,7 +33,9 @@ async def generate_hierarchical_plan(llm: BaseChatModel, task: str, system_promp
         else:
             logger.warning(f"Planner output was not a list of strings: {content}")
             return []
-            
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON Decode Error in planner: {e}. Content: {content[:100]}...")
+        return []
     except Exception as e:
         logger.error(f"Error generating plan: {e}")
         return []

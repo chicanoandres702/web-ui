@@ -13,11 +13,30 @@ from src.utils.browser_factory import create_browser, create_context
 from src.browser.custom_browser import CustomBrowser
 from src.controller.custom_controller import CustomController
 from src.utils.prompts import FULL_SYSTEM_PROMPT, DEEP_RESEARCH_BROWSER_TASK_PROMPT, DEEP_RESEARCH_ACADEMIC_SEARCH_PROMPT, DEEP_RESEARCH_YOUTUBE_SEARCH_PROMPT
-
+from src.utils.utils import run_tasks_in_parallel
 logger = logging.getLogger(__name__)
 
 _AGENT_STOP_FLAGS = {}
 _BROWSER_AGENT_INSTANCES = {}
+
+SEARCH_TOOL_DEFINITIONS = [
+    {
+        "name": "parallel_browser_search",
+        "description": "Use this tool to actively search the web for information related to a specific research task or question. It runs up to {max_parallel_browsers} searches in parallel using a browser agent for better results than simple scraping. Provide a list of distinct search queries(up to {max_parallel_browsers}) that are likely to yield relevant information.",
+        "prompt_template": DEEP_RESEARCH_BROWSER_TASK_PROMPT,
+    },
+    {
+        "name": "academic_paper_search",
+        "description": "Use this tool to search specifically for academic papers, journals, and technical reports. It runs up to {max_parallel_browsers} searches in parallel. Provide a list of distinct search queries focused on finding scholarly sources and extracting APA citations.",
+        "prompt_template": DEEP_RESEARCH_ACADEMIC_SEARCH_PROMPT,
+    },
+    {
+        "name": "youtube_search",
+        "description": "Use this tool to search for YouTube videos and extract transcripts/summaries. It runs up to {max_parallel_browsers} searches in parallel. Provide a list of distinct search queries.",
+        "prompt_template": DEEP_RESEARCH_YOUTUBE_SEARCH_PROMPT,
+    },
+]
+SEARCH_TOOL_NAMES = [d["name"] for d in SEARCH_TOOL_DEFINITIONS]
 
 class BrowserSearchInput(BaseModel):
     queries: List[str] = Field(
@@ -162,20 +181,17 @@ async def _run_browser_search_tool(
         f"[Browser Tool {task_id}] Running search for {len(queries)} queries: {queries}"
     )
 
-    semaphore = asyncio.Semaphore(max_parallel_browsers)
-
     async def task_wrapper(query):
-        async with semaphore:
-            if stop_event.is_set():
-                logger.info(f"[Browser Tool {task_id}] Skipping task due to stop signal: {query}")
-                return {"query": query, "result": None, "status": "cancelled"}
-            return await run_single_browser_task(
-                query, task_id, llm, browser_config, stop_event,
-                memory_file=memory_file, shared_browser=shared_browser, prompt_template=prompt_template
-            )
+        if stop_event.is_set():
+            logger.info(f"[Browser Tool {task_id}] Skipping task due to stop signal: {query}")
+            return {"query": query, "result": None, "status": "cancelled"}
+        return await run_single_browser_task(
+            query, task_id, llm, browser_config, stop_event,
+            memory_file=memory_file, shared_browser=shared_browser, prompt_template=prompt_template
+        )
 
-    tasks = [task_wrapper(query) for query in queries]
-    search_results = await asyncio.gather(*tasks, return_exceptions=True)
+    task_factories = [partial(task_wrapper, query) for query in queries]
+    search_results = await run_tasks_in_parallel(task_factories, max_concurrent=max_parallel_browsers)
 
     processed_results = []
     for i, res in enumerate(search_results):
@@ -219,7 +235,7 @@ def _create_generic_search_tool(
         args_schema=BrowserSearchInput,
     )
 
-def create_browser_search_tool(
+def create_all_search_tools(
         llm: Any,
         browser_config: Dict[str, Any],
         task_id: str,
@@ -227,66 +243,24 @@ def create_browser_search_tool(
         max_parallel_browsers: int = 1,
         memory_file: Optional[str] = None,
         shared_browser: Optional[CustomBrowser] = None,
-) -> StructuredTool:
-    """Factory function to create the browser search tool with necessary dependencies."""
-    return _create_generic_search_tool(
-        name="parallel_browser_search",
-        description=f"Use this tool to actively search the web for information related to a specific research task or question. It runs up to {max_parallel_browsers} searches in parallel using a browser agent for better results than simple scraping. Provide a list of distinct search queries(up to {max_parallel_browsers}) that are likely to yield relevant information.",
-        prompt_template=DEEP_RESEARCH_BROWSER_TASK_PROMPT,
-        llm=llm,
-        browser_config=browser_config,
-        task_id=task_id,
-        stop_event=stop_event,
-        max_parallel_browsers=max_parallel_browsers,
-        memory_file=memory_file,
-        shared_browser=shared_browser,
-    )
-
-def create_academic_search_tool(
-        llm: Any,
-        browser_config: Dict[str, Any],
-        task_id: str,
-        stop_event: threading.Event,
-        max_parallel_browsers: int = 1,
-        memory_file: Optional[str] = None,
-        shared_browser: Optional[CustomBrowser] = None,
-) -> StructuredTool:
-    """Factory function to create the academic search tool."""
-    return _create_generic_search_tool(
-        name="academic_paper_search",
-        description=f"Use this tool to search specifically for academic papers, journals, and technical reports. It runs up to {max_parallel_browsers} searches in parallel. Provide a list of distinct search queries focused on finding scholarly sources and extracting APA citations.",
-        prompt_template=DEEP_RESEARCH_ACADEMIC_SEARCH_PROMPT,
-        llm=llm,
-        browser_config=browser_config,
-        task_id=task_id,
-        stop_event=stop_event,
-        max_parallel_browsers=max_parallel_browsers,
-        memory_file=memory_file,
-        shared_browser=shared_browser,
-    )
-
-def create_youtube_search_tool(
-        llm: Any,
-        browser_config: Dict[str, Any],
-        task_id: str,
-        stop_event: threading.Event,
-        max_parallel_browsers: int = 1,
-        memory_file: Optional[str] = None,
-        shared_browser: Optional[CustomBrowser] = None,
-) -> StructuredTool:
-    """Factory function to create the YouTube search tool."""
-    return _create_generic_search_tool(
-        name="youtube_search",
-        description=f"Use this tool to search for YouTube videos and extract transcripts/summaries. It runs up to {max_parallel_browsers} searches in parallel. Provide a list of distinct search queries.",
-        prompt_template=DEEP_RESEARCH_YOUTUBE_SEARCH_PROMPT,
-        llm=llm,
-        browser_config=browser_config,
-        task_id=task_id,
-        stop_event=stop_event,
-        max_parallel_browsers=max_parallel_browsers,
-        memory_file=memory_file,
-        shared_browser=shared_browser,
-    )
+) -> List[StructuredTool]:
+    """Factory function to create all search tools."""
+    tools = []
+    for tool_def in SEARCH_TOOL_DEFINITIONS:
+        description = tool_def["description"].format(max_parallel_browsers=max_parallel_browsers)
+        tools.append(_create_generic_search_tool(
+            name=tool_def["name"],
+            description=description,
+            prompt_template=tool_def["prompt_template"],
+            llm=llm,
+            browser_config=browser_config,
+            task_id=task_id,
+            stop_event=stop_event,
+            max_parallel_browsers=max_parallel_browsers,
+            memory_file=memory_file,
+            shared_browser=shared_browser,
+        ))
+    return tools
 
 async def stop_browsers_for_task(task_id: str):
     """Attempts to stop any BrowserUseAgent instances associated with the task_id."""

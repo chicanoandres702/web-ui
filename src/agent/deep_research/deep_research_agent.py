@@ -43,22 +43,20 @@ from src.agent.deep_research.types import (
     REPORT_FILENAME
 )
 from src.agent.deep_research.state_manager import (
-    load_previous_state, 
-    save_plan_to_md, 
-    save_search_results_to_json, 
-    save_report_to_md, 
-    archive_report_to_kb
+    DeepResearchStateManager,
+    parse_research_plan,
+    get_next_task_indices
 )
 from src.agent.deep_research.search_tool import (
-    create_browser_search_tool, 
-    create_academic_search_tool,
-    create_youtube_search_tool,
+    create_all_search_tools,
+    SEARCH_TOOL_NAMES,
     stop_browsers_for_task,
     run_single_browser_task,
     _AGENT_STOP_FLAGS
 )
 from src.utils.prompts import DEEP_RESEARCH_PLANNING_PROMPT, DEEP_RESEARCH_SYNTHESIS_SYSTEM_PROMPT
 from src.agent.deep_research.tool_executor import execute_tools
+from src.agent.deep_research.assessment import assess_task_completion
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +74,11 @@ async def planning_node(state: DeepResearchState) -> Dict[str, Any]:
     topic = state["topic"]
     existing_plan = state.get("research_plan")
     output_dir = state["output_dir"]
+    state_manager = DeepResearchStateManager(output_dir)
 
     if existing_plan and (state.get("current_category_index", 0) > 0 or state.get("current_task_index_in_category", 0) > 0):
         logger.info("Resuming with existing plan.")
-        await asyncio.to_thread(save_plan_to_md, existing_plan, output_dir)  # Ensure it's saved initially
+        await asyncio.to_thread(state_manager.save_plan, existing_plan)  # Ensure it's saved initially
         # current_category_index and current_task_index_in_category should be set by _load_previous_state
         return {"research_plan": existing_plan}
 
@@ -94,64 +93,20 @@ async def planning_node(state: DeepResearchState) -> Dict[str, Any]:
     try:
         response = await retry_async(llm.ainvoke, messages, logger=logger, error_message="Planning LLM call failed")
         raw_content = clean_json_string(response.content)
+        
+        if not raw_content:
+            return {"error_message": "LLM returned empty content for research plan."}
 
         logger.debug(f"LLM response for plan: {raw_content}")
         parsed_plan_from_llm = json.loads(raw_content)
-
-        new_plan: List[ResearchCategoryItem] = []
-        for cat_idx, category_data in enumerate(parsed_plan_from_llm):
-            if not isinstance(category_data,
-                              dict) or "category_name" not in category_data or "tasks" not in category_data:
-                logger.warning(f"Skipping invalid category data: {category_data}")
-                continue
-
-            tasks: List[ResearchTaskItem] = []
-            for task_idx, task_desc in enumerate(category_data["tasks"]):
-                if isinstance(task_desc, str):
-                    tasks.append(
-                        ResearchTaskItem(
-                            task_description=task_desc,
-                            status="pending",
-                            queries=None,
-                            result_summary=None,
-                        )
-                    )
-                else:  # Sometimes LLM puts tasks as {"task": "description"}
-                    if isinstance(task_desc, dict) and "task_description" in task_desc:
-                        tasks.append(
-                            ResearchTaskItem(
-                                task_description=task_desc["task_description"],
-                                status="pending",
-                                queries=None,
-                                result_summary=None,
-                            )
-                        )
-                    elif isinstance(task_desc, dict) and "task" in task_desc:  # common LLM mistake
-                        tasks.append(
-                            ResearchTaskItem(
-                                task_description=task_desc["task"],
-                                status="pending",
-                                queries=None,
-                                result_summary=None,
-                            )
-                        )
-                    else:
-                        logger.warning(
-                            f"Skipping invalid task data: {task_desc} in category {category_data['category_name']}")
-
-            new_plan.append(
-                ResearchCategoryItem(
-                    category_name=category_data["category_name"],
-                    tasks=tasks,
-                )
-            )
+        new_plan = parse_research_plan(parsed_plan_from_llm)
 
         if not new_plan:
             logger.error("LLM failed to generate a valid plan structure from JSON.")
             return {"error_message": "Failed to generate research plan structure."}
 
         logger.info(f"Generated research plan with {len(new_plan)} categories.")
-        await asyncio.to_thread(save_plan_to_md, new_plan, output_dir, 0, 0)  # Save the hierarchical plan
+        await asyncio.to_thread(state_manager.save_plan, new_plan, 0, 0)  # Save the hierarchical plan
 
         return {
             "research_plan": new_plan,
@@ -185,6 +140,7 @@ async def research_execution_node(state: DeepResearchState) -> Dict[str, Any]:
     tools = state["tools"]
     output_dir = str(state["output_dir"])
     task_id = state["task_id"]  # For _AGENT_STOP_FLAGS
+    state_manager = DeepResearchStateManager(output_dir)
 
     # This check should ideally be handled by `should_continue`
     if not plan or cat_idx >= len(plan):
@@ -192,7 +148,7 @@ async def research_execution_node(state: DeepResearchState) -> Dict[str, Any]:
         return {}  # should route to synthesis
 
     # Update plan file to highlight current task
-    await asyncio.to_thread(save_plan_to_md, plan, output_dir, cat_idx, task_idx)
+    await asyncio.to_thread(state_manager.save_plan, plan, cat_idx, task_idx)
 
     current_category = plan[cat_idx]
     if task_idx >= len(current_category["tasks"]):
@@ -210,12 +166,7 @@ async def research_execution_node(state: DeepResearchState) -> Dict[str, Any]:
     if current_task["status"] == "completed":
         logger.info(
             f"Task '{current_task['task_description']}' in category '{current_category['category_name']}' already completed. Skipping.")
-        # Logic to find next task
-        next_task_idx = task_idx + 1
-        next_cat_idx = cat_idx
-        if next_task_idx >= len(current_category["tasks"]):
-            next_cat_idx += 1
-            next_task_idx = 0
+        next_cat_idx, next_task_idx = get_next_task_indices(plan, cat_idx, task_idx)
         return {
             "current_category_index": next_cat_idx,
             "current_task_index_in_category": next_task_idx,
@@ -274,38 +225,19 @@ async def research_execution_node(state: DeepResearchState) -> Dict[str, Any]:
 
             if stop_requested:
                 current_task["status"] = "pending"
-                await asyncio.to_thread(save_plan_to_md, plan, output_dir, cat_idx, task_idx)
+                await asyncio.to_thread(state_manager.save_plan, plan, cat_idx, task_idx)
                 return {"stop_requested": True, "research_plan": plan, "current_category_index": cat_idx,
                         "current_task_index_in_category": task_idx}
 
-            # After processing all tool calls for this task
-            step_failed_tool_execution = any("Error:" in str(tr.content) for tr in tool_results)
-            # Consider a task successful if a browser search was attempted and didn't immediately error out during call
-            # The browser search itself returns status for each query. 
-            browser_tool_attempted_successfully = "parallel_browser_search" in executed_tool_names and not step_failed_tool_execution
-
-            if step_failed_tool_execution:
-                current_task["status"] = "failed"
-                current_task[
-                    "result_summary"] = f"Tool execution failed. Errors: {[tr.content for tr in tool_results if 'Error' in str(tr.content)]}"
-            elif executed_tool_names:  # If any tool was called
-                current_task["status"] = "completed"
-                current_task["result_summary"] = f"Executed tool(s): {', '.join(executed_tool_names)}."
-                # TODO: Could ask LLM to summarize the tool_results for this task if needed, rather than just listing tools.
-            else:  # No tool calls but AI response had .tool_calls structure (empty)
-                current_task["status"] = "failed"  # Or a more specific status
-                current_task["result_summary"] = "LLM prepared for tool call but provided no tools."
+            # Assess completion
+            status, summary = assess_task_completion(tool_results, executed_tool_names)
+            current_task["status"] = status
+            current_task["result_summary"] = summary
 
         # Save progress
-        await asyncio.to_thread(save_plan_to_md, plan, output_dir, next_cat_idx, next_task_idx)
-        await asyncio.to_thread(save_search_results_to_json, current_search_results, output_dir)
-
-        # Determine next indices
-        next_task_idx = task_idx + 1
-        next_cat_idx = cat_idx
-        if next_task_idx >= len(current_category["tasks"]):
-            next_cat_idx += 1
-            next_task_idx = 0
+        next_cat_idx, next_task_idx = get_next_task_indices(plan, cat_idx, task_idx)
+        await asyncio.to_thread(state_manager.save_plan, plan, next_cat_idx, next_task_idx)
+        await asyncio.to_thread(state_manager.save_search_results, current_search_results)
 
         updated_messages = state["messages"] + current_task_message_history + [ai_response] + tool_results
 
@@ -321,13 +253,9 @@ async def research_execution_node(state: DeepResearchState) -> Dict[str, Any]:
         logger.error(f"Unhandled error during research execution for task '{current_task['task_description']}': {e}",
                      exc_info=True)
         current_task["status"] = "failed"
-        await asyncio.to_thread(save_plan_to_md, plan, output_dir, cat_idx, task_idx)
+        await asyncio.to_thread(state_manager.save_plan, plan, cat_idx, task_idx)
         # Determine next indices even on error to attempt to move on
-        next_task_idx = task_idx + 1
-        next_cat_idx = cat_idx
-        if next_task_idx >= len(current_category["tasks"]):
-            next_cat_idx += 1
-            next_task_idx = 0
+        next_cat_idx, next_task_idx = get_next_task_indices(plan, cat_idx, task_idx)
         return {
             "research_plan": plan,
             "current_category_index": next_cat_idx,
@@ -349,11 +277,12 @@ async def synthesis_node(state: DeepResearchState) -> Dict[str, Any]:
     search_results = state.get("search_results", [])
     output_dir = state["output_dir"]
     plan = state["research_plan"]  # Include plan for context
+    state_manager = DeepResearchStateManager(output_dir)
 
     if not search_results:
         logger.warning("No search results found to synthesize report.")
         report = f"# Research Report: {topic}\n\nNo information was gathered during the research process."
-        await asyncio.to_thread(save_report_to_md, report, output_dir)
+        await asyncio.to_thread(state_manager.save_report, report)
         return {"final_report": report}
 
     logger.info(
@@ -372,7 +301,7 @@ async def synthesis_node(state: DeepResearchState) -> Dict[str, Any]:
         result_data = result_entry.get("result")  # From BrowserUseAgent's final_result
         tool_output_str = result_entry.get("output")  # From other tools
 
-        if tool_name in ["parallel_browser_search", "academic_paper_search", "youtube_search"] and status == "completed" and result_data:
+        if tool_name in SEARCH_TOOL_NAMES and status == "completed" and result_data:
             # result_data is the summary from BrowserUseAgent
             if tool_name == "academic_paper_search":
                 source_type = "Academic Source"
@@ -385,7 +314,7 @@ async def synthesis_node(state: DeepResearchState) -> Dict[str, Any]:
             formatted_results += f"- **Summary:**\n{result_data}\n"  # result_data is already a summary string here
             formatted_results += "---\n"
             
-        elif tool_name not in ["parallel_browser_search", "academic_paper_search", "youtube_search"] and status == "completed" and tool_output_str:
+        elif tool_name not in SEARCH_TOOL_NAMES and status == "completed" and tool_output_str:
             formatted_results += f'### Finding from Tool: "{tool_name}" (Args: {result_entry.get("args")})\n'
             formatted_results += f"- **Output:**\n{tool_output_str}\n"
             formatted_results += "---\n"
@@ -449,10 +378,10 @@ async def synthesis_node(state: DeepResearchState) -> Dict[str, Any]:
             final_report_md += report_references_section
 
         logger.info("Successfully synthesized the final report.")
-        await asyncio.to_thread(save_report_to_md, final_report_md, output_dir)
+        await asyncio.to_thread(state_manager.save_report, final_report_md)
         
         if state.get("memory_file"):
-            await asyncio.to_thread(archive_report_to_kb, final_report_md, topic, state["memory_file"])
+            await asyncio.to_thread(state_manager.archive_report, final_report_md, topic, state["memory_file"])
             
         return {"final_report": final_report_md}
 
@@ -603,34 +532,18 @@ class DeepResearchAgent:
             ReadFileTool(),
             ListDirectoryTool(),
         ]  # Basic file operations
-        browser_use_tool = create_browser_search_tool(
+        
+        search_tools = create_all_search_tools(
             llm=self.llm,
             browser_config=self.browser_config,
             task_id=task_id,
             stop_event=stop_event,
             max_parallel_browsers=max_parallel_browsers,
             memory_file=self.memory_file,
-            shared_browser=shared_browser,
+            shared_browser=shared_browser
         )
-        academic_search_tool = create_academic_search_tool(
-            llm=self.llm,
-            browser_config=self.browser_config,
-            task_id=task_id,
-            stop_event=stop_event,
-            max_parallel_browsers=max_parallel_browsers,
-            memory_file=self.memory_file,
-            shared_browser=shared_browser,
-        )
-        youtube_search_tool = create_youtube_search_tool(
-            llm=self.llm,
-            browser_config=self.browser_config,
-            task_id=task_id,
-            stop_event=stop_event,
-            max_parallel_browsers=max_parallel_browsers,
-            memory_file=self.memory_file,
-            shared_browser=shared_browser,
-        )
-        tools += [browser_use_tool, academic_search_tool, youtube_search_tool]
+        tools.extend(search_tools)
+        
         # Add MCP tools if config is provided
         if self.mcp_server_config:
             try:
@@ -766,7 +679,8 @@ class DeepResearchAgent:
 
         if task_id:
             logger.info(f"Attempting to resume task {task_id}...")
-            loaded_state = await asyncio.to_thread(load_previous_state, task_id, output_dir)
+            state_manager = DeepResearchStateManager(output_dir)
+            loaded_state = await asyncio.to_thread(state_manager.load_state)
             initial_state.update(loaded_state)
             if loaded_state.get("research_plan"):
                 logger.info(

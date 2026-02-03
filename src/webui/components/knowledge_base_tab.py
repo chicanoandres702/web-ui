@@ -59,10 +59,14 @@ def create_knowledge_base_tab(webui_manager: WebuiManager):
 
     def list_files(dir_path):
         files = list_kb_files(dir_path)
+        if files and isinstance(files, list):
+            files = [str(f) for f in files]
         return gr.update(choices=files)
 
     def search_files(dir_path, query):
         matches = search_kb_files(dir_path, query)
+        if matches and isinstance(matches, list):
+            matches = [str(m) for m in matches]
         return gr.update(choices=matches)
 
     def load_file_content(dir_path, filename):

@@ -3,7 +3,7 @@ import re
 import os
 import time
 from pathlib import Path
-from typing import Dict, Optional, Callable, Any
+from typing import Dict, Optional, Callable, Any, List
 import requests
 import json
 import gradio as gr
@@ -185,7 +185,11 @@ async def retry_async(
 
 
 def clean_json_string(content: str) -> str:
-    """Cleans a string to extract JSON content, removing markdown code blocks."""
+    """Cleans a string to extract JSON content, removing markdown code blocks and thinking traces."""
+    # Remove <think> blocks (common in reasoning models)
+    if "<think>" in content:
+        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL)
+
     content = content.strip()
     if content.startswith("```json"):
         content = content[7:]
@@ -193,4 +197,33 @@ def clean_json_string(content: str) -> str:
         content = content[3:]
     if content.endswith("```"):
         content = content[:-3]
-    return content.strip()
+    
+    content = content.strip()
+    
+    # Attempt to find JSON start/end if extraneous text exists
+    if content and not (content.startswith("{") or content.startswith("[")):
+        match = re.search(r'(\{|\[)', content)
+        if match:
+            content = content[match.start():]
+            
+    if content and not (content.endswith("}") or content.endswith("]")):
+        last_brace = content.rfind("}")
+        last_bracket = content.rfind("]")
+        end_index = max(last_brace, last_bracket)
+        if end_index != -1:
+            content = content[:end_index+1]
+            
+    return content
+
+
+async def run_tasks_in_parallel(
+    task_factories: List[Callable[[], Any]],
+    max_concurrent: int = 5,
+    return_exceptions: bool = True
+) -> List[Any]:
+    """Runs a list of async task factories (callables returning coroutines) with a concurrency limit."""
+    semaphore = asyncio.Semaphore(max_concurrent)
+    async def worker(factory):
+        async with semaphore:
+            return await factory()
+    return await asyncio.gather(*(worker(f) for f in task_factories), return_exceptions=return_exceptions)

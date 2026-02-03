@@ -1,10 +1,12 @@
 import json
 import logging
 import asyncio
+from functools import partial
 from typing import List, Dict, Tuple, Any
 from langchain_core.tools import Tool
 from langchain_core.messages import ToolMessage
-from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS
+from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS, SEARCH_TOOL_NAMES
+from src.utils.utils import run_tasks_in_parallel
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ async def _execute_single_tool(
         tool_output = await selected_tool.ainvoke(tool_args)
         logger.info(f"Tool '{tool_name}' executed successfully.")
 
-        if tool_name in ["parallel_browser_search", "academic_paper_search", "youtube_search"]:
+        if tool_name in SEARCH_TOOL_NAMES:
             if isinstance(tool_output, list):
                 result["search_results"].extend(tool_output)
         else:
@@ -71,8 +73,8 @@ async def execute_tools(
 ) -> Tuple[List[ToolMessage], List[str], bool]:
     """Executes a list of tool calls concurrently and returns results."""
     
-    tasks = [_execute_single_tool(tc, tools, task_id) for tc in tool_calls]
-    results = await asyncio.gather(*tasks)
+    task_factories = [partial(_execute_single_tool, tc, tools, task_id) for tc in tool_calls]
+    results = await run_tasks_in_parallel(task_factories, max_concurrent=10)
     
     tool_results = []
     executed_tool_names = []

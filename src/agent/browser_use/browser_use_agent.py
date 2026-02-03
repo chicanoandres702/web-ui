@@ -269,6 +269,37 @@ class BrowserUseAgent(Agent):
             
             self.using_cheap_model = False # Ensure we don't show cost saver badge
             self.state.consecutive_failures = 0  # Reset counter to give new model a chance
+            
+    def _suggest_alternative_strategy(self):
+        """Injects strategy hints if the agent is failing."""
+        # If consecutive failures is 0, everything is fine (or just reset by model switcher)
+        if self.state.consecutive_failures == 0:
+            return
+
+        # If we have failures, inject a hint
+        if self.state.consecutive_failures == 1:
+            msg = "⚠️ Action failed. Strategy Hint: Check if the element is covered by a popup, try scrolling to make it visible, or use a different selector."
+            self._inject_message(msg)
+        elif self.state.consecutive_failures > 1:
+             msg = f"⚠️ Action failed {self.state.consecutive_failures} times. STOP repeating the same action. You MUST try a different strategy (e.g. search instead of click, go back, or use a different tool)."
+             self._inject_message(msg)
+
+    def _inject_message(self, content: str):
+        if hasattr(self, "message_manager"):
+             try:
+                step = len(self.state.history.history) + 1
+                self.message_manager.add_state_message(
+                    self.state, 
+                    result=[ActionResult(error=content, include_in_memory=True)],
+                    step_info=AgentStepInfo(step_number=step, max_steps=100)
+                )
+             except Exception as e:
+                 logger.warning(f"Failed to inject strategy hint via state message: {e}")
+                 try:
+                     # Fallback: Try adding as a user message if state injection fails
+                     self.message_manager.add_user_message(f"System Notification: {content}")
+                 except Exception as inner_e:
+                     logger.warning(f"Failed to inject strategy hint via fallback: {inner_e}")
 
     async def _check_max_failures(self) -> bool:
         """Checks if max failures reached and handles auto-save."""
@@ -327,6 +358,9 @@ class BrowserUseAgent(Agent):
 
         # Manage Model Switching (Cost Saver / Smart Retry)
         self._manage_model_switching()
+
+        # Suggest alternative strategies on failure
+        self._suggest_alternative_strategy()
 
         # Check if we should stop due to too many failures
         if await self._check_max_failures():

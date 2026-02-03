@@ -66,6 +66,9 @@ def get_all_prompts() -> List[Tuple[str, str]]:
 
 def get_prompt_by_name(name: str) -> Optional[str]:
     """Retrieves content for a specific prompt name."""
+    if not name:
+        return None
+        
     # Check defaults
     for p_name, p_content in POPULAR_PROMPTS:
         if p_name == name:

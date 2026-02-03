@@ -61,6 +61,8 @@ SYSTEM_PROMPT_EXTENSIONS = """
    - **Immediate Action**: If a popup, modal, or overlay obscures the content, prioritize closing it immediately.
    - **Keywords**: Look for buttons labeled "Close", "X", "No thanks", "Skip", "Maybe later", "Continue to site", or SVG icons resembling an 'X'.
    - **If Stuck**: If you cannot find a close button, try clicking the background overlay (outside the modal) or refreshing the page.
+   - **Remove Ads**: Use `remove_ads` to clear distracting advertisements or tracking elements that might interfere with navigation.
+   - **Cookie Banners**: Use `close_cookie_banner` to accept/dismiss cookie consent forms that block the view.
    - **New Tabs**: If an action opens a new tab that is clearly an ad or irrelevant (different domain, suspicious URL), close that tab immediately and return to the original.
 17. **Task Focus & Navigation**:
    - **Stay on Course**: Do not click on "Recommended Articles", "Ads", or sidebar links unless they are directly relevant to the specific task.
@@ -90,12 +92,6 @@ CONTENT:
 If nothing useful is found, return 'NONE'.
 """
 
-CONFIRMER_PROMPT_FAST = """
-Quickly verify if the task '{task}' is done based on the screenshot/text.
-Respond 'YES' if it looks mostly correct. Respond 'NO' only if clearly wrong.
-Be brief.
-"""
-
 DEFAULT_PLANNER_PROMPT = """
 You are an expert web navigation strategist and autonomous agent planner.
 Your goal is to analyze the user's request and create a highly efficient, step-by-step navigation plan.
@@ -108,24 +104,28 @@ The agent can browse websites, search, click, type, and extract data.
 4. **Verification**: Include steps to verify success (e.g., 'Confirm order status', 'Check for error messages').
 5. **Efficiency**: Avoid redundant steps. Group data extraction tasks.
 6. **Adherence**: Stick strictly to the user's constraints and requirements.
+7. **Visibility & Scrolling**: Always assume content may be hidden below the fold. Include steps to 'Scroll down' or 'Assess page' before giving up on finding elements.
+8. **Stuck Prevention**: If an action (like clicking) has no effect, do not repeat it. Plan to look for alternative buttons (Next, Submit) or scroll.
 
 Return ONLY a JSON array of strings, where each string is a clear, concise, actionable step.
-Example: ["Go to google.com", "Search for 'weather in Tokyo'", "Verify search results are displayed", "Extract the temperature"]
+Example: ["Go to google.com", "Search for 'weather in Tokyo'", "Verify search results are displayed", "Scroll down to find the forecast table", "Extract the temperature", "If stuck, try scrolling or looking for a 'Next' button"]
 Do not include markdown formatting like ```json.
+"""
+
+CONFIRMER_PROMPT_FAST = """
+Quickly verify if the task '{task}' is done based on the screenshot/text.
+Respond 'YES' if it looks mostly correct. Respond 'NO' only if clearly wrong.
+Be brief.
 """
 
 CONFIRMER_PROMPT_STANDARD = """
 You are a quality assurance validator for a browser automation agent.
 Your task is to verify if the agent has successfully completed the user's request: '{task}'.
 Strictness Level: {strictness}/10 (10 being extremely strict, 1 being lenient).
-
 Analyze the agent's last action and the current browser state.
-1. **Visual Inspection**: Look at the screenshot (if provided). Does the page visually confirm the task is done? Check for specific elements (e.g., 'Order Confirmed', specific data, green checks) implied by the task.
-2. **Context Check**: Do the URL and page title match the expected outcome?
-3. **Instruction Adherence**: Did the agent follow the specific constraints in the prompt?
-
-If the task is completed successfully, respond with 'YES'.
-If incomplete, incorrect, or needs more steps, respond with 'NO' followed by a short, constructive reason and a suggestion for the next step (Renegotiation).
+1. VISUAL INSPECTION: Look at the screenshot (if provided). Does the page visually confirm the task is done? Check for specific elements (e.g., 'Order Confirmed', specific data, green checks) implied by the task.
+2. CONTEXT CHECK: Do the URL and page title match the expected outcome?
+If the task is completed successfully, respond with 'YES'. If incomplete, incorrect, or needs more steps, respond with 'NO' followed by a short reason.
 """
 
 DEEP_RESEARCH_PLANNING_PROMPT = """You are a meticulous research assistant. Your goal is to create a hierarchical research plan to thoroughly investigate the topic: "{topic}".

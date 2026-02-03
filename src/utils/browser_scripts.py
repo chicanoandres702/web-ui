@@ -203,9 +203,16 @@ JS_REMOVE_ADS = """() => {
         '.advertisement',
         '[aria-label="Advertisement"]',
         '[class*="sponsored"]',
-        '[id*="sponsored"]'
+        '[id*="sponsored"]',
+        '.sticky-ad',
+        '.fixed-ad',
+        'div[data-ad-unit]',
+        '.video-ad',
+        '.preroll-ad'
     ];
     let count = 0;
+    
+    // 1. Remove by selector
     selectors.forEach(sel => {
         document.querySelectorAll(sel).forEach(el => {
             if (el.tagName !== 'BODY' && el.tagName !== 'HTML') {
@@ -214,5 +221,176 @@ JS_REMOVE_ADS = """() => {
             }
         });
     });
+
+    // 2. Remove iframes that are likely ads
+    document.querySelectorAll('iframe').forEach(iframe => {
+        try {
+            const src = iframe.src || '';
+            if (src.includes('ads') || src.includes('doubleclick') || src.includes('tracking')) {
+                 iframe.remove();
+                 count++;
+            }
+        } catch(e) {}
+    });
+
     return count;
+}"""
+
+JS_GET_SCROLL_INFO = """() => {
+    const doc = document.documentElement;
+    const win = window;
+    const scrollTop = win.scrollY || doc.scrollTop;
+    const scrollHeight = doc.scrollHeight;
+    const clientHeight = doc.clientHeight;
+    // Allow a small margin of error (e.g. 5px) for "bottom" detection
+    const isAtBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight - 5;
+    return {
+        isAtBottom,
+        percent: scrollHeight > 0 ? Math.round(((scrollTop + clientHeight) / scrollHeight) * 100) : 100
+    };
+}"""
+
+JS_ASSESS_SECTION = """() => {
+    const viewportHeight = window.innerHeight;
+    const scrollY = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight;
+    
+    // Check for visible inputs
+    const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]), textarea, select'));
+    const visibleInputs = inputs.filter(el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.top >= 0 && rect.bottom <= viewportHeight && 
+               style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
+    });
+    
+    const unfilledCount = visibleInputs.filter(el => {
+        if (el.type === 'checkbox' || el.type === 'radio') return false; 
+        return !el.value;
+    }).length;
+
+    // Check for primary action buttons
+    const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a[href], [role="button"]'));
+    const visibleButtons = buttons.filter(el => {
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.top >= 0 && rect.bottom <= viewportHeight && 
+               style.visibility !== 'hidden' && style.display !== 'none';
+    });
+    
+    const actionKeywords = ['submit', 'next', 'continue', 'finish', 'complete', 'search', 'login', 'sign in', 'post'];
+    const primaryActions = visibleButtons.filter(el => {
+        const text = (el.innerText || el.value || '').toLowerCase();
+        return actionKeywords.some(kw => text.includes(kw));
+    }).map(b => (b.innerText || b.value || 'Button').trim().substring(0, 30));
+
+    const isAtBottom = Math.ceil(scrollY + viewportHeight) >= docHeight - 10;
+
+    return {
+        unfilled_inputs: unfilledCount,
+        actions: primaryActions,
+        at_bottom: isAtBottom,
+        progress: docHeight > 0 ? Math.round(((scrollY + viewportHeight) / docHeight) * 100) : 100
+    };
+}"""
+
+JS_SCROLL_TO_TEXT = """async (text) => {
+    const maxScrolls = 60;
+    const distance = 600;
+    const delay = 100;
+    const lowerText = text.toLowerCase();
+    
+    const findElementWithText = () => {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+        let node;
+        while (node = walker.nextNode()) {
+            if (node.textContent.toLowerCase().includes(lowerText)) {
+                const element = node.parentElement;
+                // Check if element is visible (has dimensions)
+                if (element && (element.offsetWidth > 0 || element.offsetHeight > 0 || element.getClientRects().length > 0)) {
+                    return element;
+                }
+            }
+        }
+        return null;
+    };
+
+    for (let i = 0; i < maxScrolls; i++) {
+        const element = findElementWithText();
+        if (element) {
+            element.scrollIntoView({behavior: 'smooth', block: 'center'});
+            return true;
+        }
+        if ((window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10) {
+            break;
+        }
+        window.scrollBy(0, distance);
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    return false;
+}"""
+
+JS_CHECK_TEXT_ELEMENT_STATUS = """(text) => {
+    const results = [];
+    const all = document.querySelectorAll('*');
+    for (const el of all) {
+        if (el.offsetParent !== null && el.textContent.includes(text)) {
+             let childHasText = false;
+             for (const child of el.children) {
+                 if (child.textContent.includes(text)) {
+                     childHasText = true;
+                     break;
+                 }
+             }
+             if (!childHasText) {
+                const isChecked = el.checked || false;
+                const isSelected = el.selected || false;
+                const ariaSelected = el.getAttribute('aria-selected') === 'true';
+                const ariaChecked = el.getAttribute('aria-checked') === 'true';
+                const ariaPressed = el.getAttribute('aria-pressed') === 'true';
+                const classList = el.className || "";
+                const hasSelectedClass = /selected|active|checked|toggled|chosen|correct|wrong|answer/i.test(classList);
+                
+                let parent = el.parentElement;
+                let parentSelected = false;
+                if (parent) {
+                    const pClass = parent.className || "";
+                    parentSelected = /selected|active|checked|toggled|chosen|correct|wrong|answer/i.test(pClass) || parent.getAttribute('aria-selected') === 'true';
+                }
+
+                results.push({
+                    tag: el.tagName.toLowerCase(),
+                    text: el.innerText.trim().substring(0, 50),
+                    isLikelySelected: isChecked || isSelected || ariaSelected || ariaChecked || ariaPressed || hasSelectedClass || parentSelected,
+                    details: { isChecked, isSelected, ariaSelected, hasSelectedClass, parentSelected }
+                });
+             }
+        }
+    }
+    return results.slice(0, 5);
+}"""
+
+JS_CLOSE_COOKIE_BANNERS = """() => {
+    const commonSelectors = [
+        '#onetrust-accept-btn-handler',
+        '#onetrust-reject-all-handler',
+        '.cc-btn.cc-dismiss',
+        '.cc-btn.cc-allow',
+        'button[class*="cookie"][class*="accept"]',
+        'button[class*="cookie"][class*="allow"]',
+        'button[class*="consent"][class*="accept"]',
+        'button[class*="consent"][class*="allow"]',
+        'button[id*="cookie"][id*="accept"]',
+        'button[id*="cookie"][id*="allow"]'
+    ];
+    
+    let clicked = false;
+    for (const selector of commonSelectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+            element.click();
+            clicked = true;
+        }
+    }
+    return clicked;
 }"""

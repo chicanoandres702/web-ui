@@ -19,7 +19,12 @@ from src.utils.browser_scripts import (
     JS_FIND_TEXT_ELEMENTS,
     JS_GET_LOCAL_STORAGE,
     JS_WAIT_FOR_DOM_STABILITY,
-    JS_REMOVE_ADS
+    JS_REMOVE_ADS,
+    JS_GET_SCROLL_INFO,
+    JS_ASSESS_SECTION,
+    JS_SCROLL_TO_TEXT,
+    JS_CHECK_TEXT_ELEMENT_STATUS,
+    JS_CLOSE_COOKIE_BANNERS
 )
 from src.utils.knowledge_base import search_kb_files, load_kb_content, list_kb_files
 from src.utils.memory_utils import reset_mem0
@@ -120,6 +125,15 @@ class CustomController(Controller):
             except Exception as e:
                 return f"Error removing ads: {e}"
 
+        @self.registry.action("Attempt to close cookie consent banners")
+        async def close_cookie_banner(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                clicked = await page.evaluate(JS_CLOSE_COOKIE_BANNERS)
+                return "Clicked a cookie consent button." if clicked else "No common cookie banner buttons found."
+            except Exception as e:
+                return f"Error closing cookie banner: {e}"
+
         @self.registry.action("Scroll down the page. Optional: amount='full' scans the whole page.")
         async def scroll_down(browser: BrowserContext, amount: str = "page"):
             page = await browser.get_current_page()
@@ -145,8 +159,11 @@ class CustomController(Controller):
                     return f"Failed to scan full page: {e}"
             else:
                 # Simple scroll down
-                await page.evaluate("window.scrollBy(0, window.innerHeight * 0.8)")
-                return "Scrolled down one screen."
+                await page.evaluate("window.scrollBy(0, window.innerHeight * 0.7)")
+                # Get scroll info after scrolling to inform the agent
+                info = await page.evaluate(JS_GET_SCROLL_INFO)
+                status = "at the bottom" if info['isAtBottom'] else f"at {info['percent']}%"
+                return f"Scrolled down. Now {status} of the page."
 
         @self.registry.action("Wait for network traffic to settle (Network Idle)")
         async def wait_for_network_idle(browser: BrowserContext):
@@ -314,6 +331,67 @@ class CustomController(Controller):
             page = await browser.get_current_page()
             await page.evaluate("window.scrollBy(0, -window.innerHeight * 0.8)")
             return "Scrolled up one screen."
+
+        @self.registry.action("Check current scroll position and page length")
+        async def check_scroll_status(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                info = await page.evaluate(JS_GET_SCROLL_INFO)
+                return f"Scroll Status: {info['percent']}% viewed. At bottom: {info['isAtBottom']}."
+            except Exception as e:
+                return f"Error checking scroll status: {e}"
+
+        @self.registry.action("Assess the current page section to determine next step (Scroll vs Submit)")
+        async def assess_page_section(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                data = await page.evaluate(JS_ASSESS_SECTION)
+                
+                recommendation = []
+                if data['unfilled_inputs'] > 0:
+                    recommendation.append(f"Fill {data['unfilled_inputs']} visible inputs.")
+                
+                if data['actions']:
+                    recommendation.append(f"Consider clicking: {', '.join(data['actions'])}.")
+                
+                if not data['at_bottom']:
+                    recommendation.append("Scroll down to see more content.")
+                else:
+                    recommendation.append("You are at the bottom of the page.")
+                
+                status = f"Page Status: {data['progress']}% viewed."
+                return f"{status}\nAnalysis: {' '.join(recommendation)}"
+            except Exception as e:
+                return f"Error assessing page: {e}"
+
+        @self.registry.action("Scroll down until specific text is found on the page")
+        async def scroll_to_text(browser: BrowserContext, text: str):
+            page = await browser.get_current_page()
+            try:
+                found = await page.evaluate(JS_SCROLL_TO_TEXT, text)
+                if found:
+                    return f"Scrolled and found text: '{text}'."
+                else:
+                    return f"Text '{text}' not found after scrolling."
+            except Exception as e:
+                return f"Error scrolling to text: {e}"
+
+        @self.registry.action("Check if an element containing specific text appears selected/active")
+        async def check_element_state_by_text(browser: BrowserContext, text: str):
+            page = await browser.get_current_page()
+            try:
+                results = await self._smart_scan(page, JS_CHECK_TEXT_ELEMENT_STATUS, args=text)
+                if not results:
+                    return f"No visible elements found containing text: '{text}'"
+                
+                # Filter for likely selected
+                selected = [r for r in results if r['isLikelySelected']]
+                if selected:
+                    return f"YES. Found {len(selected)} element(s) with text '{text}' that appear selected/active. Details: {json.dumps(selected, indent=2)}"
+                else:
+                    return f"NO. Found elements with text '{text}', but none appear selected. They might be unselected or use a non-standard state indication."
+            except Exception as e:
+                return f"Error checking element state: {e}"
 
     def _register_debugging_actions(self):
         @self.registry.action("Take a full page screenshot and save to file")
