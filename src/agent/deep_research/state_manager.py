@@ -4,7 +4,8 @@ import os
 from typing import List, Dict, Any, Optional, Tuple, Union
 from pathlib import Path
 
-from src.utils.utils import save_text_to_file, save_to_knowledge_base_file
+from src.utils.io_manager import IOManager
+from src.utils.utils import save_to_knowledge_base_file
 from src.agent.deep_research.types import (
     ResearchCategoryItem, 
     ResearchTaskItem, 
@@ -135,7 +136,7 @@ class DeepResearchStateManager:
                     
                     content += f"  {line}\n"
                 content += "\n"
-            save_text_to_file(self.plan_file, content)
+            IOManager.write_file_sync(self.plan_file, content)
             logger.info(f"Saved plan to {self.plan_file}")
         except Exception as e:
             logger.error(f"Failed to save plan: {e}")
@@ -143,7 +144,7 @@ class DeepResearchStateManager:
     def save_search_results(self, results: List[Dict[str, Any]]):
         """Saves search results to JSON."""
         try:
-            save_text_to_file(self.search_file, json.dumps(results, indent=2, ensure_ascii=False))
+            IOManager.write_file_sync(self.search_file, json.dumps(results, indent=2, ensure_ascii=False))
             logger.info(f"Saved search results to {self.search_file}")
         except Exception as e:
             logger.error(f"Failed to save search results: {e}")
@@ -151,7 +152,7 @@ class DeepResearchStateManager:
     def save_report(self, report: str):
         """Saves the final report."""
         try:
-            save_text_to_file(self.report_file, report)
+            IOManager.write_file_sync(self.report_file, report)
             logger.info(f"Saved report to {self.report_file}")
         except Exception as e:
             logger.error(f"Failed to save report: {e}")

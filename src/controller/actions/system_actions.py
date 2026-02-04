@@ -356,6 +356,28 @@ class SystemActionsMixin:
             # Alias to update_plan_step for backward compatibility
             return await update_plan_step(browser, step_index, "completed")
 
+        @self.registry.action("Mark the currently active step as completed and proceed to the next.")
+        async def complete_current_step(browser: BrowserContext):
+            """
+            Automatically identifies the step marked 'in_progress', marks it as 'completed',
+            and returns the instruction for the next step.
+            """
+            if not (self.webui_manager and hasattr(self.webui_manager, "bu_plan")):
+                return "Plan manager not available."
+            
+            plan = self.webui_manager.bu_plan
+            current_idx = -1
+            
+            for i, step in enumerate(plan):
+                if step.get("status") == "in_progress":
+                    current_idx = i
+                    break
+            
+            if current_idx == -1:
+                return "No step is currently 'in_progress'. Please use update_plan_step to start a step."
+
+            return await update_plan_step(browser, current_idx + 1, "completed")
+
         @self.registry.action("Save text content to a file")
         async def save_text_to_file(filename: str, content: str, append: bool = False):
             safe_dir = os.path.abspath("./tmp/downloads")

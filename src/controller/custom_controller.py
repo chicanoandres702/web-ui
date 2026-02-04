@@ -10,6 +10,7 @@ from src.controller.actions.interaction_actions import InteractionActionsMixin
 from src.controller.actions.extraction_actions import ExtractionActionsMixin
 from src.controller.actions.debugging_actions import DebuggingActionsMixin
 from src.controller.actions.system_actions import SystemActionsMixin
+from src.controller.actions.user_actions import UserActionsMixin
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,8 @@ class CustomController(
     InteractionActionsMixin,
     ExtractionActionsMixin,
     DebuggingActionsMixin,
-    SystemActionsMixin
+    SystemActionsMixin,
+    UserActionsMixin
 ):
     def __init__(self, exclude_actions: list[str] = [], **kwargs):
         super().__init__(exclude_actions=exclude_actions, **kwargs)
@@ -68,20 +70,45 @@ class CustomController(
         self._register_extraction_actions()
         self._register_debugging_actions()
         self._register_system_actions()
+        self._register_user_actions()
 
-    async def _agent_control_handler(self, action: str):
+    async def _agent_control_handler(self, action: str, data: str = None):
         """Handles agent control actions from the browser (HUD)."""
-        if self.webui_manager and self.webui_manager.bu_agent:
+        if self.webui_manager:
             if action == 'pause':
-                if self.webui_manager.bu_agent.state.paused:
+                if self.webui_manager.bu_agent and self.webui_manager.bu_agent.state.paused:
                     self.webui_manager.bu_agent.resume()
                     logger.info("Agent resumed via HUD")
-                else:
+                elif self.webui_manager.bu_agent:
                     self.webui_manager.bu_agent.pause()
                     logger.info("Agent paused via HUD")
             elif action == 'stop':
-                self.webui_manager.bu_agent.stop()
+                if self.webui_manager.bu_agent:
+                    self.webui_manager.bu_agent.stop()
                 logger.info("Agent stopped via HUD")
+            elif action == 'skip':
+                if hasattr(self.webui_manager, "bu_plan") and self.webui_manager.bu_plan:
+                    for i, step in enumerate(self.webui_manager.bu_plan):
+                        if step['status'] == 'in_progress':
+                            step['status'] = 'skipped'
+                            self.webui_manager.bu_plan_updated = True
+                            if self.webui_manager.bu_agent:
+                                msg = f"User skipped step {i+1}: {step['step']}. Proceed to next step."
+                                if hasattr(self.webui_manager.bu_agent, "message_manager"):
+                                    self.webui_manager.bu_agent.message_manager.add_user_message(msg)
+                            break
+                logger.info("Agent skipped step via HUD")
+            elif action == 'add_task' and data:
+                if self.webui_manager.bu_agent:
+                    # Add to chat history for visibility
+                    self.webui_manager.bu_chat_history.append({"role": "user", "content": data})
+                    
+                    # Inject into agent
+                    if hasattr(self.webui_manager.bu_agent, "add_new_task"):
+                        self.webui_manager.bu_agent.add_new_task(data)
+                    elif hasattr(self.webui_manager.bu_agent, "message_manager"):
+                        self.webui_manager.bu_agent.message_manager.add_user_message(data)
+                    logger.info(f"Agent task added via HUD: {data}")
 
     async def _expose_agent_control(self, browser: BrowserContext):
         """Exposes the py_agent_control function to the browser context."""

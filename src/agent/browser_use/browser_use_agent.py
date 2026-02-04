@@ -22,13 +22,15 @@ from browser_use.utils import time_execution_async
 from dotenv import load_dotenv
 from browser_use.agent.message_manager.utils import is_model_without_tool_support
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
-from src.utils.utils import save_text_to_file, retry_async
+from src.utils.utils import retry_async
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 from src.utils.memory_utils import get_memory_manager
 from src.agent.browser_use.agent_heuristics import AgentHeuristics
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+from src.utils.io_manager import IOManager
 
 SKIP_LLM_API_KEY_VERIFICATION = (
         os.environ.get("SKIP_LLM_API_KEY_VERIFICATION", "false").lower()[0] in "ty1"
@@ -118,18 +120,6 @@ class BrowserUseAgent(Agent):
 
         loop = asyncio.get_event_loop()
 
-        # Set up the Ctrl+C signal handler with callbacks specific to this agent
-        from browser_use.utils import SignalHandler
-
-        signal_handler = SignalHandler(
-            loop=loop,
-            pause_callback=self.pause,
-            resume_callback=self.resume,
-            custom_exit_callback=None,  # No special cleanup needed on forced exit
-            exit_on_second_int=True,
-        )
-        signal_handler.register()
-
         try:
             self._log_agent_run()
 
@@ -139,7 +129,7 @@ class BrowserUseAgent(Agent):
                 self.state.last_result = result
 
             for step in range(max_steps):
-                if await self._handle_pre_step(signal_handler):
+                if await self._handle_pre_step():
                     break
 
                 if on_step_start is not None:
@@ -164,8 +154,6 @@ class BrowserUseAgent(Agent):
             return self.state.history
 
         finally:
-            # Unregister signal handlers before cleanup
-            signal_handler.unregister()
             await self._handle_cleanup()
 
     async def _validate_output(self) -> bool:
@@ -276,15 +264,11 @@ class BrowserUseAgent(Agent):
             except Exception as e:
                 logger.error(f"Error in done_callback: {e}")
 
-    async def _handle_pre_step(self, signal_handler) -> bool:
+    async def _handle_pre_step(self) -> bool:
         """
         Handles pre-step checks: pause, stop, model switching, failures.
         Returns True if the agent should stop/break the loop.
         """
-        # Check if waiting for user input after Ctrl+C
-        if self.state.paused:
-            signal_handler.wait_for_resume()
-            signal_handler.reset()
 
         # Manage Model Switching (Cost Saver / Smart Retry)
         self._manage_model_switching()
@@ -355,7 +339,7 @@ class BrowserUseAgent(Agent):
         # Persistence: Auto-save history after each step
         if self.save_history_path:
             try:
-                self.save_history(self.save_history_path)
+                await self.save_history_async(self.save_history_path)
             except Exception as e:
                 logger.warning(f"Failed to auto-save history: {e}")
 
@@ -423,6 +407,13 @@ class BrowserUseAgent(Agent):
             )
         )
         logger.info(f'❌ {error_message}')
+
+    async def save_history_async(self, path: str):
+        """Saves the agent history to a file asynchronously."""
+        try:
+            await IOManager.write_file(path, self.state.history.model_dump_json(indent=2))
+        except Exception as e:
+            logger.error(f"Failed to save history asynchronously: {e}")
 
     async def _handle_cleanup(self):
         """Handles cleanup after run."""

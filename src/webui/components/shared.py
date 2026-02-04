@@ -15,6 +15,7 @@ from src.utils.utils import parse_agent_thought
 from src.utils.prompts import KNOWLEDGE_EXTRACTION_PROMPT
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+from src.utils.io_manager import IOManager
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,8 @@ def update_model_dropdown(llm_provider):
     Update the model name dropdown with predefined models for the selected provider.
     """
     if llm_provider in config.model_names:
-        return gr.Dropdown(choices=config.model_names[llm_provider], value=config.model_names[llm_provider][0], interactive=True)
-    return gr.Dropdown(choices=[], value="", interactive=True, allow_custom_value=True)
+        return gr.update(choices=config.model_names[llm_provider], value=config.model_names[llm_provider][0], interactive=True)
+    return gr.update(choices=[], value="", interactive=True, allow_custom_value=True)
 
 def create_llm_settings_ui(
     prefix: str,
@@ -201,6 +202,7 @@ def get_agent_settings_values(webui_manager, components: Dict[Component, Any]) -
     settings["planner_system_prompt"] = get_setting("planner_system_prompt") or None
     settings["enable_auto_pause"] = get_setting("enable_auto_pause", False)
     settings["enable_kb_auto_save"] = get_setting("enable_kb_auto_save", False)
+    settings["enable_auto_streamline"] = get_setting("enable_auto_streamline", False)
 
     # Confirmer
     settings["confirmer_llm_provider_name"] = get_setting("confirmer_llm_provider") or None
@@ -471,29 +473,11 @@ async def initialize_agent_llms(settings: Dict[str, Any]):
 
 def read_text_file(path: str) -> str:
     """Safely reads text from a file with error handling."""
-    if not path or not os.path.exists(path):
-        logger.warning(f"File not found or invalid path: {path}")
-        return ""
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception as e:
-        logger.error(f"Error reading file {path}: {e}")
-        return f"Error reading file: {e}"
+    return IOManager.read_file_sync(path) or ""
 
 def save_text_file(path: str, content: str, mode: str = "w") -> bool:
     """Safely saves text to a file with error handling, creating directories if needed."""
-    if not path:
-        logger.error("No path provided for saving file.")
-        return False
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, mode, encoding="utf-8") as f:
-            f.write(content)
-        return True
-    except Exception as e:
-        logger.error(f"Error saving file {path}: {e}")
-        return False
+    return IOManager.write_file_sync(path, content, mode=mode)
 
 def rename_file(old_path: str, new_path: str) -> bool:
     """Safely renames/moves a file."""
@@ -588,6 +572,8 @@ def render_plan_markdown(plan_data) -> str:
         step_text = item["step"]
         if style:
             step_text = f"<span style='{style}'>{step_text}</span>"
+        if "action" in item:
+             step_text += f" <span style='font-size:0.8em; color:gray; font-family:monospace;'>[{item['action']}]</span>"
         
         md += f"{i+1}. {icon} {step_text}\n"
     return md

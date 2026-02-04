@@ -5,6 +5,8 @@ import os
 import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, TYPE_CHECKING
+import shutil
+import copy
 
 import gradio as gr
 from browser_use.agent.views import AgentHistoryList, AgentOutput
@@ -18,6 +20,7 @@ from src.webui.components.agent_logic import initialize_browser_infrastructure, 
 from src.webui.components.shared import get_agent_settings_values, get_browser_settings_values, initialize_agent_llms, read_text_file, save_text_file, format_agent_output, render_plan_markdown, process_knowledge_generation
 from src.utils.utils import get_progress_bar_html, parse_agent_thought
 from src.webui.components.knowledge_base_logic import list_kb_files, load_kb_content
+from src.utils.io_manager import IOManager
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +192,32 @@ async def _confirm_action_callback(
     return response
 
 
+def get_plan_step_choices(plan: List[Dict[str, Any]]) -> List[str]:
+    """Generates a list of strings for the step selector dropdown."""
+    if not plan: return []
+    return [f"{i+1}. {step['step'][:60]}..." for i, step in enumerate(plan)]
+
+def update_plan_ui(webui_manager: "WebuiManager") -> Dict[gr.components.Component, Any]:
+    """Returns updates for all plan-related UI components."""
+    plan = webui_manager.bu_plan
+    plan_md = render_plan_markdown(plan)
+    plan_json = json.dumps(plan, indent=2)
+    choices = get_plan_step_choices(plan)
+    
+    updates = {
+        webui_manager.get_component_by_id("browser_use_agent.plan_status"): gr.update(value=plan_md),
+        webui_manager.get_component_by_id("browser_use_agent.plan_editor"): gr.update(value=plan_json),
+        webui_manager.get_component_by_id("browser_use_agent.plan_step_selector"): gr.update(choices=choices, value=None),
+        webui_manager.get_component_by_id("browser_use_agent.plan_step_text"): gr.update(value=""),
+    }
+    
+    try:
+        updates[webui_manager.get_component_by_id("browser_use_agent.plan_action_name")] = gr.update(value=None)
+        updates[webui_manager.get_component_by_id("browser_use_agent.plan_action_params")] = gr.update(value="")
+    except KeyError: pass
+    
+    return updates
+
 # --- Main Execution Logic ---
 
 async def run_agent_task(
@@ -208,6 +237,7 @@ async def run_agent_task(
     plan_status_comp = webui_manager.get_component_by_id("browser_use_agent.plan_status")
     plan_editor_comp = webui_manager.get_component_by_id("browser_use_agent.plan_editor")
     plan_editor_acc_comp = webui_manager.get_component_by_id("browser_use_agent.plan_editor_accordion")
+    plan_step_selector_comp = webui_manager.get_component_by_id("browser_use_agent.plan_step_selector")
     kb_gen_acc_comp = webui_manager.get_component_by_id("browser_use_agent.kb_gen_accordion")
     kb_gen_title_comp = webui_manager.get_component_by_id("browser_use_agent.kb_gen_title")
     kb_gen_content_comp = webui_manager.get_component_by_id("browser_use_agent.kb_gen_content")
@@ -229,6 +259,9 @@ async def run_agent_task(
     webui_manager.bu_last_task_prompt = task
     webui_manager.bu_chat_history.append({"role": "user", "content": task})
     webui_manager.bu_agent_status = "### Agent Status\nRunning..."
+    
+    webui_manager.stop_requested = False
+    webui_manager.is_paused = False
 
     yield {
         user_input_comp: gr.update(value="", interactive=True, placeholder="Agent is running... Enter text to steer/add instructions."),
@@ -242,6 +275,7 @@ async def run_agent_task(
         plan_status_comp: gr.update(value="", visible=False),
         plan_editor_comp: gr.update(value=None),
         plan_editor_acc_comp: gr.update(visible=False),
+        plan_step_selector_comp: gr.update(choices=[], value=None),
         kb_gen_acc_comp: gr.update(visible=False, open=False),
         history_file_comp: gr.update(value=None),
         gif_comp: gr.update(value=None),
@@ -322,12 +356,14 @@ async def run_agent_task(
             )
             
             if plan:
-                webui_manager.bu_plan = [{"step": step, "status": "pending"} for step in plan]
+                webui_manager.bu_plan = [{"step": step["description"], "status": "pending"} for step in plan]
                 plan_md = render_plan_markdown(webui_manager.bu_plan)
+                step_choices = get_plan_step_choices(webui_manager.bu_plan)
                 yield {
                     plan_status_comp: gr.update(value=plan_md, visible=True),
                     plan_editor_comp: gr.update(value=json.dumps(webui_manager.bu_plan, indent=2)),
-                    plan_editor_acc_comp: gr.update(visible=True)
+                    plan_editor_acc_comp: gr.update(visible=True),
+                    plan_step_selector_comp: gr.update(choices=step_choices, value=None)
                 }
 
                 formatted_plan_text = "\n".join([f"{i+1}. {step}" for i, step in enumerate(plan)])
@@ -341,16 +377,22 @@ async def run_agent_task(
                 task += f"📋 **Execution Plan**:\n{formatted_plan_text}\n\n"
                 task += "⚙️ **Execution Protocol**:\n"
                 task += "1. **Start Step**: Begin each step by calling `update_plan_step(step_index, 'in_progress')`.\n"
-                task += "2. **Complete Step**: When a step is finished, you MUST call `mark_step_complete(step_index)`.\n"
-                task += "3. **Follow Guidance**: The result of `mark_step_complete` will explicitly tell you the next step to take. You must follow this guidance.\n"
+                task += "2. **Complete Step**: When a step is finished, call `complete_current_step()` (preferred) or `mark_step_complete(step_index)`.\n"
+                task += "3. **Follow Guidance**: The result of the completion action will explicitly tell you the next step to take. You must follow this guidance.\n"
                 task += "4. **Add Subtasks**: If a step is complex, use `add_plan_step(description, after_index=current_index)` to break it down.\n"
                 task += "5. **Handle Failure**: If a step fails, use `update_plan_step(step_index, 'failed')` and reassess your strategy.\n"
                 task += "6. **Stay Sequential**: Do not skip steps unless instructed by a failure or guidance."
                 webui_manager.bu_agent_status = "### Agent Status\nRunning Plan..."
+    else:
+        # If no hierarchical planning, treat the user input as a single step plan
+        if not webui_manager.bu_plan:
+            webui_manager.bu_plan = [{"step": task, "status": "pending"}]
+            webui_manager.bu_plan_updated = True
 
     # --- Prepare Directories ---
     webui_manager.bu_agent_task_id = str(uuid.uuid4())
     history_file, gif_path = await prepare_directories(browser_settings, webui_manager.bu_agent_task_id)
+    task_dir = os.path.dirname(history_file)
 
     async def ask_callback_wrapper(query: str, browser_context: BrowserContext) -> Dict[str, Any]:
         return await _ask_assistant_callback(webui_manager, query, browser_context)
@@ -384,6 +426,7 @@ async def run_agent_task(
     should_close_browser_on_finish = not browser_settings["keep_browser_open"]
 
     try:
+        webui_manager.agent_processing_active = True
         await initialize_browser_infrastructure(webui_manager, browser_settings)
         
         # Inject initial plan overlay if plan exists
@@ -404,154 +447,205 @@ async def run_agent_task(
             "done_callback": done_callback_wrapper
         }
         
-        await construct_agent(
-            webui_manager, 
-            task, 
-            agent_settings, 
-            llms, 
-            history_file, 
-            gif_path, 
-            agent_callbacks
-        )
-
-        agent_run_coro = webui_manager.bu_agent.run(max_steps=max_steps)
-        agent_task = asyncio.create_task(agent_run_coro)
-        webui_manager.bu_current_task = agent_task
-        webui_manager.bu_latest_screenshot = None
-
-        stream_vw = 70
-        stream_vh = int(70 * browser_settings["window_h"] // browser_settings["window_w"])
-        async def screenshot_loop():
-            while not agent_task.done():
-                if browser_settings["headless"] and webui_manager.bu_browser_context:
-                    try:
-                        webui_manager.bu_latest_screenshot = await webui_manager.bu_browser_context.take_screenshot()
-                    except Exception: pass
-                sleep_time = 0.5
-                if webui_manager.bu_agent and webui_manager.bu_agent.state.paused:
-                    sleep_time = 1.0
-                await asyncio.sleep(sleep_time)
-        screenshot_task = asyncio.create_task(screenshot_loop()) if browser_settings["headless"] else None
-
-        last_chat_len = len(webui_manager.bu_chat_history)
-        last_status = webui_manager.bu_agent_status
-        last_screenshot_b64 = None
-        
-        while not agent_task.done():
-            is_paused = webui_manager.bu_agent.state.paused
-            is_stopped = webui_manager.bu_agent.state.stopped
-
-            if is_paused:
-                yield {
-                    pause_resume_button_comp: gr.update(value="▶️ Resume", interactive=True),
-                    stop_button_comp: gr.update(interactive=True),
-                }
-                while is_paused and not agent_task.done():
-                    is_paused = webui_manager.bu_agent.state.paused
-                    is_stopped = webui_manager.bu_agent.state.stopped
-                    if is_stopped: break
-                    await asyncio.sleep(0.2)
-
-                if agent_task.done() or is_stopped: break
-
-                yield {
-                    pause_resume_button_comp: gr.update(value="⏸️ Pause", interactive=True),
-                    run_button_comp: gr.update(value="⬆️ Add Instruction", interactive=True, variant="secondary"),
-                }
-
-            if is_stopped:
-                logger.info("Agent has stopped.")
-                if not agent_task.done():
-                    try:
-                        await asyncio.wait_for(agent_task, timeout=1.0)
-                    except asyncio.TimeoutError:
-                        agent_task.cancel()
-                    except Exception: pass
+        # --- Execution Loop (Queue Processing) ---
+        while not webui_manager.stop_requested:
+            
+            # 1. Find next pending step
+            current_step_idx = -1
+            current_step_desc = ""
+            
+            if webui_manager.bu_plan:
+                for i, step in enumerate(webui_manager.bu_plan):
+                    if step["status"] == "pending":
+                        current_step_idx = i
+                        current_step_desc = step["step"]
+                        break
+            
+            if current_step_idx == -1:
+                logger.info("No pending steps found. Task queue complete.")
                 break
 
-            update_dict = {}
-            if webui_manager.bu_response_event is not None:
-                update_dict = {
-                    user_input_comp: gr.update(placeholder="Agent needs help. Enter response and submit.", interactive=True),
-                    run_button_comp: gr.update(value="✔️ Submit Response", interactive=True),
-                    retry_button_comp: gr.update(interactive=False),
-                    pause_resume_button_comp: gr.update(interactive=False),
-                    stop_button_comp: gr.update(interactive=False),
-                    chatbot_comp: gr.update(value=webui_manager.bu_chat_history),
-                }
-                last_chat_len = len(webui_manager.bu_chat_history)
-                yield update_dict
-                await webui_manager.bu_response_event.wait()
+            # 2. Update Status to In Progress
+            webui_manager.bu_plan[current_step_idx]["status"] = "in_progress"
+            webui_manager.bu_plan_updated = True
+            
+            # Yield plan update immediately
+            plan_md = render_plan_markdown(webui_manager.bu_plan)
+            step_choices = get_plan_step_choices(webui_manager.bu_plan)
+            yield {
+                plan_status_comp: gr.update(value=plan_md),
+                plan_editor_comp: gr.update(value=json.dumps(webui_manager.bu_plan, indent=2)),
+                plan_step_selector_comp: gr.update(choices=step_choices)
+            }
+            webui_manager.bu_plan_updated = False
 
-                if not agent_task.done():
+            # 3. Construct Agent for this step
+            step_history_file = os.path.join(task_dir, f"step_{current_step_idx + 1}.json")
+            
+            await construct_agent(
+                webui_manager, 
+                current_step_desc, # Use specific step description as task
+                agent_settings, 
+                llms, 
+                step_history_file, 
+                gif_path, 
+                agent_callbacks
+            )
+
+            # 4. Start Task via Manager
+            agent_run_coro = webui_manager.bu_agent.run(max_steps=max_steps)
+            agent_task = await webui_manager.task_manager.start(agent_run_coro, webui_manager.bu_agent)
+
+            stream_vw = 70
+            stream_vh = int(70 * browser_settings["window_h"] // browser_settings["window_w"])
+            
+            async def screenshot_loop():
+                while not agent_task.done():
+                    if browser_settings["headless"] and webui_manager.bu_browser_context:
+                        try:
+                            webui_manager.bu_latest_screenshot = await webui_manager.bu_browser_context.take_screenshot()
+                        except Exception: pass
+                    sleep_time = 0.5
+                    if webui_manager.bu_agent and webui_manager.bu_agent.state.paused:
+                        sleep_time = 1.0
+                    await asyncio.sleep(sleep_time)
+            screenshot_task = asyncio.create_task(screenshot_loop()) if browser_settings["headless"] else None
+
+            last_chat_len = len(webui_manager.bu_chat_history)
+            last_status = webui_manager.bu_agent_status
+            last_screenshot_b64 = None
+            
+            # 5. Monitor Loop
+            while webui_manager.task_manager.is_running:
+                # Handle Pause/Resume
+                if webui_manager.is_paused:
+                    if not webui_manager.task_manager.is_paused:
+                        webui_manager.task_manager.pause()
                     yield {
-                        user_input_comp: gr.update(placeholder="Agent is running... Enter text to steer/add instructions.", interactive=True),
-                        run_button_comp: gr.update(value="⬆️ Add Instruction", interactive=True, variant="secondary"),
-                        retry_button_comp: gr.update(interactive=False),
-                        pause_resume_button_comp: gr.update(interactive=True),
+                        pause_resume_button_comp: gr.update(value="▶️ Resume", interactive=True),
                         stop_button_comp: gr.update(interactive=True),
                     }
-                else:
+                    while webui_manager.is_paused and not webui_manager.stop_requested:
+                        await asyncio.sleep(0.2)
+                    
+                    if webui_manager.stop_requested: break
+                    
+                    if not webui_manager.is_paused and webui_manager.task_manager.is_paused:
+                        webui_manager.task_manager.resume()
+
+                    yield {
+                        pause_resume_button_comp: gr.update(value="⏸️ Pause", interactive=True),
+                        run_button_comp: gr.update(value="⬆️ Add Instruction", interactive=True, variant="secondary"),
+                    }
+
+                if webui_manager.stop_requested:
+                    logger.info("Stop requested during step execution.")
+                    await webui_manager.task_manager.stop()
                     break
 
-            if len(webui_manager.bu_chat_history) > last_chat_len:
-                update_dict[chatbot_comp] = gr.update(value=webui_manager.bu_chat_history)
-                last_chat_len = len(webui_manager.bu_chat_history)
+                update_dict = {}
+                
+                # Handle User Response Event
+                if webui_manager.bu_response_event is not None:
+                    update_dict = {
+                        user_input_comp: gr.update(placeholder="Agent needs help. Enter response and submit.", interactive=True),
+                        run_button_comp: gr.update(value="✔️ Submit Response", interactive=True),
+                        retry_button_comp: gr.update(interactive=False),
+                        pause_resume_button_comp: gr.update(interactive=False),
+                        stop_button_comp: gr.update(interactive=False),
+                        chatbot_comp: gr.update(value=webui_manager.bu_chat_history),
+                    }
+                    last_chat_len = len(webui_manager.bu_chat_history)
+                    yield update_dict
+                    await webui_manager.bu_response_event.wait()
 
-            if webui_manager.bu_agent_status != last_status:
-                update_dict[agent_status_comp] = gr.update(value=webui_manager.bu_agent_status)
-                last_status = webui_manager.bu_agent_status
-            
-            if getattr(webui_manager.bu_agent, "is_validating", False):
-                update_dict[agent_status_comp] = gr.update(value=webui_manager.bu_agent_status + "\n\n🔍 **Validating Output with Confirmer LLM...**")
-            
-            if getattr(webui_manager.bu_agent, "switched_to_retry_model", False) and "Smart Retry Active" not in webui_manager.bu_agent_status:
-                 webui_manager.bu_agent_status = "<span class='retry-badge'>🧠 Smart Retry Active</span>\n" + webui_manager.bu_agent_status
-            
-            if getattr(webui_manager.bu_agent, "using_cheap_model", False) and "Cost Saver Active" not in webui_manager.bu_agent_status:
-                 webui_manager.bu_agent_status = "<span class='retry-badge' style='background-color: #10b981;'>💰 Cost Saver Active</span>\n" + webui_manager.bu_agent_status
+                    if not agent_task.done():
+                        yield {
+                            user_input_comp: gr.update(placeholder="Agent is running... Enter text to steer/add instructions.", interactive=True),
+                            run_button_comp: gr.update(value="⬆️ Add Instruction", interactive=True, variant="secondary"),
+                            retry_button_comp: gr.update(interactive=False),
+                            pause_resume_button_comp: gr.update(interactive=True),
+                            stop_button_comp: gr.update(interactive=True),
+                        }
+                    else:
+                        break
 
-            if getattr(webui_manager, "bu_plan_updated", False):
-                plan_md = render_plan_markdown(webui_manager.bu_plan)
-                update_dict[plan_status_comp] = gr.update(value=plan_md)
-                update_dict[plan_editor_comp] = gr.update(value=json.dumps(webui_manager.bu_plan, indent=2))
-                webui_manager.bu_plan_updated = False
+                if len(webui_manager.bu_chat_history) > last_chat_len:
+                    update_dict[chatbot_comp] = gr.update(value=webui_manager.bu_chat_history)
+                    last_chat_len = len(webui_manager.bu_chat_history)
 
-            if browser_settings["headless"] and webui_manager.bu_browser_context:
-                screenshot_b64 = webui_manager.bu_latest_screenshot
-                if screenshot_b64:
-                    if screenshot_b64 != last_screenshot_b64:
-                        last_screenshot_b64 = screenshot_b64
-                        html_content = f'<img src="data:image/jpeg;base64,{screenshot_b64}" style="width:{stream_vw}vw; height:{stream_vh}vh ; border:1px solid #ccc;">'
+                if webui_manager.bu_agent_status != last_status:
+                    update_dict[agent_status_comp] = gr.update(value=webui_manager.bu_agent_status)
+                    last_status = webui_manager.bu_agent_status
+                
+                if getattr(webui_manager.bu_agent, "is_validating", False):
+                    update_dict[agent_status_comp] = gr.update(value=webui_manager.bu_agent_status + "\n\n🔍 **Validating Output with Confirmer LLM...**")
+                
+                if getattr(webui_manager.bu_agent, "switched_to_retry_model", False) and "Smart Retry Active" not in webui_manager.bu_agent_status:
+                     webui_manager.bu_agent_status = "<span class='retry-badge'>🧠 Smart Retry Active</span>\n" + webui_manager.bu_agent_status
+                
+                if getattr(webui_manager.bu_agent, "using_cheap_model", False) and "Cost Saver Active" not in webui_manager.bu_agent_status:
+                     webui_manager.bu_agent_status = "<span class='retry-badge' style='background-color: #10b981;'>💰 Cost Saver Active</span>\n" + webui_manager.bu_agent_status
+
+                if getattr(webui_manager, "bu_plan_updated", False):
+                    plan_md = render_plan_markdown(webui_manager.bu_plan)
+                    update_dict[plan_status_comp] = gr.update(value=plan_md)
+                    update_dict[plan_editor_comp] = gr.update(value=json.dumps(webui_manager.bu_plan, indent=2))
+                    step_choices = get_plan_step_choices(webui_manager.bu_plan)
+                    update_dict[plan_step_selector_comp] = gr.update(choices=step_choices)
+                    webui_manager.bu_plan_updated = False
+
+                if browser_settings["headless"] and webui_manager.bu_browser_context:
+                    screenshot_b64 = webui_manager.bu_latest_screenshot
+                    if screenshot_b64:
+                        if screenshot_b64 != last_screenshot_b64:
+                            last_screenshot_b64 = screenshot_b64
+                            html_content = f'<img src="data:image/jpeg;base64,{screenshot_b64}" style="width:{stream_vw}vw; height:{stream_vh}vh ; border:1px solid #ccc;">'
+                            update_dict[browser_view_comp] = gr.update(value=html_content, visible=True)
+                    elif last_screenshot_b64 != "waiting":
+                        html_content = f"<h1 style='width:{stream_vw}vw; height:{stream_vh}vh'>Waiting for browser session...</h1>"
                         update_dict[browser_view_comp] = gr.update(value=html_content, visible=True)
-                elif last_screenshot_b64 != "waiting":
-                    html_content = f"<h1 style='width:{stream_vw}vw; height:{stream_vh}vh'>Waiting for browser session...</h1>"
-                    update_dict[browser_view_comp] = gr.update(value=html_content, visible=True)
-                    last_screenshot_b64 = "waiting"
+                        last_screenshot_b64 = "waiting"
+                else:
+                    if last_screenshot_b64 is not None:
+                        update_dict[browser_view_comp] = gr.update(visible=False)
+                        last_screenshot_b64 = None
+
+                if update_dict:
+                    yield update_dict
+
+                await asyncio.sleep(0.2)
+            
+            # 6. Step Completion
+            if screenshot_task and not screenshot_task.done():
+                screenshot_task.cancel()
+            
+            # Save step history
+            await webui_manager.bu_agent.save_history_async(step_history_file)
+            
+            # Update Plan Status based on result
+            if webui_manager.bu_agent.state.history.is_done():
+                webui_manager.bu_plan[current_step_idx]["status"] = "completed"
             else:
-                if last_screenshot_b64 is not None:
-                    update_dict[browser_view_comp] = gr.update(visible=False)
-                    last_screenshot_b64 = None
+                webui_manager.bu_plan[current_step_idx]["status"] = "failed"
+                if agent_settings.get("enable_auto_pause", False):
+                    webui_manager.is_paused = True
+                    gr.Warning(f"Step {current_step_idx + 1} failed. Pausing queue.")
+            
+            webui_manager.bu_plan_updated = True
+            
+            # Yield final updates for this step
+            step_choices = get_plan_step_choices(webui_manager.bu_plan)
+            yield {
+                plan_status_comp: gr.update(value=render_plan_markdown(webui_manager.bu_plan)),
+                plan_editor_comp: gr.update(value=json.dumps(webui_manager.bu_plan, indent=2)),
+                history_file_comp: gr.File(value=step_history_file) if os.path.exists(step_history_file) else gr.update(),
+                plan_step_selector_comp: gr.update(choices=step_choices)
+            }
 
-            if update_dict:
-                yield update_dict
-
-            await asyncio.sleep(0.2)
-
-        webui_manager.bu_agent.state.paused = False
-        webui_manager.bu_agent.state.stopped = False
         final_update = {}
         try:
-            logger.info("Agent task completing...")
-            if not agent_task.done():
-                await agent_task
-            elif agent_task.exception():
-                agent_task.result()
-            logger.info("Agent task completed processing.")
-
-            webui_manager.bu_agent.save_history(history_file)
-            if os.path.exists(history_file):
-                final_update[history_file_comp] = gr.File(value=history_file)
+            logger.info("Queue processing finished.")
 
             if main_llm and webui_manager.bu_agent.state.history.history:
                 kb_result = await process_knowledge_generation(
@@ -593,10 +687,6 @@ async def run_agent_task(
             gr.Error(f"Agent execution failed: {e}")
 
         finally:
-            webui_manager.bu_current_task = None
-            if screenshot_task and not screenshot_task.done():
-                screenshot_task.cancel()
-
             if should_close_browser_on_finish:
                 if webui_manager.bu_browser_context:
                     await webui_manager.bu_browser_context.close()
@@ -616,10 +706,10 @@ async def run_agent_task(
                 agent_status_comp: gr.update(value=webui_manager.bu_agent_status),
             })
             yield final_update
+            webui_manager.agent_processing_active = False
 
     except Exception as e:
         logger.error(f"Error setting up agent task: {e}", exc_info=True)
-        webui_manager.bu_current_task = None
         yield {
             user_input_comp: gr.update(interactive=True, placeholder="Error during setup. Enter task..."),
             run_button_comp: gr.update(value="▶️ Submit Task", interactive=True, variant="primary"),
@@ -628,6 +718,7 @@ async def run_agent_task(
             pause_resume_button_comp: gr.update(value="⏸️ Pause", interactive=False),
             clear_button_comp: gr.update(interactive=True),
             chatbot_comp: gr.update(value=webui_manager.bu_chat_history + [{"role": "assistant", "content": f"**Setup Error:** {e}"}]),
+            run_button_comp: gr.update(interactive=True)
         }
 
 # --- Handlers ---
@@ -644,7 +735,7 @@ async def handle_submit(webui_manager: "WebuiManager", components: Dict[gr.compo
             user_input_comp: gr.update(value="", interactive=False, placeholder="Waiting for agent to continue..."),
             webui_manager.get_component_by_id("browser_use_agent.run_button"): gr.update(value="⬆️ Add Instruction", interactive=True, variant="secondary"),
         }
-    elif webui_manager.bu_current_task and not webui_manager.bu_current_task.done():
+    elif webui_manager.agent_processing_active:
         if user_input_value:
             webui_manager.bu_chat_history.append({"role": "user", "content": user_input_value})
             async def inject_task_async():
@@ -663,6 +754,12 @@ async def handle_submit(webui_manager: "WebuiManager", components: Dict[gr.compo
             asyncio.create_task(inject_task_async())
             yield {user_input_comp: gr.update(value="")}
         else:
+            # If user just clicks submit without text while running, maybe they want to add a step to the plan?
+            # For now, just do nothing or maybe show a message.
+            if webui_manager.bu_plan:
+                 # If plan exists, maybe they want to add a step?
+                 # We can't easily get the text here if it's empty.
+                 pass
             yield {}
     else:
         async for update in run_agent_task(webui_manager, components):
@@ -681,25 +778,21 @@ async def handle_retry(webui_manager: "WebuiManager", components: Dict[gr.compon
 
 async def handle_stop(webui_manager: "WebuiManager"):
     """Handles clicks on the 'Stop' button."""
-    agent = webui_manager.bu_agent
-    task = webui_manager.bu_current_task
-    if agent and task and not task.done():
-        agent.state.stopped = True
-        agent.state.paused = False
-    else:
-        logger.warning("Stop clicked but agent is not running or task is already done.")
+    webui_manager.stop_requested = True
+    if hasattr(webui_manager, "task_manager") and webui_manager.task_manager.is_running:
+        await webui_manager.task_manager.stop()
 
 async def handle_pause_resume(webui_manager: "WebuiManager"):
     """Handles clicks on the 'Pause/Resume' button."""
-    agent = webui_manager.bu_agent
-    task = webui_manager.bu_current_task
-    if agent and task and not task.done():
-        if agent.state.paused:
-            agent.resume()
+    webui_manager.is_paused = not webui_manager.is_paused
+    
+    # If an agent is currently running, pause/resume it immediately
+    if hasattr(webui_manager, "task_manager") and webui_manager.task_manager.is_running:
+        if webui_manager.is_paused:
+             webui_manager.task_manager.pause()
         else:
-            agent.pause()
-    else:
-        logger.warning("Pause/Resume clicked but agent is not running.")
+             webui_manager.task_manager.resume()
+
 
 async def handle_reload_memory(webui_manager: "WebuiManager", memory_file_path: str):
     """Handles clicks on the 'Reload Memory' button."""
@@ -716,10 +809,14 @@ async def handle_update_kb_list(memory_file_path: str):
     if not memory_file_path:
         return gr.update(choices=[])
     base_dir = os.path.dirname(os.path.abspath(memory_file_path))
-    files = list_kb_files(base_dir)
-    if files and isinstance(files, list):
-        return gr.update(choices=files)
-    else:
+    if not os.path.exists(base_dir):
+        return gr.update(choices=[])
+
+    try:
+        files = list_kb_files(base_dir)
+        return gr.update(choices=files if files else [])
+    except Exception as e:
+        logger.error(f"Error updating KB list: {e}")
         return gr.update(choices=[])
 
 async def handle_load_kb_file(webui_manager: "WebuiManager", memory_file_path: str, selected_file: str):
@@ -729,9 +826,9 @@ async def handle_load_kb_file(webui_manager: "WebuiManager", memory_file_path: s
         selected_file = selected_file[0] if selected_file else None
     
     if isinstance(selected_file, dict):
-        selected_file = selected_file.get('name', '') or str(selected_file.get('value', ''))
+        selected_file = selected_file.get('value') or selected_file.get('name')
 
-    if not memory_file_path or not selected_file:
+    if not memory_file_path or not selected_file or str(selected_file) == "None":
         return {memory_content_comp: gr.update(value="")}
     base_dir = os.path.dirname(os.path.abspath(memory_file_path))
     content = load_kb_content(base_dir, selected_file)
@@ -743,29 +840,24 @@ async def handle_save_chat(webui_manager: "WebuiManager"):
     if not history:
         return {}
     save_path = "./tmp/chat_logs"
-    os.makedirs(save_path, exist_ok=True)
+    
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"chat_log_{timestamp}.json"
     full_path = os.path.join(save_path, filename)
-    try:
-        with open(full_path, "w", encoding="utf-8") as f:
-            json.dump(history, f, indent=2, ensure_ascii=False)
+    
+    content = json.dumps(history, indent=2, ensure_ascii=False)
+    if await IOManager.write_file(full_path, content):
         return {webui_manager.get_component_by_id("browser_use_agent.chat_log_file"): gr.File(value=full_path, visible=True)}
-    except Exception as e:
-        logger.error(f"Failed to save chat history: {e}")
+    else:
         return {}
 
 async def handle_clear(webui_manager: "WebuiManager"):
     """Handles clicks on the 'Clear' button."""
-    task = webui_manager.bu_current_task
-    if task and not task.done():
-        webui_manager.bu_agent.stop()
-        task.cancel()
-        try:
-            await asyncio.wait_for(task, timeout=2.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError): pass
-        except Exception: pass
-    webui_manager.bu_current_task = None
+    webui_manager.stop_requested = True
+    
+    if hasattr(webui_manager, "task_manager") and webui_manager.task_manager.is_running:
+        await webui_manager.task_manager.stop()
+    
 
     if webui_manager.bu_controller:
         await webui_manager.bu_controller.close_mcp_client()
@@ -779,6 +871,7 @@ async def handle_clear(webui_manager: "WebuiManager"):
     webui_manager.bu_agent_status = "### Agent Status\nReady"
     webui_manager.bu_last_task_prompt = None
     webui_manager.bu_resumed_history = None
+    webui_manager.bu_plan = []
 
     return {
         webui_manager.get_component_by_id("browser_use_agent.chatbot"): gr.update(value=[]),
@@ -795,27 +888,36 @@ async def handle_clear(webui_manager: "WebuiManager"):
         webui_manager.get_component_by_id("browser_use_agent.chat_log_file"): gr.update(value=None),
     }
 
-async def handle_refresh_history_files(save_agent_history_path: str):
+async def handle_refresh_history_files(save_agent_history_path: str, filter_query: str = ""):
     """Refreshes the list of available history files."""
     if not save_agent_history_path:
         return gr.update(choices=[])
     if not os.path.exists(save_agent_history_path):
         return gr.update(choices=[])
     files = []
-    for task_id in os.listdir(save_agent_history_path):
-        task_dir = os.path.join(save_agent_history_path, task_id)
-        if os.path.isdir(task_dir):
-            json_file = os.path.join(task_dir, f"{task_id}.json")
-            if os.path.exists(json_file):
-                mtime = os.path.getmtime(json_file)
-                files.append((json_file, mtime))
-    files.sort(key=lambda x: x[1], reverse=True)
-    choices = [f[0] for f in files]
+    try:
+        for task_id in os.listdir(save_agent_history_path):
+            task_dir = os.path.join(save_agent_history_path, task_id)
+            if os.path.isdir(task_dir):
+                json_file = os.path.join(task_dir, f"{task_id}.json")
+                if os.path.exists(json_file):
+                    mtime = os.path.getmtime(json_file)
+                    dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                    label = f"{dt} | {task_id}"
+                    if filter_query and filter_query.lower() not in label.lower():
+                        continue
+                    value = str(os.path.abspath(json_file))
+                    files.append((label, value, mtime))
+    except Exception as e:
+        logger.error(f"Error listing history files: {e}")
+        return gr.update(choices=[])
+
+    files.sort(key=lambda x: x[2], reverse=True)
+    choices = [(f[0], f[1]) for f in files]
     return gr.update(choices=choices)
 
 async def handle_update_plan(webui_manager: "WebuiManager", new_plan_json: str):
     """Updates the plan from the editor."""
-    plan_status_comp = webui_manager.get_component_by_id("browser_use_agent.plan_status")
     if not new_plan_json: return {}
     try:
         new_plan = json.loads(new_plan_json)
@@ -826,14 +928,256 @@ async def handle_update_plan(webui_manager: "WebuiManager", new_plan_json: str):
                 msg = f"NOTE: The plan has been manually updated by the user. Current Plan Status: {json.dumps(new_plan)}"
                 if hasattr(webui_manager.bu_agent, "message_manager"):
                      webui_manager.bu_agent.message_manager.add_user_message(msg)
-            plan_md = render_plan_markdown(new_plan)
-            return {plan_status_comp: gr.update(value=plan_md)}
+            return update_plan_ui(webui_manager)
         else:
             gr.Warning("Plan must be a JSON list.")
             return {}
     except Exception as e:
         gr.Warning(f"Invalid JSON: {e}")
         return {}
+
+async def handle_move_step_up(webui_manager: "WebuiManager", selected_step: str):
+    """Moves the selected step up in the plan."""
+    if not selected_step or not webui_manager.bu_plan: return {}
+    try:
+        idx = int(selected_step.split(".")[0]) - 1
+        if idx > 0:
+            webui_manager.bu_plan[idx], webui_manager.bu_plan[idx-1] = webui_manager.bu_plan[idx-1], webui_manager.bu_plan[idx]
+            webui_manager.bu_plan_updated = True
+            return update_plan_ui(webui_manager)
+    except Exception: pass
+    return {}
+
+async def handle_move_step_down(webui_manager: "WebuiManager", selected_step: str):
+    """Moves the selected step down in the plan."""
+    if not selected_step or not webui_manager.bu_plan: return {}
+    try:
+        idx = int(selected_step.split(".")[0]) - 1
+        if idx < len(webui_manager.bu_plan) - 1:
+            webui_manager.bu_plan[idx], webui_manager.bu_plan[idx+1] = webui_manager.bu_plan[idx+1], webui_manager.bu_plan[idx]
+            webui_manager.bu_plan_updated = True
+            return update_plan_ui(webui_manager)
+    except Exception: pass
+    return {}
+
+async def handle_duplicate_step(webui_manager: "WebuiManager", selected_step: str):
+    """Duplicates the selected step in the plan."""
+    if not selected_step or not webui_manager.bu_plan: return {}
+    try:
+        idx = int(selected_step.split(".")[0]) - 1
+        if 0 <= idx < len(webui_manager.bu_plan):
+            step_to_copy = copy.deepcopy(webui_manager.bu_plan[idx])
+            step_to_copy["status"] = "pending"
+            webui_manager.bu_plan.insert(idx + 1, step_to_copy)
+            webui_manager.bu_plan_updated = True
+            return update_plan_ui(webui_manager)
+    except Exception: pass
+    return {}
+
+async def handle_delete_step_from_plan(webui_manager: "WebuiManager", selected_step: str):
+    """Deletes the selected step from the plan."""
+    if not selected_step or not webui_manager.bu_plan: return {}
+    try:
+        idx = int(selected_step.split(".")[0]) - 1
+        if 0 <= idx < len(webui_manager.bu_plan):
+            webui_manager.bu_plan.pop(idx)
+            webui_manager.bu_plan_updated = True
+            return update_plan_ui(webui_manager)
+    except Exception: pass
+    return {}
+
+async def handle_step_selection_change(webui_manager: "WebuiManager", selected_step: str):
+    """Updates the step text box when a step is selected."""
+    text_comp = webui_manager.get_component_by_id("browser_use_agent.plan_step_text")
+    action_comp = webui_manager.get_component_by_id("browser_use_agent.plan_action_name")
+    params_comp = webui_manager.get_component_by_id("browser_use_agent.plan_action_params")
+    
+    updates = {
+        text_comp: gr.update(value=""),
+        action_comp: gr.update(value=None),
+        params_comp: gr.update(value="")
+    }
+    
+    if not selected_step or not webui_manager.bu_plan:
+        return updates
+    try:
+        idx = int(selected_step.split(".")[0]) - 1
+        if 0 <= idx < len(webui_manager.bu_plan):
+            step_data = webui_manager.bu_plan[idx]
+            updates[text_comp] = gr.update(value=step_data.get("step", ""))
+            updates[action_comp] = gr.update(value=step_data.get("action", None))
+            params = step_data.get("params", {})
+            updates[params_comp] = gr.update(value=json.dumps(params) if params else "")
+            return updates
+    except Exception: pass
+    return updates
+
+async def handle_save_step_text(webui_manager: "WebuiManager", selected_step: str, new_text: str):
+    """Saves the edited text for a plan step."""
+    if not selected_step or not webui_manager.bu_plan or not new_text:
+        gr.Warning("Please select a step and enter text.")
+        return {}
+    try:
+        idx = int(selected_step.split(".")[0]) - 1
+        if 0 <= idx < len(webui_manager.bu_plan):
+            webui_manager.bu_plan[idx]["step"] = new_text
+            webui_manager.bu_plan_updated = True
+            
+            updates = update_plan_ui(webui_manager)
+            return updates
+    except Exception as e: logger.error(f"Error saving step text: {e}")
+    return {}
+
+async def handle_set_step_action(webui_manager: "WebuiManager", selected_step: str, action_name: str, params_json: str):
+    """Sets the action and parameters for a specific step."""
+    if not selected_step or not webui_manager.bu_plan:
+        return {}
+    
+    try:
+        idx = int(selected_step.split(".")[0]) - 1
+        if not (0 <= idx < len(webui_manager.bu_plan)):
+            return {}
+        
+        if not action_name:
+            # Clear action if name is empty
+            webui_manager.bu_plan[idx].pop("action", None)
+            webui_manager.bu_plan[idx].pop("params", None)
+        else:
+            params = {}
+            if params_json and params_json.strip():
+                try:
+                    params = json.loads(params_json)
+                except json.JSONDecodeError:
+                    gr.Warning("Invalid JSON for parameters.")
+                    return {}
+            
+            webui_manager.bu_plan[idx]["action"] = action_name
+            webui_manager.bu_plan[idx]["params"] = params
+            
+        webui_manager.bu_plan_updated = True
+        return update_plan_ui(webui_manager)
+    except Exception as e:
+        logger.error(f"Error setting step action: {e}")
+        return {}
+
+async def handle_add_step(webui_manager: "WebuiManager", new_step_content: str):
+    """Adds a new step to the plan."""
+    if not new_step_content:
+        new_step_content = "New Step"
+    
+    if not hasattr(webui_manager, "bu_plan") or webui_manager.bu_plan is None:
+        webui_manager.bu_plan = []
+
+    webui_manager.bu_plan.append({"step": new_step_content, "status": "pending"})
+    webui_manager.bu_plan_updated = True
+    
+    updates = update_plan_ui(webui_manager)
+    # Clear the text box
+    updates[webui_manager.get_component_by_id("browser_use_agent.plan_step_text")] = gr.update(value="")
+    return updates
+
+async def handle_clear_completed_steps(webui_manager: "WebuiManager"):
+    """Clears all completed steps from the plan."""
+    if not hasattr(webui_manager, "bu_plan") or not webui_manager.bu_plan:
+        return {}
+    
+    original_len = len(webui_manager.bu_plan)
+    webui_manager.bu_plan = [step for step in webui_manager.bu_plan if step.get("status") != "completed"]
+    
+    if len(webui_manager.bu_plan) < original_len:
+        webui_manager.bu_plan_updated = True
+        return update_plan_ui(webui_manager)
+    
+    return {}
+
+async def handle_run_step_action(webui_manager: "WebuiManager", selected_step: str, components: Dict[gr.components.Component, Any]):
+    """Executes the action associated with the selected plan step."""
+    result_comp = webui_manager.get_component_by_id("browser_use_agent.plan_action_result")
+    if not selected_step or not webui_manager.bu_plan:
+        gr.Warning("No step selected.")
+        yield {}
+        return
+    
+    try:
+        idx = int(selected_step.split(".")[0]) - 1
+        if not (0 <= idx < len(webui_manager.bu_plan)):
+            gr.Warning("Invalid step selected.")
+            yield {}
+            return
+            
+        step_data = webui_manager.bu_plan[idx]
+        action_name = step_data.get("action")
+        params = step_data.get("params", {})
+        
+        if not action_name:
+            gr.Warning(f"Step {idx+1} does not have an executable action defined.")
+            yield {}
+            return
+
+        # Ensure infrastructure is ready
+        browser_settings = get_browser_settings_values(webui_manager, components)
+        await initialize_browser_infrastructure(webui_manager, browser_settings)
+        
+        if not webui_manager.bu_controller:
+             agent_settings = get_agent_settings_values(webui_manager, components)
+             memory_file_comp = webui_manager.get_component_by_id("browser_use_agent.memory_file")
+             memory_file = components.get(memory_file_comp)
+             await configure_controller(webui_manager, agent_settings, memory_file=memory_file)
+
+        # Execute
+        logger.info(f"Manually executing action: {action_name} with params: {params}")
+        result = await webui_manager.bu_controller.execute_action_by_name(action_name, params, webui_manager.bu_browser_context)
+        
+        gr.Info(f"Action '{action_name}' executed.")
+        yield {result_comp: gr.update(value=str(result))}
+    except Exception as e:
+        logger.error(f"Error running step action: {e}", exc_info=True)
+        gr.Error(f"Failed to run action: {e}")
+        yield {result_comp: gr.update(value=f"Error: {e}")}
+
+async def handle_complete_current_step(webui_manager: "WebuiManager", components: Dict[gr.components.Component, Any]):
+    """Manually triggers the completion of the current step."""
+    result_comp = webui_manager.get_component_by_id("browser_use_agent.plan_action_result")
+    
+    if not hasattr(webui_manager, "bu_plan") or not webui_manager.bu_plan:
+        gr.Warning("No plan loaded.")
+        yield {}
+        return
+
+    # If browser context exists, use controller action
+    if webui_manager.bu_browser_context:
+        try:
+            if not webui_manager.bu_controller:
+                 agent_settings = get_agent_settings_values(webui_manager, components)
+                 memory_file_comp = webui_manager.get_component_by_id("browser_use_agent.memory_file")
+                 memory_file = components.get(memory_file_comp)
+                 await configure_controller(webui_manager, agent_settings, memory_file=memory_file)
+
+            result = await webui_manager.bu_controller.execute_action_by_name("complete_current_step", {}, webui_manager.bu_browser_context)
+            yield {result_comp: gr.update(value=str(result))}
+            yield update_plan_ui(webui_manager)
+            return
+        except Exception as e:
+            logger.error(f"Error executing complete_current_step via controller: {e}")
+            gr.Error(f"Controller action failed: {e}")
+            yield {result_comp: gr.update(value=f"Error: {e}")}
+            return
+
+    # Offline fallback (no browser)
+    current_idx = -1
+    for i, step in enumerate(webui_manager.bu_plan):
+        if step.get("status") == "in_progress":
+            current_idx = i
+            break
+    
+    if current_idx != -1:
+        webui_manager.bu_plan[current_idx]["status"] = "completed"
+        webui_manager.bu_plan_updated = True
+        gr.Info(f"Marked step {current_idx+1} as completed (Offline).")
+        yield update_plan_ui(webui_manager)
+    else:
+        gr.Warning("No step is currently 'in_progress'.")
+        yield {}
 
 async def handle_save_generated_kb(webui_manager: "WebuiManager", title: str, content: str, memory_file_path: str):
     """Saves the generated knowledge to a file."""
@@ -856,9 +1200,9 @@ async def handle_resume_session(webui_manager: "WebuiManager", history_file: str
         history_file = history_file[0] if history_file else None
     
     if isinstance(history_file, dict):
-        history_file = history_file.get('name', '') or str(history_file.get('value', ''))
+        history_file = history_file.get('value') or history_file.get('name')
 
-    if not history_file or not os.path.exists(history_file):
+    if not history_file or str(history_file) == "None" or not os.path.exists(str(history_file)):
         gr.Warning("History file not found.")
         yield {}
         return
@@ -890,3 +1234,167 @@ async def handle_resume_session(webui_manager: "WebuiManager", history_file: str
     except Exception as e:
         logger.error(f"Error resuming session: {e}", exc_info=True)
         gr.Error(f"Failed to resume session: {e}")
+
+async def handle_delete_session(webui_manager: "WebuiManager", history_file: str, components: Dict[gr.components.Component, Any]):
+    """Deletes a session history file and its directory."""
+    if isinstance(history_file, list):
+        history_file = history_file[0] if history_file else None
+    
+    if isinstance(history_file, dict):
+        history_file = history_file.get('value') or history_file.get('name')
+
+    if not history_file or str(history_file) == "None" or not os.path.exists(str(history_file)):
+        gr.Warning("History file not found.")
+        yield {}
+        return
+
+    try:
+        # history_file is usually .../task_id/task_id.json
+        # We want to delete the parent directory (task_id)
+        task_dir = os.path.dirname(os.path.abspath(history_file))
+        if os.path.exists(task_dir):
+            shutil.rmtree(task_dir)
+            gr.Info(f"Deleted session: {os.path.basename(task_dir)}")
+            
+            # Refresh list
+            save_path = os.path.dirname(task_dir)
+            filter_comp = webui_manager.get_component_by_id("browser_use_agent.history_filter")
+            filter_val = components.get(filter_comp, "")
+            yield {webui_manager.get_component_by_id("browser_use_agent.history_files_dropdown"): await handle_refresh_history_files(save_path, filter_val)}
+    except Exception as e:
+        logger.error(f"Error deleting session: {e}", exc_info=True)
+        gr.Error(f"Failed to delete session: {e}")
+
+async def handle_refresh_workflows(webui_manager: "WebuiManager", filter_query: str = ""):
+    """Refreshes the workflow list."""
+    workflows = webui_manager.workflow_manager.list_workflows()
+    if filter_query:
+        workflows = [w for w in workflows if filter_query.lower() in w.lower()]
+    
+    comp = webui_manager.get_component_by_id("browser_use_agent.workflow_selector")
+    return {comp: gr.update(choices=workflows)}
+
+async def handle_save_workflow(webui_manager: "WebuiManager", name: str):
+    """Saves the current plan as a workflow."""
+    if not name:
+        gr.Warning("Please enter a workflow name.")
+        return {}
+    if not webui_manager.bu_plan:
+        gr.Warning("Current plan is empty.")
+        return {}
+    
+    if webui_manager.workflow_manager.save_workflow(name, webui_manager.bu_plan):
+        gr.Info(f"Workflow '{name}' saved.")
+        # Refresh list
+        return await handle_refresh_workflows(webui_manager)
+    else:
+        gr.Error("Failed to save workflow.")
+        return {}
+
+async def handle_load_workflow(webui_manager: "WebuiManager", name: str):
+    """Loads a workflow into the plan."""
+    if not name: return {}
+    plan = webui_manager.workflow_manager.load_workflow(name)
+    if plan:
+        webui_manager.bu_plan = plan
+        webui_manager.bu_plan_updated = True
+        return update_plan_ui(webui_manager)
+    else:
+        gr.Error(f"Failed to load workflow '{name}'.")
+        return {}
+
+async def handle_delete_workflow(webui_manager: "WebuiManager", name: str):
+    """Deletes a workflow."""
+    if not name: return {}
+    if webui_manager.workflow_manager.delete_workflow(name):
+        gr.Info(f"Workflow '{name}' deleted.")
+        return await handle_refresh_workflows(webui_manager)
+    else:
+        gr.Error(f"Failed to delete workflow '{name}'.")
+        return {}
+
+async def handle_streamline_plan(webui_manager: "WebuiManager"):
+    """Optimizes the current plan using LLM."""
+    if not webui_manager.bu_plan:
+        gr.Warning("Plan is empty.")
+        return {}
+    
+    # If agent exists, use its LLM.
+    llm = None
+    if webui_manager.bu_agent:
+        llm = webui_manager.bu_agent.llm
+    
+    if not llm:
+        gr.Warning("Agent/LLM not initialized. Please run a task first or ensure settings are correct.")
+        return {}
+
+    gr.Info("Streamlining plan...")
+    # Get history if available
+    history_str = ""
+    if webui_manager.bu_agent and webui_manager.bu_agent.state.history:
+        # Summarize history
+        history_str = str(webui_manager.bu_agent.state.history) # Might be too long, but let's try
+
+    new_plan = await webui_manager.workflow_manager.streamline_plan(llm, webui_manager.bu_plan, history_str)
+    if new_plan:
+        webui_manager.bu_plan = new_plan
+        webui_manager.bu_plan_updated = True
+        return update_plan_ui(webui_manager)
+    
+    return {}
+
+async def handle_generate_plan_from_prompt(webui_manager: "WebuiManager", prompt: str, components: Dict[gr.components.Component, Any]):
+    """Generates a plan from a prompt using the Planner LLM."""
+    if not prompt:
+        gr.Warning("Please enter a prompt.")
+        return {}
+
+    # We need to initialize LLMs to get the planner LLM
+    agent_settings = get_agent_settings_values(webui_manager, components)
+    main_llm, planner_llm, _, _, _ = await initialize_agent_llms(agent_settings)
+    
+    llm = planner_llm if planner_llm else main_llm
+    if not llm:
+        gr.Error("No LLM available for planning.")
+        return {}
+
+    from src.agent.planner import generate_hierarchical_plan
+    
+    # Context
+    additional_context = None
+    if webui_manager.bu_browser_context:
+        try:
+            page = await webui_manager.bu_browser_context.get_current_page()
+            title = await page.title()
+            url = page.url
+            additional_context = f"Current Browser State:\nURL: {url}\nTitle: {title}"
+        except Exception: pass
+
+    plan = await generate_hierarchical_plan(
+        llm, 
+        prompt, 
+        agent_settings["planner_system_prompt"],
+        additional_context
+    )
+    
+    if plan:
+        webui_manager.bu_plan = [{"step": step["description"], "status": "pending"} for step in plan]
+        webui_manager.bu_plan_updated = True
+        return update_plan_ui(webui_manager)
+    else:
+        gr.Error("Failed to generate plan.")
+        return {}
+
+async def handle_export_plan(webui_manager: "WebuiManager"):
+    """Exports the current plan to a JSON file."""
+    if not webui_manager.bu_plan:
+        gr.Warning("Plan is empty.")
+        return {}
+    
+    filename = f"plan_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filepath = os.path.join("./tmp/downloads", filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    if await IOManager.write_file(filepath, json.dumps(webui_manager.bu_plan, indent=2)):
+        return {webui_manager.get_component_by_id("browser_use_agent.plan_export_file"): gr.File(value=filepath, visible=True)}
+    return {}

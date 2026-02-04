@@ -11,6 +11,7 @@ import time
 from typing import Any
 import logging
 import shutil
+import threading
 
 from gradio.components import Component
 from browser_use.browser.browser import Browser
@@ -20,6 +21,8 @@ from src.browser.custom_browser import CustomBrowser
 from src.browser.custom_context import CustomBrowserContext
 from src.controller.custom_controller import CustomController
 from src.agent.deep_research.deep_research_agent import DeepResearchAgent
+from src.webui.task_manager import TaskManager
+from src.agent.workflow_manager import WorkflowManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,7 @@ class WebuiManager:
 
         self.settings_save_dir = settings_save_dir
         os.makedirs(self.settings_save_dir, exist_ok=True)
+        self.config_lock = threading.Lock()
 
     def init_browser_use_agent(self) -> None:
         """
@@ -48,6 +52,12 @@ class WebuiManager:
         self.bu_latest_screenshot: Optional[str] = None
         self.bu_last_task_prompt: Optional[str] = None
         self.bu_max_steps: int = 100
+        self.stop_requested: bool = False
+        self.is_paused: bool = False
+        self.agent_processing_active: bool = False
+        self.bu_task_start_time: Optional[float] = None
+        self.task_manager = TaskManager()
+        self.workflow_manager = WorkflowManager()
 
     def init_deep_research_agent(self) -> None:
         """
@@ -107,24 +117,25 @@ class WebuiManager:
         file_path = os.path.join(self.settings_save_dir, f"{config_name}.json")
         temp_path = f"{file_path}.tmp"
 
-        try:
-            with open(temp_path, "w") as fw:
-                json.dump(cur_settings, fw, indent=4)
-            
-            # Retry logic for file operations on Windows
-            for i in range(3):
-                try:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                    os.rename(temp_path, file_path)
-                    break
-                except OSError:
-                    time.sleep(0.1)
-        except Exception as e:
-            logger.error(f"Failed to save config to {file_path}: {e}")
-            if os.path.exists(temp_path):
-                try: os.remove(temp_path)
-                except: pass
+        with self.config_lock:
+            try:
+                with open(temp_path, "w") as fw:
+                    json.dump(cur_settings, fw, indent=4)
+                
+                # Retry logic for file operations on Windows
+                for i in range(3):
+                    try:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        os.rename(temp_path, file_path)
+                        break
+                    except OSError:
+                        time.sleep(0.1)
+            except Exception as e:
+                logger.error(f"Failed to save config to {file_path}: {e}")
+                if os.path.exists(temp_path):
+                    try: os.remove(temp_path)
+                    except: pass
 
         return os.path.join(self.settings_save_dir, f"{config_name}.json")
 
@@ -156,7 +167,7 @@ class WebuiManager:
                     if hasattr(comp, 'value') and comp.value is not None:
                         comp_val = comp.value
                     else:
-                        comp_val = 0
+                        comp_val = getattr(comp, 'minimum', 0) or 0
 
                 if comp.__class__.__name__ == "Chatbot":
                     update_components[comp] = gr.update(value=comp_val, type="messages")
@@ -182,33 +193,34 @@ class WebuiManager:
         config_path = os.path.join(self.settings_save_dir, "last_config.json")
         temp_path = f"{config_path}.tmp"
         
-        settings = {}
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    settings = json.load(f)
-            except Exception as e:
-                logger.warning(f"Could not read existing config to update parameter: {e}")
-                # If the file is corrupted, we might start fresh or backup. 
-                # For now, starting fresh settings dict is safer than crashing.
-        
-        settings[comp_id] = value
-        
-        try:
-            with open(temp_path, "w") as f:
-                json.dump(settings, f, indent=4)
-            
-            # Retry logic for file operations on Windows
-            for i in range(3):
+        with self.config_lock:
+            settings = {}
+            if os.path.exists(config_path):
                 try:
-                    if os.path.exists(config_path):
-                        os.remove(config_path)
-                    os.rename(temp_path, config_path)
-                    break
-                except OSError:
-                    time.sleep(0.1)
-        except Exception as e:
-            logger.error(f"Failed to update parameter in config: {e}")
+                    with open(config_path, "r") as f:
+                        settings = json.load(f)
+                except Exception as e:
+                    logger.warning(f"Could not read existing config to update parameter: {e}")
+                    # If corrupted, start fresh to avoid persistent errors
+                    settings = {}
+            
+            settings[comp_id] = value
+            
+            try:
+                with open(temp_path, "w") as f:
+                    json.dump(settings, f, indent=4)
+                
+                # Retry logic for file operations on Windows
+                for i in range(3):
+                    try:
+                        if os.path.exists(config_path):
+                            os.remove(config_path)
+                        os.rename(temp_path, config_path)
+                        break
+                    except OSError:
+                        time.sleep(0.1)
+            except Exception as e:
+                logger.error(f"Failed to update parameter in config: {e}")
 
     def load_last_config(self):
         """Load the last saved config"""

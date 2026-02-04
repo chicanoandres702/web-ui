@@ -12,6 +12,7 @@ import logging
 import asyncio
 from datetime import datetime
 import sys
+from src.utils.io_manager import IOManager
 
 try:
     import json_repair
@@ -20,6 +21,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+def str_to_bool(val: Any) -> bool:
+    """Converts a string representation of truth to True (1, y, yes, t, true, on) or False."""
+    if isinstance(val, bool): return val
+    if val is None: return False
+    return str(val).lower() in ('y', 'yes', 't', 'true', 'on', '1')
 
 def encode_image(img_path):
     if not img_path:
@@ -53,29 +59,17 @@ def get_latest_files(directory: str, file_types: list = ['.webm', '.zip']) -> Di
 
 def read_file_safe(file_path: str) -> Optional[str]:
     """Safely read a file, returning None if it doesn't exist or on error."""
-    if not os.path.exists(file_path):
-        return None
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except Exception as e:
-        logger.error(f"Error reading file {file_path}: {e}")
-        return None
+    return IOManager.read_file_sync(file_path)
 
 
 def save_text_to_file(path: str, text: str, mode: str = "w"):
     """Safely save text to a file."""
-    try:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, mode, encoding="utf-8") as f:
-            f.write(text)
-    except Exception as e:
-        logger.error(f"Error saving to file {path}: {e}")
+    IOManager.write_file_sync(path, text, mode=mode)
 
 
 async def save_text_to_file_async(path: str, text: str, mode: str = "w"):
     """Safely save text to a file asynchronously."""
-    await asyncio.to_thread(save_text_to_file, path, text, mode)
+    await IOManager.write_file(path, text, mode=mode)
 
 
 def sanitize_filename(name: str) -> str:
@@ -97,6 +91,27 @@ def resolve_file_path(filename: str) -> Optional[str]:
     
     return next((p for p in paths_to_check if os.path.exists(p)), None)
 
+def extract_text_from_pdf(filepath: str) -> str:
+    """Extracts text from a PDF file."""
+    if not os.path.exists(filepath):
+        return f"File not found: {filepath}"
+        
+    try:
+        import pypdf
+    except ImportError:
+        return "Error: pypdf library not installed. Please install it via `pip install pypdf`."
+
+    try:
+        reader = pypdf.PdfReader(filepath)
+        text = []
+        for i, page in enumerate(reader.pages):
+            extracted = page.extract_text()
+            if extracted:
+                text.append(f"--- Page {i+1} ---\n{extracted}")
+        return "\n".join(text)
+    except Exception as e:
+        return f"Error reading PDF: {e}"
+
 def save_to_knowledge_base_file(text: str, topic: str, memory_file_path: str) -> Optional[str]:
     """Appends text to a knowledge base file derived from the topic."""
     if not memory_file_path:
@@ -107,7 +122,7 @@ def save_to_knowledge_base_file(text: str, topic: str, memory_file_path: str) ->
     filepath = os.path.join(base_dir, filename)
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     entry = f"\n## [{timestamp}] {topic}\n\n{text}\n"
-    save_text_to_file(filepath, entry, mode="a")
+    IOManager.write_file_sync(filepath, entry, mode="a")
     return filepath
 
 

@@ -996,17 +996,17 @@ JS_GET_CONSOLE_ERRORS = """() => {
 
 JS_INJECT_HUD = """(data) => {
     // data: { plan: [], goal: string, status: string, last_action: string }
-    if (!document.body) return; // Safety check
+    if (!document.body) return; 
     
     const id = 'agent-hud-bottom-panel';
     let container = document.getElementById(id);
 
-    // Initialize state if needed
+    // Initialize state
     if (!window._agent_hud_state) {
         window._agent_hud_state = { collapsed: false };
     }
 
-    // Define toggle function globally
+    // Toggle function
     if (!window._agent_hud_toggle) {
         window._agent_hud_toggle = () => {
             window._agent_hud_state.collapsed = !window._agent_hud_state.collapsed;
@@ -1016,14 +1016,22 @@ JS_INJECT_HUD = """(data) => {
             
             if (window._agent_hud_state.collapsed) {
                 if(content) content.style.display = 'none';
-                if(c) c.style.maxHeight = '40px'; // Just the header height
+                if(c) c.style.height = '40px'; 
                 if(btn) btn.innerText = '🔼';
+                document.body.style.marginBottom = '40px';
             } else {
                 if(content) content.style.display = 'flex';
-                if(c) c.style.maxHeight = '40vh';
+                if(c) c.style.height = '300px';
                 if(btn) btn.innerText = '🔽';
+                document.body.style.marginBottom = '300px';
             }
         };
+    }
+
+    // Re-create if needed
+    if (container && !document.getElementById(id + '-input-row')) {
+        container.remove();
+        container = null;
     }
 
     if (!container) {
@@ -1031,69 +1039,138 @@ JS_INJECT_HUD = """(data) => {
         container.id = id;
         Object.assign(container.style, {
             position: 'fixed',
-            top: '0',
+            bottom: '0',
             left: '0',
             width: '100%',
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            backgroundColor: '#0f172a',
             color: '#e2e8f0',
             zIndex: '2147483647',
             fontFamily: 'Segoe UI, sans-serif',
             boxSizing: 'border-box',
-            borderTop: '3px solid #3b82f6',
-            boxShadow: '0 -5px 15px rgba(0,0,0,0.3)',
+            borderTop: '2px solid #3b82f6',
+            boxShadow: '0 -4px 20px rgba(0,0,0,0.4)',
             display: 'flex',
             flexDirection: 'column',
-            maxHeight: '40vh',
-            transition: 'max-height 0.3s ease',
-            backdropFilter: 'blur(4px)'
+            height: '300px',
+            transition: 'height 0.3s ease',
         });
         document.body.appendChild(container);
 
+        // Header
         const header = document.createElement('div');
         header.id = id + '-header';
         Object.assign(header.style, {
-            padding: '8px 16px',
+            padding: '0 16px',
+            height: '40px',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             cursor: 'pointer',
-            borderBottom: '1px solid rgba(59, 130, 246, 0.3)',
+            borderBottom: '1px solid #1e293b',
+            backgroundColor: '#1e293b',
             flexShrink: '0'
         });
         header.onclick = (e) => {
-            // Only toggle if clicking on the header itself, not a button inside it
             if (e.target === header || e.target.parentElement === header) {
                  window._agent_hud_toggle();
             }
         };
         container.appendChild(header);
 
+        // Content Container
         const content = document.createElement('div');
         content.id = id + '-content';
         Object.assign(content.style, {
             padding: '12px 16px',
             overflowY: 'auto',
             display: 'flex',
-            gap: '24px',
-            flex: '1'
+            flexDirection: 'column',
+            gap: '12px',
+            flex: '1',
+            backgroundColor: '#0f172a'
         });
         container.appendChild(content);
         
-        // Add columns inside content
+        // Input Row
+        const inputRow = document.createElement('div');
+        inputRow.id = id + '-input-row';
+        Object.assign(inputRow.style, {
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '8px'
+        });
+        
+        const input = document.createElement('input');
+        input.id = id + '-input';
+        input.placeholder = "Type instruction to agent...";
+        Object.assign(input.style, {
+            flex: '1',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            border: '1px solid #334155',
+            background: '#1e293b',
+            color: '#e2e8f0',
+            fontSize: '13px',
+            outline: 'none'
+        });
+        
+        const addBtn = document.createElement('button');
+        addBtn.innerText = "Send";
+        Object.assign(addBtn.style, {
+            padding: '8px 16px',
+            borderRadius: '6px',
+            border: 'none',
+            background: '#3b82f6',
+            color: 'white',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontWeight: '600'
+        });
+        
+        addBtn.onclick = () => {
+            const val = input.value.trim();
+            if(val && window.py_agent_control) {
+                window.py_agent_control('add_task', val);
+                input.value = "";
+            }
+        };
+        input.onkeydown = (e) => { if(e.key === 'Enter') addBtn.click(); };
+        
+        inputRow.appendChild(input);
+        inputRow.appendChild(addBtn);
+        content.appendChild(inputRow);
+
+        // Columns Wrapper
+        const columnsWrapper = document.createElement('div');
+        Object.assign(columnsWrapper.style, {
+            display: 'flex',
+            gap: '20px',
+            flex: '1',
+            minHeight: '0' // Important for nested scrolling
+        });
+        content.appendChild(columnsWrapper);
+
+        // Plan Column
         const planColumn = document.createElement('div');
         planColumn.id = id + '-plan-column';
-        planColumn.style.flex = '2';
-        content.appendChild(planColumn);
+        Object.assign(planColumn.style, {
+            flex: '1',
+            overflowY: 'auto',
+            paddingRight: '8px'
+        });
+        columnsWrapper.appendChild(planColumn);
         
+        // Status Column
         const statusColumn = document.createElement('div');
         statusColumn.id = id + '-status-column';
-        statusColumn.style.flex = '1';
-        content.appendChild(statusColumn);
-    } else {
-        // Ensure it is attached to body
-        if (!document.body.contains(container)) {
-            document.body.appendChild(container);
-        }
+        Object.assign(statusColumn.style, {
+            flex: '1',
+            overflowY: 'auto',
+            paddingRight: '8px',
+            borderLeft: '1px solid #334155',
+            paddingLeft: '20px'
+        });
+        columnsWrapper.appendChild(statusColumn);
     }
     
     // Update Content
@@ -1104,127 +1181,105 @@ JS_INJECT_HUD = """(data) => {
 
     if (!header || !content || !planColumn || !statusColumn) return;
 
-    // Apply collapsed state
+    // Apply state
     if (window._agent_hud_state.collapsed) {
         content.style.display = 'none';
-        container.style.maxHeight = '40px';
+        container.style.height = '40px';
+        document.body.style.marginBottom = '40px';
     } else {
         content.style.display = 'flex';
-        container.style.maxHeight = '40vh';
+        container.style.height = '300px';
+        document.body.style.marginBottom = '300px';
     }
 
     // Update Header
-    const goalText = data.goal ? data.goal.substring(0, 80) + (data.goal.length > 80 ? '...' : '') : 'No active goal';
-    const btnBase = "margin-left:8px; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:sans-serif; font-weight:600; transition: all 0.2s;";
-    const btnPause = btnBase + "border:1px solid #475569; background:#1e293b; color:#e2e8f0;";
-    const btnStop = btnBase + "border:1px solid #7f1d1d; background:#450a0a; color:#fca5a5;";
-    const btnToggle = btnBase + "border:1px solid #334155; background:#0f172a; color:#94a3b8;";
+    const goalText = data.goal ? data.goal.substring(0, 100) : 'Ready';
+    const btnStyle = "margin-left:8px; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600; border:none; transition: opacity 0.2s;";
     const toggleIcon = window._agent_hud_state.collapsed ? '🔼' : '🔽';
 
     header.innerHTML = `
-        <div style="display:flex; align-items:center; gap:10px; flex:1; overflow:hidden; font-family:monospace; font-size:12px;">
-            <span style="font-weight:bold; color:#38bdf8; white-space:nowrap;">🤖 AI BROWSER</span>
-            <span style="color:#64748b;">|</span>
-            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${goalText}</span>
+        <div style="display:flex; align-items:center; gap:12px; flex:1; overflow:hidden;">
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:16px;">🤖</span>
+                <span style="font-weight:700; color:#38bdf8; font-size:13px; letter-spacing:0.5px;">AI BROWSER</span>
+            </div>
+            <div style="height:16px; width:1px; background:#334155;"></div>
+            <span style="font-size:12px; color:#94a3b8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${goalText}</span>
         </div>
-        <div style="display:flex; align-items:center; margin-left:10px;">
-            <button onclick="if(window.py_agent_control) window.py_agent_control('pause')" style="${btnPause}" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#1e293b'">⏸️ Pause</button>
-            <button onclick="if(window.py_agent_control) window.py_agent_control('stop')" style="${btnStop}" onmouseover="this.style.background='#7f1d1d'" onmouseout="this.style.background='#450a0a'">⏹️ Stop</button>
-            <button id="agent-hud-toggle-btn" onclick="window._agent_hud_toggle()" style="${btnToggle}" onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='#0f172a'">${toggleIcon}</button>
-            <div style="font-size:11px; color:#94a3b8; margin-left:10px; white-space:nowrap; font-family:monospace;">${new Date().toLocaleTimeString()}</div>
+        <div style="display:flex; align-items:center;">
+            <button onclick="if(window.py_agent_control) window.py_agent_control('pause')" style="${btnStyle} background:#334155; color:#e2e8f0;">⏸️ Pause</button>
+            <button onclick="if(window.py_agent_control) window.py_agent_control('stop')" style="${btnStyle} background:#ef4444; color:white;">⏹️ Stop</button>
+            <button id="agent-hud-toggle-btn" onclick="window._agent_hud_toggle()" style="${btnStyle} background:transparent; color:#94a3b8; font-size:14px;">${toggleIcon}</button>
         </div>
     `;
 
-    // Update Plan Column
-    planColumn.innerHTML = `<div style="font-weight:bold; margin-bottom:10px; color:#38bdf8; border-bottom:1px solid #334155; padding-bottom:5px; font-size:14px;">TASK QUEUE</div>`;
+    // Update Plan
+    planColumn.innerHTML = `<div style="font-size:11px; font-weight:700; color:#64748b; margin-bottom:8px; text-transform:uppercase;">Current Plan</div>`;
     if (data.plan && data.plan.length > 0) {
-        // Find the last completed step index to determine what to hide
-        let lastCompletedIdx = -1;
         data.plan.forEach((step, idx) => {
-            if (step.status === 'completed') lastCompletedIdx = idx;
-        });
-
-        let visibleCount = 0;
-        data.plan.forEach((step, idx) => {
-            // Logic: Show if it's NOT completed, OR if it's the very last completed one (for context), OR if it failed.
-            const isCompleted = step.status === 'completed';
-            const isLastCompleted = idx === lastCompletedIdx;
-            const isFailed = step.status === 'failed';
-            const isPendingOrProgress = step.status === 'pending' || step.status === 'in_progress';
+            // Show pending, in_progress, failed, and the last completed step
+            let lastCompletedIdx = -1;
+            data.plan.forEach((s, i) => { if(s.status === 'completed') lastCompletedIdx = i; });
             
-            const shouldShow = isFailed || isPendingOrProgress || isLastCompleted;
+            const isLastCompleted = idx === lastCompletedIdx;
+            const shouldShow = step.status !== 'completed' || isLastCompleted;
             
             if (shouldShow) {
                 const item = document.createElement('div');
-                
-                let bgColor = 'rgba(30, 41, 59, 0.5)';
-                let borderColor = '#94a3b8';
-                let icon = '⚪';
-                let opacity = '1';
+                let border = '#334155';
+                let bg = 'transparent';
+                let icon = '○';
+                let color = '#94a3b8';
                 
                 if (step.status === 'in_progress') {
-                    bgColor = 'rgba(59, 130, 246, 0.15)';
-                    borderColor = '#3b82f6';
-                    icon = '🔄';
+                    border = '#3b82f6';
+                    bg = 'rgba(59, 130, 246, 0.1)';
+                    icon = '▶';
+                    color = '#e2e8f0';
                 } else if (step.status === 'completed') {
-                    borderColor = '#4ade80';
-                    icon = '✅';
-                    opacity = '0.7';
+                    border = '#22c55e';
+                    icon = '✓';
+                    color = '#22c55e';
                 } else if (step.status === 'failed') {
-                    borderColor = '#ef4444';
-                    icon = '❌';
+                    border = '#ef4444';
+                    icon = '✕';
+                    color = '#ef4444';
                 }
 
                 Object.assign(item.style, {
-                    marginBottom: '8px',
                     padding: '8px',
-                    borderRadius: '6px',
-                    backgroundColor: bgColor,
-                    borderLeft: `3px solid ${borderColor}`,
+                    marginBottom: '6px',
+                    borderRadius: '4px',
+                    borderLeft: `3px solid ${border}`,
+                    backgroundColor: bg,
                     fontSize: '12px',
-                    opacity: opacity,
+                    color: color,
                     display: 'flex',
-                    gap: '8px',
-                    alignItems: 'flex-start'
+                    gap: '8px'
                 });
-                
-                item.innerHTML = `
-                    <div style="flex-shrink:0;">${icon}</div>
-                    <div style="color:${step.status === 'completed' ? '#94a3b8' : '#f1f5f9'}">
-                        <span style="font-weight:600; margin-right:4px;">${idx + 1}.</span>
-                        ${step.step}
-                    </div>
-                `;
+                item.innerHTML = `<span>${icon}</span><span>${step.step}</span>`;
                 planColumn.appendChild(item);
-                visibleCount++;
             }
         });
-        
-        if (visibleCount === 0 && data.plan.length > 0) {
-             planColumn.innerHTML += `<div style="color:#4ade80; font-style:italic; padding:10px;">All tasks completed!</div>`;
-        }
     } else {
-        planColumn.innerHTML += `<div style="color:#64748b; font-style:italic;">No tasks pending.</div>`;
+        planColumn.innerHTML += `<div style="color:#475569; font-size:12px; font-style:italic;">No active plan.</div>`;
     }
 
-    // Update Status Column
-    statusColumn.innerHTML = '';
+    // Update Status/Logs
+    statusColumn.innerHTML = `<div style="font-size:11px; font-weight:700; color:#64748b; margin-bottom:8px; text-transform:uppercase;">Last Action</div>`;
     if (data.last_action) {
-        const logBox = document.createElement('div');
-        logBox.innerHTML = `<div style="font-weight:bold; margin-bottom:10px; color:#a5b4fc; border-bottom:1px solid #334155; padding-bottom:5px; font-size:14px;">LAST ACTION</div>`;
-        const actionContent = document.createElement('div');
-        Object.assign(actionContent.style, {
-            padding: '10px',
-            backgroundColor: 'rgba(0,0,0,0.3)',
-            borderRadius: '4px',
-            fontSize: '11px',
+        const log = document.createElement('div');
+        Object.assign(log.style, {
             fontFamily: 'monospace',
+            fontSize: '11px',
             color: '#a5b4fc',
-            wordBreak: 'break-all'
+            backgroundColor: 'rgba(0,0,0,0.2)',
+            padding: '8px',
+            borderRadius: '4px',
+            lineHeight: '1.4'
         });
-        actionContent.innerText = data.last_action;
-        logBox.appendChild(actionContent);
-        statusColumn.appendChild(logBox);
+        log.innerText = data.last_action;
+        statusColumn.appendChild(log);
     }
 }"""
 

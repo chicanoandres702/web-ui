@@ -29,6 +29,16 @@ def create_browser(config: dict) -> CustomBrowser:
     # Add stealth arguments to avoid detection by CAPTCHAs
     extra_browser_args.append("--disable-blink-features=AutomationControlled")
 
+    # Add user-defined extra args (from config or env)
+    user_extra_args = config.get("extra_browser_args") or os.getenv("EXTRA_BROWSER_ARGS", "")
+    if user_extra_args:
+        extra_browser_args.extend(user_extra_args.split())
+
+    # Add Chrome Profile argument if specified
+    profile_name = config.get("chrome_profile_name") or os.getenv("CHROME_PROFILE_NAME", "")
+    if profile_name:
+        extra_browser_args.append(f"--profile-directory={profile_name}")
+
     if use_own_browser:
         # If using own browser but path not explicitly set in config, try env var or default
         if not browser_binary_path:
@@ -41,6 +51,12 @@ def create_browser(config: dict) -> CustomBrowser:
     if enable_persistent_session:
         if not browser_user_data or not browser_user_data.strip():
             browser_user_data = os.path.abspath(app_config.DEFAULT_BROWSER_SESSION_DIR)
+        
+        # Append profile name to path to allow parallel execution with different profiles
+        if profile_name:
+            safe_profile = "".join(c for c in profile_name if c.isalnum() or c in (' ', '_', '-')).strip()
+            if safe_profile:
+                browser_user_data = os.path.join(browser_user_data, safe_profile)
         os.makedirs(browser_user_data, exist_ok=True)
     else:
         browser_user_data = None

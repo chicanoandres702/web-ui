@@ -20,7 +20,7 @@ async def generate_hierarchical_plan(
     task: str, 
     system_prompt: Optional[str] = None,
     additional_context: Optional[str] = None
-) -> List[str]:
+) -> List[Dict[str, Any]]:
     """
     Generates a hierarchical plan (list of subtasks) for the given task using the provided LLM.
     """
@@ -38,10 +38,17 @@ async def generate_hierarchical_plan(
     try:
         response = await llm.ainvoke(messages)
         plan = parse_json_safe(response.content)
-        if isinstance(plan, list) and all(isinstance(item, str) for item in plan):
-            # Clean up steps
-            cleaned_plan = [_clean_plan_step(step) for step in plan]
-            logger.info(f"Generated Plan: {cleaned_plan}")
+        if isinstance(plan, list):
+            cleaned_plan = []
+            for item in plan:
+                if isinstance(item, str):
+                    cleaned_plan.append({"description": _clean_plan_step(item)})
+                elif isinstance(item, dict):
+                    step_data = {"description": _clean_plan_step(item.get("description", item.get("step", "Unknown")))}
+                    if "action" in item: step_data["action"] = item["action"]
+                    if "params" in item: step_data["params"] = item["params"]
+                    cleaned_plan.append(step_data)
+            logger.info(f"Generated Plan with {len(cleaned_plan)} steps")
             return cleaned_plan
         else:
             logger.warning(f"Planner output was not a list of strings: {response.content}")

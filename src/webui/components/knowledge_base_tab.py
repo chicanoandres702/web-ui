@@ -33,7 +33,7 @@ def create_knowledge_base_tab(webui_manager: WebuiManager):
 
     with gr.Row():
         with gr.Column(scale=1):
-            file_list = gr.Dropdown(label="Files", choices=[], interactive=True, allow_custom_value=False)
+            file_list = gr.Dropdown(label="Files", choices=[], interactive=True, allow_custom_value=True)
             with gr.Group():
                 new_filename = gr.Textbox(label="New File Name", placeholder="e.g. folder/topic.md")
                 create_btn = gr.Button("➕ Create New", variant="secondary")
@@ -61,13 +61,13 @@ def create_knowledge_base_tab(webui_manager: WebuiManager):
         files = list_kb_files(dir_path)
         if files and isinstance(files, list):
             files = [str(f) for f in files]
-        return gr.update(choices=files)
+        return gr.update(choices=files, value=None)
 
     def search_files(dir_path, query):
         matches = search_kb_files(dir_path, query)
         if matches and isinstance(matches, list):
             matches = [str(m) for m in matches]
-        return gr.update(choices=matches)
+        return gr.update(choices=matches, value=None)
 
     def load_file_content(dir_path, filename):
         content = load_kb_content(dir_path, filename)
@@ -81,23 +81,29 @@ def create_knowledge_base_tab(webui_manager: WebuiManager):
     def create_new_file(dir_path, filename):
         success, msg, new_name = create_kb_file(dir_path, filename)
         if success:
-            return msg, list_files(dir_path), gr.update(value=new_name)
+            files = list_kb_files(dir_path)
+            if files and isinstance(files, list):
+                files = [str(f) for f in files]
+            return msg, gr.update(choices=files, value=new_name)
         else:
-            return msg, gr.update(), gr.update()
+            return msg, gr.update()
 
     def delete_selected_file(dir_path, filename):
         success, msg = delete_kb_file(dir_path, filename)
         if success:
             return msg, list_files(dir_path), ""
         else:
-            return msg, gr.update(), ""
+            return msg, gr.update(), gr.update()
 
     def rename_selected_file(dir_path, filename, new_name):
         success, msg, renamed_name = rename_kb_file(dir_path, filename, new_name)
         if success:
-            return msg, list_files(dir_path), gr.update(value=renamed_name)
+            files = list_kb_files(dir_path)
+            if files and isinstance(files, list):
+                files = [str(f) for f in files]
+            return msg, gr.update(choices=files, value=renamed_name)
         else:
-            return msg, gr.update(), gr.update()
+            return msg, gr.update()
 
     def import_uploaded_files(dir_path, files):
         success, msg = import_kb_files(dir_path, files)
@@ -122,13 +128,13 @@ def create_knowledge_base_tab(webui_manager: WebuiManager):
     save_btn.click(save_file_content, inputs=[kb_directory, file_list, file_content], outputs=[status_msg])
     
     # Create
-    create_btn.click(create_new_file, inputs=[kb_directory, new_filename], outputs=[status_msg, file_list, file_list])
+    create_btn.click(create_new_file, inputs=[kb_directory, new_filename], outputs=[status_msg, file_list])
     
     # Delete
     delete_btn.click(delete_selected_file, inputs=[kb_directory, file_list], outputs=[status_msg, file_list, file_content])
 
     # Rename
-    rename_btn.click(rename_selected_file, inputs=[kb_directory, file_list, rename_target], outputs=[status_msg, file_list, file_list])
+    rename_btn.click(rename_selected_file, inputs=[kb_directory, file_list, rename_target], outputs=[status_msg, file_list])
 
     # Import
     import_btn.click(import_uploaded_files, inputs=[kb_directory, upload_files], outputs=[status_msg, file_list])

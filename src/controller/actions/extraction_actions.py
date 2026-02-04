@@ -3,7 +3,7 @@ import json
 import os
 from browser_use.browser.context import BrowserContext
 from langchain_core.messages import HumanMessage
-from src.utils.utils import retry_async, save_text_to_file as utils_save_text
+from src.utils.utils import retry_async, save_text_to_file as utils_save_text, extract_text_from_pdf, resolve_file_path
 from src.utils.browser_scripts import (
     JS_EXTRACT_LINKS,
     JS_EXTRACT_TABLES,
@@ -467,6 +467,42 @@ class ExtractionActionsMixin:
                 return f"Saved page content to {filepath}"
             except Exception as e:
                 return f"Error saving page content: {e}"
+
+        @self.registry.action("Extract text content from a downloaded PDF file")
+        async def read_pdf_file(filename: str):
+            """
+            Reads text from a PDF file. The file must be downloaded first using 'download_file'.
+            """
+            filepath = resolve_file_path(filename)
+            if not filepath:
+                return f"File not found: {filename}. Ensure you downloaded it first."
+            
+            # Run in thread to avoid blocking async loop
+            text = await asyncio.to_thread(extract_text_from_pdf, filepath)
+            
+            if len(text) > 100000:
+                return f"PDF Content (Truncated first 100k chars):\n{text[:100000]}..."
+            return f"PDF Content:\n{text}"
+
+        @self.registry.action("Format citation details into APA style")
+        async def format_citation(
+            browser: BrowserContext,
+            title: str,
+            url: str,
+            authors: str = "Unknown Author",
+            year: str = "n.d.",
+            source: str = ""
+        ):
+            """
+            Formats provided information into an APA style citation string.
+            """
+            # APA 7th Edition Structure: Author. (Date). Title. Source. URL
+            citation = f"{authors} ({year}). *{title}*"
+            if source:
+                citation += f". {source}"
+            if url:
+                citation += f". {url}"
+            return f"Formatted APA Citation: {citation}"
 
         @self.registry.action("Extract APA citation from Google Scholar result")
         async def get_google_scholar_citation(browser: BrowserContext, result_index: int = 0, title_text: str = None):

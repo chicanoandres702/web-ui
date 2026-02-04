@@ -124,6 +124,13 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
             interactive=True
         )
 
+        enable_auto_streamline = gr.Checkbox(
+            label="Auto-Streamline Plan",
+            value=False,
+            info="Automatically run the 'Streamline Plan' optimization after a task completes successfully.",
+            interactive=True
+        )
+
     # --- Planning Templates ---
     planner_template_comps = create_template_manager_ui("📝 Planning Strategy Templates", default_value=DEFAULT_PLANNER_PROMPT)
     (planner_template_dropdown, planner_refresh_btn, planner_load_btn, 
@@ -228,6 +235,7 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         enable_hierarchical_planning=enable_hierarchical_planning,
         enable_auto_pause=enable_auto_pause,
         enable_kb_auto_save=enable_kb_auto_save,
+        enable_auto_streamline=enable_auto_streamline,
         planner_system_prompt=planner_system_prompt,
         enable_smart_retry=enable_smart_retry,
         enable_cost_saver=enable_cost_saver,

@@ -70,7 +70,7 @@ async def configure_controller(webui_manager, agent_settings, memory_file=None, 
     webui_manager.bu_controller = controller
     return controller
 
-async def construct_agent(webui_manager, task, agent_settings, llms, history_file, gif_path, callbacks=None):
+async def construct_agent(webui_manager, task, agent_settings, llms, history_file, gif_path, callbacks=None, initial_actions=None):
     """Constructs the BrowserUseAgent."""
     main_llm, planner_llm, confirmer_llm, smart_retry_llm, cheap_llm = llms
     
@@ -109,7 +109,8 @@ async def construct_agent(webui_manager, task, agent_settings, llms, history_fil
         auto_save_on_stuck=auto_save_on_stuck,
         use_memory=use_memory,
         system_prompt=final_system_prompt,
-        save_history_path=history_file
+        save_history_path=history_file,
+        initial_actions=initial_actions
     )
     
     if callbacks:

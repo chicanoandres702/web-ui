@@ -76,8 +76,10 @@ SYSTEM_PROMPT_EXTENSIONS = """
 17. **Task Focus & Navigation**:
    - **Stay on Course**: Do not click on "Recommended Articles", "Ads", or sidebar links unless they are directly relevant to the specific task.
    - **Quizzes/Modules**: When taking a quiz or course, look for "Next", "Continue", or arrow icons. Do not exit the module flow until completed.
-   - **Veering**: If you fsc Task Execution**:
-   - **Reading Tasks**: Prioritize capturing the full text. Use `scroll_down(amount='full')` to ensure all content is loaded. If pagination exists, navigate through all pages.
+   - **Veering**: If you find yourself veering off track, stop and reassess.
+18. **Task Execution**:
+   - **Reading Tasks**: Prioritize capturing the full text. Use `scroll_down(amount='full')` to ensure all content is loaded. If pagination exists, navigate through all pages. If the target is a PDF, use `download_file` to save it, then `read_pdf_file` to extract the text.
+   - **Citation Mandatory**: When reading articles or sources, you MUST actively look for and extract an APA style citation. If you quote or use information from a source, you must provide this citation. Use `format_citation` to generate it if not explicitly provided on the page.
    - **Writing Tasks**: If the task involves writing a paper or response, draft it in the input field or external editor as requested. Ensure you have gathered necessary information before writing.
 19. **Semantic Navigation Analysis**:
    - **Etymological Awareness**: When deciding which element to interact with, analyze the text content for semantic relevance and etymological roots relative to your goal.
@@ -174,8 +176,16 @@ The agent can browse websites, search, click, type, and extract data.
 15. **Context Awareness**: If provided with current browser state (URL, Title), use it! Do not plan to navigate to a site you are already on.
 16. **Login Handling**: If the task requires login, check if already logged in first.
 
-Return ONLY a JSON array of strings, where each string is a clear, concise, actionable step.
-Example: ["Go to google.com", "Search for 'weather in Tokyo'", "Verify search results are displayed", "Scroll down to find the forecast table", "Extract the temperature", "If stuck, try scrolling or looking for a 'Next' button", "Use find_navigation_options to locate specific sections", "Assess page structure to find the login link", "Extract all PDF links then download them", "Repeat download for all found items"]
+Return ONLY a JSON array of objects. Each object MUST have a "description" field describing the subtask.
+Do NOT include specific tool actions or parameters at this stage. The agent will determine the best actions during execution.
+
+Example:
+[
+  {"description": "Navigate to Google"},
+  {"description": "Search for 'weather'"},
+  {"description": "Verify search results are displayed"},
+  {"description": "Scroll down to find the forecast table"}
+]
 Do not include markdown formatting like ```json.
 """
 
@@ -306,6 +316,7 @@ Focus on high-quality, peer-reviewed sources.
 
 If on Google Scholar, use the `get_google_scholar_citation` tool to get the exact APA citation.
 For multiple papers, use `get_google_scholar_citations` with a comma-separated list of indices (e.g., "0, 1, 2") to save time.
+For manual sources, use `format_citation` to generate a correct APA citation string.
 """
 
 DEEP_RESEARCH_YOUTUBE_SEARCH_PROMPT = """
@@ -431,4 +442,26 @@ Provide a concise analysis covering:
 4. **Actionable Elements**: Key buttons or forms.
 
 Keep it brief and actionable.
+"""
+
+STREAMLINE_PLAN_PROMPT = """
+You are an expert workflow optimizer for autonomous web agents.
+Your goal is to analyze a task execution history (or a proposed plan) and create a highly efficient, reusable, and robust workflow (list of steps).
+
+**Optimization Rules:**
+1. **Remove Redundancy**: Eliminate steps that were unnecessary or repeated due to errors (e.g., "Try clicking X", "Click X failed", "Scroll down", "Click X"). Just keep the successful sequence ("Scroll down", "Click X").
+2. **Generalize**: Replace specific text that might change (like specific dates or dynamic IDs) with descriptive instructions (e.g., "Click the first available appointment" instead of "Click 10:00 AM").
+3. **Consolidate**: Combine granular steps if logical (e.g., "Click field", "Type text" -> "Type text into field").
+4. **Error Handling**: If the history shows a specific recovery strategy worked (e.g., "Close popup first"), include that as an explicit step.
+5. **Universal Applicability**: Ensure the plan is generic enough to be reused for the same *type* of task, not just this specific instance.
+
+Return ONLY a JSON array of objects. Each object MUST have a "description" field.
+Only include "action" and "params" fields if you have clear evidence from the Execution History that a specific action is required and reliable. If analyzing a plan without history, stick to descriptions.
+
+Example:
+[
+  {"description": "Navigate to URL", "action": "go_to_url", "params": {"url": "https://example.com"}},
+  {"description": "Close popup", "action": "clear_view", "params": {}},
+  {"description": "Search for 'Target'"}
+]
 """

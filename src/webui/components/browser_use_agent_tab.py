@@ -14,7 +14,12 @@ from src.webui.components.browser_use_agent_handlers import (
     handle_submit, handle_retry, handle_stop, handle_pause_resume, handle_clear,
     handle_save_chat, handle_reload_memory, handle_update_kb_list, handle_load_kb_file,
     handle_refresh_history_files, handle_update_plan, handle_save_generated_kb,
-    handle_resume_session
+    handle_resume_session, handle_delete_session,
+    handle_move_step_up, handle_move_step_down, handle_delete_step_from_plan,
+    handle_step_selection_change, handle_save_step_text, handle_add_step,
+    handle_clear_completed_steps, handle_save_workflow, handle_load_workflow, handle_run_step_action, 
+    handle_set_step_action, handle_duplicate_step, handle_streamline_plan, handle_generate_plan_from_prompt, 
+    handle_refresh_workflows, handle_delete_workflow, handle_export_plan, handle_complete_current_step
 )
 from src.utils.utils import ensure_default_extraction_models
 
@@ -38,7 +43,58 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
             
             with gr.Accordion("📝 Edit Plan", open=False, visible=False) as plan_editor_accordion:
                 plan_editor = gr.Code(language="json", label="Plan JSON", interactive=True)
-                update_plan_btn = gr.Button("Update Plan", variant="secondary")
+                with gr.Row():
+                    update_plan_btn = gr.Button("Update Plan", variant="secondary", scale=1)
+                    plan_export_btn = gr.Button("📤 Export Plan", scale=1)
+                plan_export_file = gr.File(label="Download Plan", visible=False, interactive=False)
+                
+                with gr.Group():
+                    gr.Markdown("#### Generate Plan")
+                    with gr.Row():
+                        plan_prompt_input = gr.Textbox(label="Task Prompt", placeholder="Describe the task to generate a plan for...", scale=3)
+                        plan_generate_btn = gr.Button("✨ Generate Plan", variant="secondary", scale=1)
+                
+                with gr.Group():
+                    gr.Markdown("#### Manage Steps")
+                    with gr.Row():
+                        plan_step_selector = gr.Dropdown(label="Select Step to Move/Delete/Edit", choices=[], interactive=True, scale=3)
+                        plan_move_up_btn = gr.Button("⬆️ Up", scale=1)
+                        plan_move_down_btn = gr.Button("⬇️ Down", scale=1)
+                        plan_duplicate_step_btn = gr.Button("📋 Duplicate", scale=1)
+                        plan_delete_step_btn = gr.Button("🗑️ Delete", variant="stop", scale=1)
+                        plan_run_action_btn = gr.Button("▶️ Run Action", variant="secondary", scale=1)
+                        plan_complete_step_btn = gr.Button("✅ Complete Current", variant="secondary", scale=1)
+                        plan_clear_completed_btn = gr.Button("🧹 Clear Done", variant="secondary", scale=1)
+                    
+                    with gr.Row():
+                        plan_step_text = gr.Textbox(label="Edit Step Description", interactive=True, scale=3)
+                        plan_add_step_btn = gr.Button("➕ Add Step", variant="secondary", scale=1)
+                        plan_save_step_btn = gr.Button("💾 Update Step", variant="primary", scale=1)
+                    
+                    with gr.Row():
+                        plan_action_name = gr.Dropdown(
+                            label="Action Name", 
+                            choices=["go_to_url", "click_element_by_text", "type_into_element_by_text", "scroll_down", "extract_page_links", "wait_for_content", "google_search"], 
+                            allow_custom_value=True, 
+                            interactive=True, 
+                            scale=2
+                        )
+                        plan_action_params = gr.Textbox(label="Params (JSON)", placeholder='{"url": "..."}', interactive=True, scale=3)
+                        plan_set_action_btn = gr.Button("⚙️ Set Action", variant="secondary", scale=1)
+                    
+                    plan_action_result = gr.Textbox(label="Last Action Result", interactive=False, lines=3)
+                
+                with gr.Group():
+                    gr.Markdown("#### ⚡ Workflows & Optimization")
+                    with gr.Row():
+                        workflow_filter = gr.Textbox(label="Filter", placeholder="Search...", scale=1)
+                        workflow_selector = gr.Dropdown(label="Load Workflow", choices=webui_manager.workflow_manager.list_workflows(), interactive=True, scale=2)
+                        workflow_refresh_btn = gr.Button("🔄", scale=0)
+                        workflow_load_btn = gr.Button("📂 Load", scale=1)
+                        workflow_delete_btn = gr.Button("🗑️ Delete", variant="stop", scale=0)
+                        workflow_name_input = gr.Textbox(label="Save as Workflow", placeholder="folder/name (e.g. research/news_scraper)...", scale=2)
+                        workflow_save_btn = gr.Button("💾 Save", scale=1)
+                    plan_streamline_btn = gr.Button("✨ Streamline Plan (Optimize with AI)", variant="primary")
 
             with gr.Accordion("🧠 Knowledge Generation Proposal", open=False, visible=False) as kb_gen_accordion:
                 kb_gen_title = gr.Textbox(label="Suggested Title")
@@ -110,15 +166,17 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
                     choices=extraction_choices,
                     value=None,
                     interactive=True,
-                    allow_custom_value=True
+                    allow_custom_value=False
                 )
                 refresh_extraction_btn = gr.Button("🔄 Refresh Models", variant="secondary", scale=0)
             
             with gr.Accordion("📂 Session Management", open=False):
                 with gr.Row():
+                    history_filter = gr.Textbox(label="Filter Sessions", placeholder="Date or ID...", scale=2)
                     history_files_dropdown = gr.Dropdown(label="Saved Sessions", choices=[], interactive=True, scale=3, allow_custom_value=True)
                     refresh_history_btn = gr.Button("🔄 Scan", variant="secondary", scale=1)
                     resume_session_btn = gr.Button("📂 Resume Session", variant="secondary", scale=1)
+                    delete_session_btn = gr.Button("🗑️ Delete", variant="stop", scale=0)
 
         # Right Column: Browser View & Outputs
         with gr.Column(scale=2):
@@ -147,7 +205,34 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
             agent_status=agent_status,
             plan_status=plan_status,
             plan_editor=plan_editor,
+            plan_export_btn=plan_export_btn,
+            plan_export_file=plan_export_file,
+            plan_prompt_input=plan_prompt_input,
+            plan_generate_btn=plan_generate_btn,
             plan_editor_accordion=plan_editor_accordion,
+            plan_step_selector=plan_step_selector,
+            plan_move_up_btn=plan_move_up_btn,
+            plan_move_down_btn=plan_move_down_btn,
+            plan_duplicate_step_btn=plan_duplicate_step_btn,
+            plan_delete_step_btn=plan_delete_step_btn,
+            plan_run_action_btn=plan_run_action_btn,
+            plan_complete_step_btn=plan_complete_step_btn,
+            plan_clear_completed_btn=plan_clear_completed_btn,
+            plan_step_text=plan_step_text,
+            plan_add_step_btn=plan_add_step_btn,
+            plan_save_step_btn=plan_save_step_btn,
+            plan_action_name=plan_action_name,
+            plan_action_params=plan_action_params,
+            plan_set_action_btn=plan_set_action_btn,
+            plan_action_result=plan_action_result,
+            workflow_filter=workflow_filter,
+            workflow_selector=workflow_selector,
+            workflow_refresh_btn=workflow_refresh_btn,
+            workflow_load_btn=workflow_load_btn,
+            workflow_delete_btn=workflow_delete_btn,
+            workflow_name_input=workflow_name_input,
+            workflow_save_btn=workflow_save_btn,
+            plan_streamline_btn=plan_streamline_btn,
             kb_gen_accordion=kb_gen_accordion,
             kb_gen_title=kb_gen_title,
             kb_gen_content=kb_gen_content,
@@ -172,9 +257,11 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
             chat_log_file=chat_log_file,
             recording_gif=recording_gif,
             browser_view=browser_view,
+            history_filter=history_filter,
             history_files_dropdown=history_files_dropdown,
             refresh_history_btn=refresh_history_btn,
             resume_session_btn=resume_session_btn,
+            delete_session_btn=delete_session_btn,
         )
     )
     webui_manager.add_components(
@@ -250,9 +337,90 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
         async for update in safe_execution(handle_resume_session, webui_manager, history_file, components_dict):
             yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
+    async def delete_session_wrapper(history_file: str, *args) -> AsyncGenerator[List[Any], None]:
+        """Wrapper for handle_delete_session."""
+        components_dict = dict(zip(input_components, args))
+        async for update in safe_execution(handle_delete_session, webui_manager, history_file, components_dict):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
     async def update_plan_wrapper(new_plan_json: str) -> AsyncGenerator[List[Any], None]:
         """Wrapper for handle_update_plan."""
         async for update in safe_execution(handle_update_plan, webui_manager, new_plan_json):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def move_up_wrapper(selected_step: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_move_step_up, webui_manager, selected_step):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def move_down_wrapper(selected_step: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_move_step_down, webui_manager, selected_step):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def duplicate_step_wrapper(selected_step: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_duplicate_step, webui_manager, selected_step):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def delete_step_wrapper(selected_step: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_delete_step_from_plan, webui_manager, selected_step):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def step_selection_change_wrapper(selected_step: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_step_selection_change, webui_manager, selected_step):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def save_step_text_wrapper(selected_step: str, new_text: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_save_step_text, webui_manager, selected_step, new_text):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def add_step_wrapper(new_text: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_add_step, webui_manager, new_text):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def clear_completed_wrapper() -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_clear_completed_steps, webui_manager):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def run_step_action_wrapper(selected_step: str, *args) -> AsyncGenerator[List[Any], None]:
+        components_dict = dict(zip(input_components, args))
+        async for update in safe_execution(handle_run_step_action, webui_manager, selected_step, components_dict):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def complete_step_wrapper(*args) -> AsyncGenerator[List[Any], None]:
+        components_dict = dict(zip(input_components, args))
+        async for update in safe_execution(handle_complete_current_step, webui_manager, components_dict):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def set_step_action_wrapper(selected_step: str, action_name: str, params: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_set_step_action, webui_manager, selected_step, action_name, params):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def generate_plan_wrapper(prompt: str, *args) -> AsyncGenerator[List[Any], None]:
+        components_dict = dict(zip(input_components, args))
+        async for update in safe_execution(handle_generate_plan_from_prompt, webui_manager, prompt, components_dict):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def export_plan_wrapper() -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_export_plan, webui_manager):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def refresh_workflows_wrapper(filter_val: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_refresh_workflows, webui_manager, filter_val):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def delete_workflow_wrapper(name: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_delete_workflow, webui_manager, name):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def save_workflow_wrapper(name: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_save_workflow, webui_manager, name):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def load_workflow_wrapper(name: str) -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_load_workflow, webui_manager, name):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
+    async def streamline_plan_wrapper() -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_streamline_plan, webui_manager):
             yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
     async def save_kb_wrapper(title: str, content: str, mem_path: str) -> AsyncGenerator[List[Any], None]:
@@ -283,6 +451,25 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
     load_kb_btn.click(fn=load_kb_file_wrapper, inputs=[memory_file, kb_files_dropdown], outputs=run_tab_outputs)
     reload_memory_btn.click(fn=reload_memory_wrapper, inputs=[memory_file], outputs=run_tab_outputs)
     update_plan_btn.click(fn=update_plan_wrapper, inputs=[plan_editor], outputs=run_tab_outputs)
+    plan_export_btn.click(fn=export_plan_wrapper, inputs=None, outputs=run_tab_outputs)
+    plan_generate_btn.click(fn=generate_plan_wrapper, inputs=[plan_prompt_input] + input_components, outputs=run_tab_outputs)
+    plan_move_up_btn.click(fn=move_up_wrapper, inputs=[plan_step_selector], outputs=run_tab_outputs)
+    plan_move_down_btn.click(fn=move_down_wrapper, inputs=[plan_step_selector], outputs=run_tab_outputs)
+    plan_delete_step_btn.click(fn=delete_step_wrapper, inputs=[plan_step_selector], outputs=run_tab_outputs)
+    plan_duplicate_step_btn.click(fn=duplicate_step_wrapper, inputs=[plan_step_selector], outputs=run_tab_outputs)
+    plan_run_action_btn.click(fn=run_step_action_wrapper, inputs=[plan_step_selector] + input_components, outputs=run_tab_outputs)
+    plan_complete_step_btn.click(fn=complete_step_wrapper, inputs=input_components, outputs=run_tab_outputs)
+    plan_clear_completed_btn.click(fn=clear_completed_wrapper, inputs=None, outputs=run_tab_outputs)
+    plan_step_selector.change(fn=step_selection_change_wrapper, inputs=[plan_step_selector], outputs=run_tab_outputs)
+    plan_save_step_btn.click(fn=save_step_text_wrapper, inputs=[plan_step_selector, plan_step_text], outputs=run_tab_outputs)
+    plan_add_step_btn.click(fn=add_step_wrapper, inputs=[plan_step_text], outputs=run_tab_outputs)
+    plan_set_action_btn.click(fn=set_step_action_wrapper, inputs=[plan_step_selector, plan_action_name, plan_action_params], outputs=run_tab_outputs)
+    workflow_refresh_btn.click(fn=refresh_workflows_wrapper, inputs=[workflow_filter], outputs=run_tab_outputs)
+    workflow_filter.change(fn=refresh_workflows_wrapper, inputs=[workflow_filter], outputs=run_tab_outputs)
+    workflow_delete_btn.click(fn=delete_workflow_wrapper, inputs=[workflow_selector], outputs=run_tab_outputs)
+    workflow_save_btn.click(fn=save_workflow_wrapper, inputs=[workflow_name_input], outputs=run_tab_outputs)
+    workflow_load_btn.click(fn=load_workflow_wrapper, inputs=[workflow_selector], outputs=run_tab_outputs)
+    plan_streamline_btn.click(fn=streamline_plan_wrapper, inputs=None, outputs=run_tab_outputs)
     kb_gen_save_btn.click(fn=save_kb_wrapper, inputs=[kb_gen_title, kb_gen_content, memory_file], outputs=run_tab_outputs)
     kb_gen_discard_btn.click(fn=lambda: {kb_gen_accordion: gr.update(visible=False, open=False)}, outputs=[kb_gen_accordion])
     refresh_extraction_btn.click(fn=refresh_extraction_models_wrapper, outputs=[extraction_model_dropdown])
@@ -295,13 +482,17 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
             # We need to find the component ID "browser_settings.save_agent_history_path"
             save_path_comp = webui_manager.id_to_component.get("browser_settings.save_agent_history_path")
             save_path = components_dict.get(save_path_comp) or "./tmp/agent_history"
-            update = await handle_refresh_history_files(save_path)
+            
+            filter_val = components_dict.get(history_filter, "")
+            update = await handle_refresh_history_files(save_path, filter_val)
             yield {history_files_dropdown: update}
         async for update in safe_execution(_logic):
             yield map_dict_to_gradio_outputs(update, [history_files_dropdown])
 
     refresh_history_btn.click(fn=refresh_history_click_handler, inputs=input_components, outputs=[history_files_dropdown])
+    history_filter.submit(fn=refresh_history_click_handler, inputs=input_components, outputs=[history_files_dropdown])
     resume_session_btn.click(fn=resume_session_wrapper, inputs=[history_files_dropdown] + input_components, outputs=run_tab_outputs)
+    delete_session_btn.click(fn=delete_session_wrapper, inputs=[history_files_dropdown] + input_components, outputs=run_tab_outputs)
 
     def refresh_prompts_handler():
         return gr.update(choices=[p[0] for p in get_all_prompts()], value=None)
