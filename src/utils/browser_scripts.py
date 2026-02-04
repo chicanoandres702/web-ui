@@ -996,7 +996,7 @@ JS_GET_CONSOLE_ERRORS = """() => {
 
 JS_INJECT_HUD = """(data) => {
     // data: { plan: [], goal: string, status: string, last_action: string }
-    if (!document.body) return; 
+    if (!document.body) return;
     
     const id = 'agent-hud-bottom-panel';
     let container = document.getElementById(id);
@@ -1016,7 +1016,7 @@ JS_INJECT_HUD = """(data) => {
             
             if (window._agent_hud_state.collapsed) {
                 if(content) content.style.display = 'none';
-                if(c) c.style.height = '40px'; 
+                if(c) c.style.height = '40px';
                 if(btn) btn.innerText = '🔼';
                 document.body.style.marginBottom = '40px';
             } else {
@@ -1222,7 +1222,8 @@ JS_INJECT_HUD = """(data) => {
             data.plan.forEach((s, i) => { if(s.status === 'completed') lastCompletedIdx = i; });
             
             const isLastCompleted = idx === lastCompletedIdx;
-            const shouldShow = step.status !== 'completed' || isLastCompleted;
+            // Show all steps for better context, but style completed ones differently
+            const shouldShow = true; 
             
             if (shouldShow) {
                 const item = document.createElement('div');
@@ -1240,6 +1241,7 @@ JS_INJECT_HUD = """(data) => {
                     border = '#22c55e';
                     icon = '✓';
                     color = '#22c55e';
+                    // Optional: dim completed steps
                 } else if (step.status === 'failed') {
                     border = '#ef4444';
                     icon = '✕';

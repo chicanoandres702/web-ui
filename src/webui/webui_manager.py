@@ -51,6 +51,7 @@ class WebuiManager:
         self.bu_agent_status: str = "Ready"
         self.bu_latest_screenshot: Optional[str] = None
         self.bu_last_task_prompt: Optional[str] = None
+        self.current_goal: Optional[str] = None
         self.bu_max_steps: int = 100
         self.stop_requested: bool = False
         self.is_paused: bool = False

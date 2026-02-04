@@ -12,6 +12,7 @@ from src.webui.components.browser_logic import (
     get_session_info,
     update_env_var
 )
+from src.utils.browser_factory import get_system_default_browser_binary, get_system_default_user_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +31,21 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
                 label="Browser Binary Path",
                 lines=1,
                 interactive=True,
-                placeholder="Auto-detected if empty. e.g. 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'",
+                placeholder="Auto-detects system Chrome/Edge if empty.",
                 scale=3
             )
+            detect_paths_btn = gr.Button("🔍 Detect", size="sm", scale=0)
             use_own_browser = gr.Checkbox(
                 label="Use Own Browser",
                 value=str_to_bool(os.getenv("USE_OWN_BROWSER", "false")),
-                info="Use system Chrome/Edge instead of bundled Chromium. Auto-detects path if empty.",
+                info="Use system Chrome/Edge. Auto-detects binary and user profile (cookies/logins) if paths are empty.",
                 interactive=True,
                 scale=1
             )
+        
+        path_detection_status = gr.Markdown(visible=False)
+
+        with gr.Row():
             chrome_profile_name = gr.Textbox(
                 label="Chrome Profile Name",
                 info="Creates a separate session folder (e.g. 'Profile 1') to allow parallel agents.",
@@ -68,7 +74,7 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
                 label="Browser User Data Dir",
                 lines=1,
                 interactive=True,
-                placeholder=f"Defaults to {config.DEFAULT_BROWSER_SESSION_DIR} if empty",
+                placeholder=f"Auto-detects system profile if 'Use Own Browser' is checked. Otherwise defaults to {config.DEFAULT_BROWSER_SESSION_DIR}",
             )
             with gr.Row():
                 verify_session_btn = gr.Button("🔍 Verify Session Storage", size="sm", scale=0)
@@ -166,6 +172,8 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
             window_w=window_w,
             verify_session_btn=verify_session_btn,
             session_status=session_status,
+            detect_paths_btn=detect_paths_btn,
+            path_detection_status=path_detection_status,
         )
     )
     webui_manager.add_components("browser_settings", tab_components)
@@ -193,6 +201,28 @@ def create_browser_settings_tab(webui_manager: WebuiManager):
         return await clear_browser_session(webui_manager, user_data_dir)
 
     clear_session_btn.click(fn=clear_session_wrapper, inputs=[browser_user_data_dir], outputs=[session_status])
+
+    def detect_and_populate_paths(current_binary, current_profile):
+        binary = get_system_default_browser_binary()
+        profile = get_system_default_user_data_dir()
+        
+        msg = f"""
+        ### 🕵️ Auto-Detection Results
+        - **Binary:** `{binary or 'Not Found'}`
+        - **User Data:** `{profile or 'Not Found'}`
+        """
+        
+        # Only populate if the field is currently empty
+        new_binary = gr.update(value=binary) if (not current_binary and binary) else gr.update()
+        new_profile = gr.update(value=profile) if (not current_profile and profile) else gr.update()
+        
+        return gr.update(value=msg, visible=True), new_binary, new_profile
+
+    detect_paths_btn.click(
+        fn=detect_and_populate_paths, 
+        inputs=[browser_binary_path, browser_user_data_dir], 
+        outputs=[path_detection_status, browser_binary_path, browser_user_data_dir]
+    )
 
     # Bind environment variable updates
     chrome_profile_name.change(fn=lambda x: update_env_var("CHROME_PROFILE_NAME", x), inputs=[chrome_profile_name])

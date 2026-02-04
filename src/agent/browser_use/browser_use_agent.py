@@ -90,6 +90,10 @@ class BrowserUseAgent(Agent):
             if hasattr(self, "message_manager"):
                 self.message_manager.system_message = SystemMessage(content=system_prompt)
 
+        # Link controller to this agent for HUD control
+        if self.controller and hasattr(self.controller, "set_agent"):
+            self.controller.set_agent(self)
+
         self.main_llm = self.llm  # Store the primary (high-quality) LLM
         self.last_domain = None
         self.memory_manager = get_memory_manager() if self.use_custom_memory else None

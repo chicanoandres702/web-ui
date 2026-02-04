@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 from typing import Optional, Dict, Any
 from playwright.async_api import async_playwright
 
@@ -10,6 +11,55 @@ from src.utils import config as app_config
 
 logger = logging.getLogger(__name__)
 
+def get_system_default_user_data_dir() -> Optional[str]:
+    """
+    Detects the default user data directory for Chrome/Chromium based on OS.
+    Returns the first existing path found, or None.
+    """
+    system = platform.system()
+    home = os.path.expanduser("~")
+    
+    paths = []
+    
+    if system == "Windows":
+        local_app_data = os.environ.get("LOCALAPPDATA", os.path.join(home, "AppData", "Local"))
+        paths.append(os.path.join(local_app_data, "Google", "Chrome", "User Data"))
+        paths.append(os.path.join(local_app_data, "Microsoft", "Edge", "User Data"))
+        paths.append(os.path.join(local_app_data, "BraveSoftware", "Brave-Browser", "User Data"))
+    elif system == "Darwin": # macOS
+        paths.append(os.path.join(home, "Library", "Application Support", "Google", "Chrome"))
+        paths.append(os.path.join(home, "Library", "Application Support", "Microsoft Edge"))
+        paths.append(os.path.join(home, "Library", "Application Support", "BraveSoftware", "Brave-Browser"))
+    elif system == "Linux":
+        paths.append(os.path.join(home, ".config", "google-chrome"))
+        paths.append(os.path.join(home, ".config", "microsoft-edge"))
+        paths.append(os.path.join(home, ".config", "brave-browser"))
+        
+    for p in paths:
+        if os.path.exists(p):
+            return p
+            
+    return None
+
+def get_system_default_browser_binary() -> Optional[str]:
+    """Detects the default browser binary path."""
+    system = platform.system()
+    paths = []
+    if system == "Windows":
+        paths.append(os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"))
+        paths.append(os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"))
+        paths.append(os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"))
+    elif system == "Darwin":
+        paths.append("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+        paths.append("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge")
+    elif system == "Linux":
+        paths.append("/usr/bin/google-chrome")
+        paths.append("/usr/bin/microsoft-edge")
+    
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return None
 
 def create_browser(config: dict) -> CustomBrowser:
     """
@@ -43,9 +93,19 @@ def create_browser(config: dict) -> CustomBrowser:
         # If using own browser but path not explicitly set in config, try env var or default
         if not browser_binary_path:
             browser_binary_path = os.getenv("BROWSER_PATH", None)
+            
+        if not browser_binary_path:
+            browser_binary_path = get_system_default_browser_binary()
+            if browser_binary_path:
+                logger.info(f"Auto-detected system browser binary: {browser_binary_path}")
 
         if not browser_user_data:
             browser_user_data = os.getenv("BROWSER_USER_DATA", None)
+            
+        if not browser_user_data:
+            browser_user_data = get_system_default_user_data_dir()
+            if browser_user_data:
+                logger.info(f"Auto-detected system browser profile: {browser_user_data}")
 
     # Handle persistence logic
     if enable_persistent_session:

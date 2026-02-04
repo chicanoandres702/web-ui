@@ -257,6 +257,7 @@ async def run_agent_task(
         return
 
     webui_manager.bu_last_task_prompt = task
+    webui_manager.current_goal = task
     webui_manager.bu_chat_history.append({"role": "user", "content": task})
     webui_manager.bu_agent_status = "### Agent Status\nRunning..."
     
@@ -469,6 +470,10 @@ async def run_agent_task(
             webui_manager.bu_plan[current_step_idx]["status"] = "in_progress"
             webui_manager.bu_plan_updated = True
             
+            # Force HUD refresh to show new step
+            if webui_manager.bu_controller and webui_manager.bu_browser_context:
+                 await webui_manager.bu_controller.refresh_hud(webui_manager.bu_browser_context, last_action=f"Starting: {current_step_desc[:50]}...")
+            
             # Yield plan update immediately
             plan_md = render_plan_markdown(webui_manager.bu_plan)
             step_choices = get_plan_step_choices(webui_manager.bu_plan)
@@ -633,6 +638,10 @@ async def run_agent_task(
                     gr.Warning(f"Step {current_step_idx + 1} failed. Pausing queue.")
             
             webui_manager.bu_plan_updated = True
+            
+            # Force HUD refresh to show completion
+            if webui_manager.bu_controller and webui_manager.bu_browser_context:
+                 await webui_manager.bu_controller.refresh_hud(webui_manager.bu_browser_context, last_action=f"Finished: {current_step_desc[:50]}...")
             
             # Yield final updates for this step
             step_choices = get_plan_step_choices(webui_manager.bu_plan)
