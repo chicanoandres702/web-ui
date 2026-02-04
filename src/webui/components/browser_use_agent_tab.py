@@ -17,9 +17,10 @@ from src.webui.components.browser_use_agent_handlers import (
     handle_resume_session, handle_delete_session,
     handle_move_step_up, handle_move_step_down, handle_delete_step_from_plan,
     handle_step_selection_change, handle_save_step_text, handle_add_step,
-    handle_clear_completed_steps, handle_save_workflow, handle_load_workflow, handle_run_step_action, 
-    handle_set_step_action, handle_duplicate_step, handle_streamline_plan, handle_generate_plan_from_prompt, 
-    handle_refresh_workflows, handle_delete_workflow, handle_export_plan, handle_complete_current_step
+    handle_clear_completed_steps, handle_save_workflow, handle_load_workflow, handle_run_step_action,
+    handle_set_step_action, handle_duplicate_step, handle_streamline_plan, handle_generate_plan_from_prompt,
+    handle_refresh_workflows, handle_delete_workflow, handle_export_plan, handle_complete_current_step,
+    handle_reset_plan_status
 )
 from src.utils.utils import ensure_default_extraction_models
 
@@ -57,13 +58,14 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
                 with gr.Group():
                     gr.Markdown("#### Manage Steps")
                     with gr.Row():
-                        plan_step_selector = gr.Dropdown(label="Select Step to Move/Delete/Edit", choices=[], interactive=True, scale=3)
+                        plan_step_selector = gr.Dropdown(label="Select Step to Move/Delete/Edit", choices=[], interactive=True, scale=3, allow_custom_value=True)
                         plan_move_up_btn = gr.Button("⬆️ Up", scale=1)
                         plan_move_down_btn = gr.Button("⬇️ Down", scale=1)
                         plan_duplicate_step_btn = gr.Button("📋 Duplicate", scale=1)
                         plan_delete_step_btn = gr.Button("🗑️ Delete", variant="stop", scale=1)
                         plan_run_action_btn = gr.Button("▶️ Run Action", variant="secondary", scale=1)
                         plan_complete_step_btn = gr.Button("✅ Complete Current", variant="secondary", scale=1)
+                        plan_reset_status_btn = gr.Button("🔄 Reset Status", variant="secondary", scale=1)
                         plan_clear_completed_btn = gr.Button("🧹 Clear Done", variant="secondary", scale=1)
                     
                     with gr.Row():
@@ -217,6 +219,7 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
             plan_delete_step_btn=plan_delete_step_btn,
             plan_run_action_btn=plan_run_action_btn,
             plan_complete_step_btn=plan_complete_step_btn,
+            plan_reset_status_btn=plan_reset_status_btn,
             plan_clear_completed_btn=plan_clear_completed_btn,
             plan_step_text=plan_step_text,
             plan_add_step_btn=plan_add_step_btn,
@@ -390,6 +393,10 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
         async for update in safe_execution(handle_complete_current_step, webui_manager, components_dict):
             yield map_dict_to_gradio_outputs(update, run_tab_outputs)
 
+    async def reset_plan_status_wrapper() -> AsyncGenerator[List[Any], None]:
+        async for update in safe_execution(handle_reset_plan_status, webui_manager):
+            yield map_dict_to_gradio_outputs(update, run_tab_outputs)
+
     async def set_step_action_wrapper(selected_step: str, action_name: str, params: str) -> AsyncGenerator[List[Any], None]:
         async for update in safe_execution(handle_set_step_action, webui_manager, selected_step, action_name, params):
             yield map_dict_to_gradio_outputs(update, run_tab_outputs)
@@ -459,6 +466,7 @@ def create_browser_use_agent_tab(webui_manager: WebuiManager):
     plan_duplicate_step_btn.click(fn=duplicate_step_wrapper, inputs=[plan_step_selector], outputs=run_tab_outputs)
     plan_run_action_btn.click(fn=run_step_action_wrapper, inputs=[plan_step_selector] + input_components, outputs=run_tab_outputs)
     plan_complete_step_btn.click(fn=complete_step_wrapper, inputs=input_components, outputs=run_tab_outputs)
+    plan_reset_status_btn.click(fn=reset_plan_status_wrapper, inputs=None, outputs=run_tab_outputs)
     plan_clear_completed_btn.click(fn=clear_completed_wrapper, inputs=None, outputs=run_tab_outputs)
     plan_step_selector.change(fn=step_selection_change_wrapper, inputs=[plan_step_selector], outputs=run_tab_outputs)
     plan_save_step_btn.click(fn=save_step_text_wrapper, inputs=[plan_step_selector, plan_step_text], outputs=run_tab_outputs)

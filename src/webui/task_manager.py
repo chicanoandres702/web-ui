@@ -59,6 +59,7 @@ class TaskManager:
             if not self._task.done():
                 try:
                     # Wait briefly for the agent to exit its loop gracefully
+                    # Increased timeout to allow for cleanup of current step
                     await asyncio.wait_for(asyncio.shield(self._task), timeout=2.0)
                 except asyncio.TimeoutError:
                     logger.warning("Task did not stop gracefully, forcing cancellation.")
@@ -66,7 +67,9 @@ class TaskManager:
                     try:
                         await self._task
                     except asyncio.CancelledError:
-                        pass
+                        logger.info("Task cancelled successfully.")
+                    except Exception as e:
+                        logger.error(f"Error during task cancellation: {e}")
                 except Exception as e:
                     logger.error(f"Error stopping task: {e}")
             

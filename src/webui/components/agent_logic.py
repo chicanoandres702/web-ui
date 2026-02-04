@@ -70,15 +70,16 @@ async def configure_controller(webui_manager, agent_settings, memory_file=None, 
     webui_manager.bu_controller = controller
     return controller
 
-async def construct_agent(webui_manager, task, agent_settings, llms, history_file, gif_path, callbacks=None, initial_actions=None):
+async def construct_agent(webui_manager, task, agent_settings, llms, history_file, gif_path, callbacks=None, initial_actions=None, current_step_index=None):
     """Constructs the BrowserUseAgent."""
-    main_llm, planner_llm, confirmer_llm, smart_retry_llm, cheap_llm = llms
+    main_llm, planner_llm, confirmer_llm, priority_llms = llms
     
     # Extract settings
     use_vision = agent_settings.get("use_vision", True)
     max_input_tokens = agent_settings.get("max_input_tokens", 128000)
     confirmer_strictness = agent_settings.get("confirmer_strictness", 5)
-    enable_cost_saver = agent_settings.get("enable_cost_saver", False)
+    enable_cost_saver = agent_settings.get("enable_cost_saver", False)    
+    enable_smart_retry = agent_settings.get("enable_smart_retry", False)
     auto_save_on_stuck = agent_settings.get("auto_save_on_stuck", True)
     use_memory = agent_settings.get("use_memory", False)
     override_system_prompt = agent_settings.get("override_system_prompt", None)
@@ -103,14 +104,15 @@ async def construct_agent(webui_manager, task, agent_settings, llms, history_fil
         # Custom BrowserUseAgent parameters
         confirmer_llm=confirmer_llm,
         confirmer_strictness=confirmer_strictness,
-        smart_retry_llm=smart_retry_llm,
-        cheap_llm=cheap_llm,
+        model_priority_list=priority_llms,
         enable_cost_saver=enable_cost_saver,
+        enable_smart_retry=enable_smart_retry,
         auto_save_on_stuck=auto_save_on_stuck,
         use_memory=use_memory,
         system_prompt=final_system_prompt,
         save_history_path=history_file,
-        initial_actions=initial_actions
+        initial_actions=initial_actions,
+        current_step_index=current_step_index
     )
     
     if callbacks:

@@ -40,6 +40,46 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         include_ctx=True
     )
 
+    with gr.Group():
+        gr.Markdown("### 🧠 Heuristic Model Switching")
+        with gr.Row():
+            enable_smart_retry = gr.Checkbox(
+                label="Enable Smart Retry",
+                value=True,
+                info="On failure, switch to a stronger model from the list below.",
+                interactive=True
+            )
+            enable_cost_saver = gr.Checkbox(
+                label="Enable Cost Saver",
+                value=False,
+                info="On success, try switching to a weaker/cheaper model from the list.",
+                interactive=True
+            )
+        gr.Markdown("Define a priority list of models for heuristic switching. The Main LLM is considered Priority 0. Lower numbers have higher priority (e.g., Priority 1 is the first fallback).")
+        model_priority_list = gr.Dataframe(
+            headers=["Priority", "Provider", "Model Name", "Base URL", "API Key (Optional)", "Temperature"],
+            datatype=["number", "str", "str", "str", "str", "number"],
+            row_count=(4, "dynamic"),
+            col_count=(6, "dynamic"),
+            value=[
+                [1, "ollama", "qwen2.5:14b", "http://137.131.201.189:11434", "", 0.6],
+                [99, "ollama", "qwen3:4b", "http://137.131.201.189:11434", "", 0.6],
+            ],
+            type="array",
+            interactive=True,
+            elem_id="model_priority_list"
+        )
+
+    # --- Planner LLM ---
+    planner_comps, _ = create_llm_settings_ui(
+        prefix="planner_llm",
+        label="Planner LLM",
+        default_provider="ollama",
+        include_vision=True,
+        default_vision=False,
+        include_ctx=True
+    )
+
     # --- Confirmer LLM ---
     confirmer_comps, _ = create_llm_settings_ui(
         prefix="confirmer_llm",
@@ -50,56 +90,6 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         include_ctx=True,
         include_strictness=True,
         default_strictness=7
-    )
-
-    with gr.Group():
-        with gr.Row():
-            gr.Markdown("### 🧠 Smart Retry Settings")
-        with gr.Row():
-            enable_smart_retry = gr.Checkbox(
-                label="Enable Smart Retry",
-                value=True,
-                info="Automatically switch to a stronger model after 2 consecutive failures.",
-                interactive=True
-            )
-        
-        smart_retry_comps, smart_retry_container = create_llm_settings_ui(
-            prefix="smart_retry_llm",
-            label="Retry",
-            default_provider="ollama",
-            visible=False
-        )
-
-    enable_smart_retry.change(lambda x: gr.update(visible=x), inputs=[enable_smart_retry], outputs=[smart_retry_container])
-
-    with gr.Group():
-        with gr.Row():
-            gr.Markdown("### 💰 Cost Saver Settings")
-        with gr.Row():
-            enable_cost_saver = gr.Checkbox(
-                label="Enable Cost Saver",
-                value=False,
-                info="Use a cheaper model for simple tasks, switching to the main model only on failure.",
-                interactive=True
-            )
-        
-        cheap_comps, cheap_container = create_llm_settings_ui(
-            prefix="cheap_llm",
-            label="Cheap",
-            default_provider="ollama",
-            visible=False
-        )
-
-    enable_cost_saver.change(lambda x: gr.update(visible=x), inputs=[enable_cost_saver], outputs=[cheap_container])
-
-    # --- Planner LLM ---
-    planner_comps, _ = create_llm_settings_ui(
-        prefix="planner_llm",
-        label="Planner LLM",
-        default_provider="ollama",
-        include_vision=True,
-        default_vision=False,
-        include_ctx=True
     )
 
     with gr.Row():
@@ -238,6 +228,7 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
         enable_auto_streamline=enable_auto_streamline,
         planner_system_prompt=planner_system_prompt,
         enable_smart_retry=enable_smart_retry,
+        model_priority_list=model_priority_list,
         enable_cost_saver=enable_cost_saver,
         max_steps=max_steps,
         task_complexity=task_complexity,
@@ -257,8 +248,6 @@ def create_agent_settings_tab(webui_manager: WebuiManager):
     # Add generated components to tab_components
     tab_components.update(llm_comps)
     tab_components.update(confirmer_comps)
-    tab_components.update(smart_retry_comps)
-    tab_components.update(cheap_comps)
     tab_components.update(planner_comps)
 
     webui_manager.add_components("agent_settings", tab_components)

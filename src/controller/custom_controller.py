@@ -58,10 +58,13 @@ class CustomController(
 
     async def execute_action_by_name(self, action_name: str, params: dict, browser_context: BrowserContext):
         """Executes a registered action by name, handling registry lookup."""
-        if action_name not in self.registry:
+        # Access the internal actions dict if registry is an object
+        registry_actions = self.registry.actions if hasattr(self.registry, 'actions') else self.registry
+        
+        if action_name not in registry_actions:
             return f"Action '{action_name}' not found."
         
-        action = self.registry[action_name]
+        action = registry_actions[action_name]
         try:
             return await action.function(browser_context, **params)
         except Exception as e:
@@ -79,21 +82,26 @@ class CustomController(
     async def _agent_control_handler(self, action: str, data: str = None):
         """Handles agent control actions from the browser (HUD)."""
         
-        # 1. Handle Plan Skipping (Requires WebUI Manager)
-        if action == 'skip' and self.webui_manager:
+        # 1. Handle Plan Actions (Skip/Complete)
+        if action in ['skip', 'complete'] and self.webui_manager:
             if hasattr(self.webui_manager, "bu_plan") and self.webui_manager.bu_plan:
                 for i, step in enumerate(self.webui_manager.bu_plan):
-                    if step['status'] == 'in_progress':
-                        step['status'] = 'skipped'
-                        self.webui_manager.bu_plan_updated = True
+                    if step.get('status') == 'in_progress':
+                        new_status = 'skipped' if action == 'skip' else 'completed'
+                        
+                        if hasattr(self.webui_manager, "update_plan_step_status"):
+                            self.webui_manager.update_plan_step_status(i, new_status)
+                        else:
+                            step['status'] = new_status
+                            self.webui_manager.bu_plan_updated = True
                         
                         # Notify the agent if possible
                         target_agent = self.agent or self.webui_manager.bu_agent
                         if target_agent and hasattr(target_agent, "message_manager"):
-                            msg = f"User skipped step {i+1}: {step['step']}. Proceed to next step."
+                            msg = f"User marked step {i+1} as {new_status} via HUD. Proceed to next step."
                             target_agent.message_manager.add_user_message(msg)
                         break
-            logger.info("Agent skipped step via HUD")
+            logger.info(f"Agent step {action} via HUD")
             return
 
         # 2. Handle Agent Control (Pause/Stop/Add Task)

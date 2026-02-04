@@ -1102,7 +1102,7 @@ JS_INJECT_HUD = """(data) => {
         
         const input = document.createElement('input');
         input.id = id + '-input';
-        input.placeholder = "Type instruction to agent...";
+        input.placeholder = "User Override (Agent: DO NOT USE)";
         Object.assign(input.style, {
             flex: '1',
             padding: '8px 12px',
@@ -1209,6 +1209,7 @@ JS_INJECT_HUD = """(data) => {
         <div style="display:flex; align-items:center;">
             <button onclick="if(window.py_agent_control) window.py_agent_control('pause')" style="${btnStyle} background:#334155; color:#e2e8f0;">⏸️ Pause</button>
             <button onclick="if(window.py_agent_control) window.py_agent_control('stop')" style="${btnStyle} background:#ef4444; color:white;">⏹️ Stop</button>
+            <button onclick="if(window.py_agent_control) window.py_agent_control('complete')" style="${btnStyle} background:#22c55e; color:white;">✅ Done</button>
             <button id="agent-hud-toggle-btn" onclick="window._agent_hud_toggle()" style="${btnStyle} background:transparent; color:#94a3b8; font-size:14px;">${toggleIcon}</button>
         </div>
     `;

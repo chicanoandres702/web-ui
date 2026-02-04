@@ -263,37 +263,25 @@ class SystemActionsMixin:
         @self.registry.action("Add a new step to the plan. Optional: provide 'after_index' to insert after a specific step.")
         async def add_plan_step(browser: BrowserContext, step_description: str, after_index: int = None):
             if self.webui_manager and hasattr(self.webui_manager, "bu_plan"):
-                new_step = {"step": step_description, "status": "pending"}
-                
+                actual_index = len(self.webui_manager.bu_plan)
                 if after_index is not None:
-                    # Insert after the specified index (1-based)
-                    # e.g. after_index=1 -> insert at index 1 (which is 2nd position)
                     idx = int(after_index)
                     if idx < 0: idx = 0
                     if idx > len(self.webui_manager.bu_plan): idx = len(self.webui_manager.bu_plan)
-                    self.webui_manager.bu_plan.insert(idx, new_step)
                     actual_index = idx + 1
+                    self.webui_manager.add_plan_step(step_description, index=idx)
                 else:
-                    self.webui_manager.bu_plan.append(new_step)
-                    actual_index = len(self.webui_manager.bu_plan)
+                    self.webui_manager.add_plan_step(step_description)
 
-                self.webui_manager.bu_plan_updated = True
                 
                 msg = f"Added step {actual_index}: '{step_description}'."
                 
-                try:
-                    hud_data = {
-                        "plan": self.webui_manager.bu_plan,
-                        "goal": getattr(self.webui_manager, "current_goal", "Processing..."),
-                        "last_action": msg
-                    }
-                    await self._update_hud_impl(browser, hud_data)
-                except: pass
+                await self.refresh_hud(browser, last_action=msg)
                 return msg
             return "Plan manager not available."
 
         @self.registry.action("Update the status of a plan step. Status options: 'pending', 'in_progress', 'completed', 'failed'")
-        async def update_plan_step(browser: BrowserContext, step_index: int, status: str):
+        async def update_plan_step(browser: BrowserContext, step_index: int, status: str, result: str = None):
             if not (self.webui_manager and hasattr(self.webui_manager, "bu_plan")):
                 return "Plan manager not available."
 
@@ -308,9 +296,11 @@ class SystemActionsMixin:
             if not (0 <= idx < len(plan)):
                 return f"Step index {step_index} out of bounds."
 
+            # Get step description for feedback
+            step_desc_current = plan[idx].get("step", "Unknown Step")
+
             # Update status
-            plan[idx]["status"] = status
-            self.webui_manager.bu_plan_updated = True
+            self.webui_manager.update_plan_step_status(idx, status, result=result)
 
             # Trigger callback if registered
             if hasattr(self, "callbacks") and "update_plan" in self.callbacks:
@@ -320,7 +310,9 @@ class SystemActionsMixin:
                     logger.warning(f"Error in update_plan callback: {e}")
 
             # Construct helpful return message for the agent
-            msg = f"Updated step {step_index} status to '{status}'."
+            msg = f"Updated step {step_index} ('{step_desc_current}') status to '{status}'."
+            if result:
+                msg += f" Result: {result}"
 
             if status == "completed":
                 # Find next pending step
@@ -339,15 +331,7 @@ class SystemActionsMixin:
             elif status == "failed":
                 msg += "\n❌ Step failed. Re-assess strategy or update plan."
 
-            try:
-                hud_data = {
-                    "plan": plan,
-                    "goal": getattr(self.webui_manager, "current_goal", "Processing..."),
-                    "last_action": msg
-                }
-                await self._update_hud_impl(browser, hud_data)
-            except Exception:
-                pass
+            await self.refresh_hud(browser, last_action=msg)
 
             return msg
 

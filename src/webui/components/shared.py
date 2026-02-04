@@ -213,22 +213,30 @@ def get_agent_settings_values(webui_manager, components: Dict[Component, Any]) -
     settings["confirmer_llm_api_key"] = get_setting("confirmer_llm_api_key") or None
     settings["confirmer_strictness"] = safe_int(get_setting("confirmer_strictness"), 5)
     settings["confirmer_use_vision"] = get_setting("confirmer_llm_use_vision", False)
-
-    # Smart Retry
+    
+    # Heuristic Model Switching
     settings["enable_smart_retry"] = get_setting("enable_smart_retry", False)
-    settings["smart_retry_llm_provider"] = get_setting("smart_retry_llm_provider")
-    settings["smart_retry_llm_model_name"] = get_setting("smart_retry_llm_model_name")
-    settings["smart_retry_llm_temperature"] = get_setting("smart_retry_llm_temperature", 0.6)
-    settings["smart_retry_llm_base_url"] = get_setting("smart_retry_llm_base_url") or None
-    settings["smart_retry_llm_api_key"] = get_setting("smart_retry_llm_api_key") or None
-
-    # Cost Saver
     settings["enable_cost_saver"] = get_setting("enable_cost_saver", False)
-    settings["cheap_llm_provider"] = get_setting("cheap_llm_provider")
-    settings["cheap_llm_model_name"] = get_setting("cheap_llm_model_name")
-    settings["cheap_llm_temperature"] = get_setting("cheap_llm_temperature", 0.6)
-    settings["cheap_llm_base_url"] = get_setting("cheap_llm_base_url") or None
-    settings["cheap_llm_api_key"] = get_setting("cheap_llm_api_key") or None
+    model_priority_list_comp = webui_manager.id_to_component.get("agent_settings.model_priority_list")
+    model_list_data = components.get(model_priority_list_comp)
+    
+    model_configs = []
+    if model_list_data is not None:
+        for row in model_list_data:
+            if not any(row) or row[0] is None: continue
+            try:
+                priority, provider, model_name, base_url, api_key, temp = row
+                model_configs.append({
+                    "priority": int(priority),
+                    "provider": provider,
+                    "model_name": model_name,
+                    "base_url": base_url or None,
+                    "api_key": api_key or None,
+                    "temperature": float(temp),
+                })
+            except (ValueError, IndexError, TypeError):
+                continue
+    settings["model_priority_list"] = sorted(model_configs, key=lambda x: x['priority'])
 
     return settings
 
@@ -449,27 +457,19 @@ async def initialize_agent_llms(settings: Dict[str, Any]):
             settings["confirmer_ollama_num_ctx"] if settings["confirmer_llm_provider_name"] == "ollama" else None,
         )
 
-    smart_retry_llm = None
-    if settings["enable_smart_retry"] and settings["smart_retry_llm_provider"] and settings["smart_retry_llm_model_name"]:
-        smart_retry_llm = await initialize_llm(
-            settings["smart_retry_llm_provider"],
-            settings["smart_retry_llm_model_name"],
-            settings["smart_retry_llm_temperature"],
-            settings["smart_retry_llm_base_url"],
-            settings["smart_retry_llm_api_key"]
+    priority_llms = []
+    for config in settings.get("model_priority_list", []):
+        llm = await initialize_llm(
+            config["provider"],
+            config["model_name"],
+            config["temperature"],
+            config["base_url"],
+            config["api_key"],
         )
-
-    cheap_llm = None
-    if settings["enable_cost_saver"] and settings["cheap_llm_provider"] and settings["cheap_llm_model_name"]:
-        cheap_llm = await initialize_llm(
-            settings["cheap_llm_provider"],
-            settings["cheap_llm_model_name"],
-            settings["cheap_llm_temperature"],
-            settings["cheap_llm_base_url"],
-            settings["cheap_llm_api_key"]
-        )
-        
-    return main_llm, planner_llm, confirmer_llm, smart_retry_llm, cheap_llm
+        if llm:
+            priority_llms.append({**config, "llm": llm})
+            
+    return main_llm, planner_llm, confirmer_llm, priority_llms
 
 def read_text_file(path: str) -> str:
     """Safely reads text from a file with error handling."""
@@ -568,14 +568,36 @@ def render_plan_markdown(plan_data) -> str:
         elif item["status"] == "failed":
             icon = "❌"
             style = "color: red;"
+        elif item["status"] == "skipped":
+            icon = "⏭️"
+            style = "color: orange;"
         
         step_text = item["step"]
         if style:
             step_text = f"<span style='{style}'>{step_text}</span>"
-        if "action" in item:
-             step_text += f" <span style='font-size:0.8em; color:gray; font-family:monospace;'>[{item['action']}]</span>"
         
         md += f"{i+1}. {icon} {step_text}\n"
+        
+        # Render action details as a sub-bullet if present
+        if "action" in item and item["action"]:
+            action_name = item["action"]
+            params = item.get("params", {})
+            param_str = ", ".join([f"{k}='{v}'" for k, v in params.items()]) if params else ""
+            action_display = f"{action_name}({param_str})" if param_str else action_name
+            
+            md += f"   - <span style='font-size:0.85em; color:#64748b; font-family:monospace;'>🛠️ {action_display}</span>\n"
+            
+        if "result" in item and item["result"]:
+             result_text = item["result"]
+             result_color = "#10b981" # Green
+             icon = "📝"
+             
+             if "Rejection" in result_text or "Failed" in result_text or "Error" in result_text:
+                 result_color = "#ef4444" # Red
+                 icon = "⚠️"
+                 
+             md += f"   - <span style='font-size:0.85em; color:{result_color};'>{icon} {result_text}</span>\n"
+
     return md
 
 async def generate_knowledge_suggestion(history: AgentHistoryList, llm: BaseChatModel) -> str:

@@ -195,20 +195,33 @@ async def _confirm_action_callback(
 def get_plan_step_choices(plan: List[Dict[str, Any]]) -> List[str]:
     """Generates a list of strings for the step selector dropdown."""
     if not plan: return []
-    return [f"{i+1}. {step['step'][:60]}..." for i, step in enumerate(plan)]
+    choices = []
+    for i, step in enumerate(plan):
+        status = step.get("status", "pending")
+        icon = "⬜"
+        if status == "completed": icon = "✅"
+        elif status == "in_progress": icon = "👉"
+        elif status == "failed": icon = "❌"
+        elif status == "skipped": icon = "⏭️"
+        choices.append(f"{i+1}. {icon} {step['step'][:60]}...")
+    return choices
 
-def update_plan_ui(webui_manager: "WebuiManager") -> Dict[gr.components.Component, Any]:
+def update_plan_ui(webui_manager: "WebuiManager", active_index: int = -1) -> Dict[gr.components.Component, Any]:
     """Returns updates for all plan-related UI components."""
     plan = webui_manager.bu_plan
     plan_md = render_plan_markdown(plan)
     plan_json = json.dumps(plan, indent=2)
     choices = get_plan_step_choices(plan)
     
+    new_value = None
+    if choices and 0 <= active_index < len(choices):
+        new_value = choices[active_index]
+
     updates = {
         webui_manager.get_component_by_id("browser_use_agent.plan_status"): gr.update(value=plan_md),
         webui_manager.get_component_by_id("browser_use_agent.plan_editor"): gr.update(value=plan_json),
-        webui_manager.get_component_by_id("browser_use_agent.plan_step_selector"): gr.update(choices=choices, value=None),
-        webui_manager.get_component_by_id("browser_use_agent.plan_step_text"): gr.update(value=""),
+        webui_manager.get_component_by_id("browser_use_agent.plan_step_selector"): gr.update(choices=choices, value=new_value),
+        webui_manager.get_component_by_id("browser_use_agent.plan_step_text"): gr.update(value="" if active_index == -1 else plan[active_index].get("step", "")),
     }
     
     try:
@@ -324,8 +337,8 @@ async def run_agent_task(
             logger.error(f"Failed to load Memory file: {e}")
     
     # --- Initialize LLMs ---
-    main_llm, planner_llm, confirmer_llm, smart_retry_llm, cheap_llm = await initialize_agent_llms(agent_settings)
-    llms = (main_llm, planner_llm, confirmer_llm, smart_retry_llm, cheap_llm)
+    main_llm, planner_llm, confirmer_llm, priority_llms = await initialize_agent_llms(agent_settings)
+    llms = (main_llm, planner_llm, confirmer_llm, priority_llms)
 
     webui_manager.bu_plan = []
 
@@ -357,7 +370,13 @@ async def run_agent_task(
             )
             
             if plan:
-                webui_manager.bu_plan = [{"step": step["description"], "status": "pending"} for step in plan]
+                formatted_plan = []
+                for step in plan:
+                    new_step = {"step": step["description"], "status": "pending"}
+                    if "action" in step: new_step["action"] = step["action"]
+                    if "params" in step: new_step["params"] = step["params"]
+                    formatted_plan.append(new_step)
+                webui_manager.bu_plan = formatted_plan
                 plan_md = render_plan_markdown(webui_manager.bu_plan)
                 step_choices = get_plan_step_choices(webui_manager.bu_plan)
                 yield {
@@ -454,6 +473,7 @@ async def run_agent_task(
             # 1. Find next pending step
             current_step_idx = -1
             current_step_desc = ""
+            current_step_actions = None
             
             if webui_manager.bu_plan:
                 for i, step in enumerate(webui_manager.bu_plan):
@@ -462,26 +482,31 @@ async def run_agent_task(
                         current_step_desc = step["step"]
                         break
             
+            if current_step_idx != -1:
+                step_data = webui_manager.bu_plan[current_step_idx]
+                if step_data.get("action") and step_data["action"] != "smart_action":
+                    params = step_data.get("params", {})
+                    if isinstance(params, str):
+                        try:
+                            params = json.loads(params)
+                        except Exception as e:
+                            logger.error(f"Failed to parse params for step {current_step_idx}: {e}")
+                            params = {}
+                    current_step_actions = [{step_data["action"]: params}]
+            
             if current_step_idx == -1:
                 logger.info("No pending steps found. Task queue complete.")
                 break
 
             # 2. Update Status to In Progress
-            webui_manager.bu_plan[current_step_idx]["status"] = "in_progress"
-            webui_manager.bu_plan_updated = True
+            webui_manager.update_plan_step_status(current_step_idx, "in_progress")
             
             # Force HUD refresh to show new step
             if webui_manager.bu_controller and webui_manager.bu_browser_context:
                  await webui_manager.bu_controller.refresh_hud(webui_manager.bu_browser_context, last_action=f"Starting: {current_step_desc[:50]}...")
             
             # Yield plan update immediately
-            plan_md = render_plan_markdown(webui_manager.bu_plan)
-            step_choices = get_plan_step_choices(webui_manager.bu_plan)
-            yield {
-                plan_status_comp: gr.update(value=plan_md),
-                plan_editor_comp: gr.update(value=json.dumps(webui_manager.bu_plan, indent=2)),
-                plan_step_selector_comp: gr.update(choices=step_choices)
-            }
+            yield update_plan_ui(webui_manager, active_index=current_step_idx)
             webui_manager.bu_plan_updated = False
 
             # 3. Construct Agent for this step
@@ -494,7 +519,9 @@ async def run_agent_task(
                 llms, 
                 step_history_file, 
                 gif_path, 
-                agent_callbacks
+                agent_callbacks,
+                current_step_index=current_step_idx,
+                initial_actions=current_step_actions
             )
 
             # 4. Start Task via Manager
@@ -562,7 +589,10 @@ async def run_agent_task(
                     }
                     last_chat_len = len(webui_manager.bu_chat_history)
                     yield update_dict
-                    await webui_manager.bu_response_event.wait()
+                    
+                    while not webui_manager.bu_response_event.is_set():
+                        if webui_manager.stop_requested: break
+                        await asyncio.sleep(0.1)
 
                     if not agent_task.done():
                         yield {
@@ -593,11 +623,8 @@ async def run_agent_task(
                      webui_manager.bu_agent_status = "<span class='retry-badge' style='background-color: #10b981;'>💰 Cost Saver Active</span>\n" + webui_manager.bu_agent_status
 
                 if getattr(webui_manager, "bu_plan_updated", False):
-                    plan_md = render_plan_markdown(webui_manager.bu_plan)
-                    update_dict[plan_status_comp] = gr.update(value=plan_md)
-                    update_dict[plan_editor_comp] = gr.update(value=json.dumps(webui_manager.bu_plan, indent=2))
-                    step_choices = get_plan_step_choices(webui_manager.bu_plan)
-                    update_dict[plan_step_selector_comp] = gr.update(choices=step_choices)
+                    plan_updates = update_plan_ui(webui_manager, active_index=current_step_idx)
+                    update_dict.update(plan_updates)
                     webui_manager.bu_plan_updated = False
 
                 if browser_settings["headless"] and webui_manager.bu_browser_context:
@@ -630,33 +657,28 @@ async def run_agent_task(
             
             # Update Plan Status based on result
             if webui_manager.bu_agent.state.history.is_done():
-                webui_manager.bu_plan[current_step_idx]["status"] = "completed"
+                webui_manager.update_plan_step_status(current_step_idx, "completed")
             else:
-                webui_manager.bu_plan[current_step_idx]["status"] = "failed"
+                webui_manager.update_plan_step_status(current_step_idx, "failed")
                 if agent_settings.get("enable_auto_pause", False):
                     webui_manager.is_paused = True
                     gr.Warning(f"Step {current_step_idx + 1} failed. Pausing queue.")
-            
-            webui_manager.bu_plan_updated = True
             
             # Force HUD refresh to show completion
             if webui_manager.bu_controller and webui_manager.bu_browser_context:
                  await webui_manager.bu_controller.refresh_hud(webui_manager.bu_browser_context, last_action=f"Finished: {current_step_desc[:50]}...")
             
             # Yield final updates for this step
-            step_choices = get_plan_step_choices(webui_manager.bu_plan)
-            yield {
-                plan_status_comp: gr.update(value=render_plan_markdown(webui_manager.bu_plan)),
-                plan_editor_comp: gr.update(value=json.dumps(webui_manager.bu_plan, indent=2)),
-                history_file_comp: gr.File(value=step_history_file) if os.path.exists(step_history_file) else gr.update(),
-                plan_step_selector_comp: gr.update(choices=step_choices)
-            }
+            updates = update_plan_ui(webui_manager, active_index=current_step_idx)
+            if os.path.exists(step_history_file):
+                updates[history_file_comp] = gr.File(value=step_history_file)
+            yield updates
 
         final_update = {}
         try:
             logger.info("Queue processing finished.")
 
-            if main_llm and webui_manager.bu_agent.state.history.history:
+            if main_llm and webui_manager.bu_agent and webui_manager.bu_agent.state.history.history:
                 kb_result = await process_knowledge_generation(
                     webui_manager.bu_agent.state.history,
                     main_llm,
@@ -931,8 +953,7 @@ async def handle_update_plan(webui_manager: "WebuiManager", new_plan_json: str):
     try:
         new_plan = json.loads(new_plan_json)
         if isinstance(new_plan, list):
-            webui_manager.bu_plan = new_plan
-            webui_manager.bu_plan_updated = True
+            webui_manager.set_plan(new_plan)
             if webui_manager.bu_agent:
                 msg = f"NOTE: The plan has been manually updated by the user. Current Plan Status: {json.dumps(new_plan)}"
                 if hasattr(webui_manager.bu_agent, "message_manager"):
@@ -952,8 +973,8 @@ async def handle_move_step_up(webui_manager: "WebuiManager", selected_step: str)
         idx = int(selected_step.split(".")[0]) - 1
         if idx > 0:
             webui_manager.bu_plan[idx], webui_manager.bu_plan[idx-1] = webui_manager.bu_plan[idx-1], webui_manager.bu_plan[idx]
-            webui_manager.bu_plan_updated = True
-            return update_plan_ui(webui_manager)
+            webui_manager.set_plan(webui_manager.bu_plan) # Trigger update
+            return update_plan_ui(webui_manager, active_index=idx-1)
     except Exception: pass
     return {}
 
@@ -964,8 +985,8 @@ async def handle_move_step_down(webui_manager: "WebuiManager", selected_step: st
         idx = int(selected_step.split(".")[0]) - 1
         if idx < len(webui_manager.bu_plan) - 1:
             webui_manager.bu_plan[idx], webui_manager.bu_plan[idx+1] = webui_manager.bu_plan[idx+1], webui_manager.bu_plan[idx]
-            webui_manager.bu_plan_updated = True
-            return update_plan_ui(webui_manager)
+            webui_manager.set_plan(webui_manager.bu_plan) # Trigger update
+            return update_plan_ui(webui_manager, active_index=idx+1)
     except Exception: pass
     return {}
 
@@ -977,9 +998,8 @@ async def handle_duplicate_step(webui_manager: "WebuiManager", selected_step: st
         if 0 <= idx < len(webui_manager.bu_plan):
             step_to_copy = copy.deepcopy(webui_manager.bu_plan[idx])
             step_to_copy["status"] = "pending"
-            webui_manager.bu_plan.insert(idx + 1, step_to_copy)
-            webui_manager.bu_plan_updated = True
-            return update_plan_ui(webui_manager)
+            webui_manager.add_plan_step(step_to_copy["step"], index=idx+1)
+            return update_plan_ui(webui_manager, active_index=idx+1)
     except Exception: pass
     return {}
 
@@ -990,7 +1010,7 @@ async def handle_delete_step_from_plan(webui_manager: "WebuiManager", selected_s
         idx = int(selected_step.split(".")[0]) - 1
         if 0 <= idx < len(webui_manager.bu_plan):
             webui_manager.bu_plan.pop(idx)
-            webui_manager.bu_plan_updated = True
+            webui_manager.set_plan(webui_manager.bu_plan) # Trigger update
             return update_plan_ui(webui_manager)
     except Exception: pass
     return {}
@@ -1007,7 +1027,8 @@ async def handle_step_selection_change(webui_manager: "WebuiManager", selected_s
         params_comp: gr.update(value="")
     }
     
-    if not selected_step or not webui_manager.bu_plan:
+    plan = getattr(webui_manager, "bu_plan", None)
+    if not selected_step or not plan:
         return updates
     try:
         idx = int(selected_step.split(".")[0]) - 1
@@ -1030,9 +1051,8 @@ async def handle_save_step_text(webui_manager: "WebuiManager", selected_step: st
         idx = int(selected_step.split(".")[0]) - 1
         if 0 <= idx < len(webui_manager.bu_plan):
             webui_manager.bu_plan[idx]["step"] = new_text
-            webui_manager.bu_plan_updated = True
-            
-            updates = update_plan_ui(webui_manager)
+            webui_manager.set_plan(webui_manager.bu_plan) # Trigger update
+            updates = update_plan_ui(webui_manager, active_index=idx)
             return updates
     except Exception as e: logger.error(f"Error saving step text: {e}")
     return {}
@@ -1063,8 +1083,8 @@ async def handle_set_step_action(webui_manager: "WebuiManager", selected_step: s
             webui_manager.bu_plan[idx]["action"] = action_name
             webui_manager.bu_plan[idx]["params"] = params
             
-        webui_manager.bu_plan_updated = True
-        return update_plan_ui(webui_manager)
+        webui_manager.set_plan(webui_manager.bu_plan) # Trigger update
+        return update_plan_ui(webui_manager, active_index=idx)
     except Exception as e:
         logger.error(f"Error setting step action: {e}")
         return {}
@@ -1077,13 +1097,19 @@ async def handle_add_step(webui_manager: "WebuiManager", new_step_content: str):
     if not hasattr(webui_manager, "bu_plan") or webui_manager.bu_plan is None:
         webui_manager.bu_plan = []
 
-    webui_manager.bu_plan.append({"step": new_step_content, "status": "pending"})
-    webui_manager.bu_plan_updated = True
-    
-    updates = update_plan_ui(webui_manager)
-    # Clear the text box
-    updates[webui_manager.get_component_by_id("browser_use_agent.plan_step_text")] = gr.update(value="")
+    webui_manager.add_plan_step(new_step_content)
+    updates = update_plan_ui(webui_manager, active_index=len(webui_manager.bu_plan)-1)
     return updates
+
+async def handle_reset_plan_status(webui_manager: "WebuiManager"):
+    """Resets the status of all plan steps to 'pending'."""
+    if not hasattr(webui_manager, "bu_plan") or not webui_manager.bu_plan:
+        return {}
+    
+    for step in webui_manager.bu_plan:
+        step["status"] = "pending"
+    webui_manager.set_plan(webui_manager.bu_plan)
+    return update_plan_ui(webui_manager)
 
 async def handle_clear_completed_steps(webui_manager: "WebuiManager"):
     """Clears all completed steps from the plan."""
@@ -1094,7 +1120,7 @@ async def handle_clear_completed_steps(webui_manager: "WebuiManager"):
     webui_manager.bu_plan = [step for step in webui_manager.bu_plan if step.get("status") != "completed"]
     
     if len(webui_manager.bu_plan) < original_len:
-        webui_manager.bu_plan_updated = True
+        webui_manager.set_plan(webui_manager.bu_plan)
         return update_plan_ui(webui_manager)
     
     return {}
@@ -1180,8 +1206,7 @@ async def handle_complete_current_step(webui_manager: "WebuiManager", components
             break
     
     if current_idx != -1:
-        webui_manager.bu_plan[current_idx]["status"] = "completed"
-        webui_manager.bu_plan_updated = True
+        webui_manager.update_plan_step_status(current_idx, "completed")
         gr.Info(f"Marked step {current_idx+1} as completed (Offline).")
         yield update_plan_ui(webui_manager)
     else:
@@ -1305,8 +1330,7 @@ async def handle_load_workflow(webui_manager: "WebuiManager", name: str):
     if not name: return {}
     plan = webui_manager.workflow_manager.load_workflow(name)
     if plan:
-        webui_manager.bu_plan = plan
-        webui_manager.bu_plan_updated = True
+        webui_manager.set_plan(plan)
         return update_plan_ui(webui_manager)
     else:
         gr.Error(f"Failed to load workflow '{name}'.")
@@ -1346,8 +1370,7 @@ async def handle_streamline_plan(webui_manager: "WebuiManager"):
 
     new_plan = await webui_manager.workflow_manager.streamline_plan(llm, webui_manager.bu_plan, history_str)
     if new_plan:
-        webui_manager.bu_plan = new_plan
-        webui_manager.bu_plan_updated = True
+        webui_manager.set_plan(new_plan)
         return update_plan_ui(webui_manager)
     
     return {}
@@ -1387,8 +1410,13 @@ async def handle_generate_plan_from_prompt(webui_manager: "WebuiManager", prompt
     )
     
     if plan:
-        webui_manager.bu_plan = [{"step": step["description"], "status": "pending"} for step in plan]
-        webui_manager.bu_plan_updated = True
+        formatted_plan = []
+        for step in plan:
+            new_step = {"step": step["description"], "status": "pending"}
+            if "action" in step: new_step["action"] = step["action"]
+            if "params" in step: new_step["params"] = step["params"]
+            formatted_plan.append(new_step)
+        webui_manager.set_plan(formatted_plan)
         return update_plan_ui(webui_manager)
     else:
         gr.Error("Failed to generate plan.")

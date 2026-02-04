@@ -43,23 +43,24 @@ class BrowserUseAgent(Agent):
         confirmer_llm=None,
         confirmer_strictness=None,
         use_vision_for_confirmer=True,
-        smart_retry_llm=None,
-        cheap_llm=None,
+        model_priority_list: Optional[List[Dict]] = None,
         enable_cost_saver=False,
+        enable_smart_retry=False,
         auto_save_on_stuck=False,
         source=None,
         history: AgentHistoryList = None,
         save_history_path: str = None,
         system_prompt: str = None,
         inhibit_close: bool = False,
+        current_step_index: int = None,
         **kwargs
     ):
         self.confirmer_llm = confirmer_llm
         self.confirmer_strictness = confirmer_strictness
         self.use_vision_for_confirmer = use_vision_for_confirmer
-        self.smart_retry_llm = smart_retry_llm
-        self.cheap_llm = cheap_llm
+        self.model_priority_list = model_priority_list or []
         self.enable_cost_saver = enable_cost_saver
+        self.enable_smart_retry = enable_smart_retry
         self.auto_save_on_stuck = auto_save_on_stuck
         self.source = source
         self.save_history_path = save_history_path
@@ -67,6 +68,8 @@ class BrowserUseAgent(Agent):
         self.is_validating = False
         self.switched_to_retry_model = False
         self.using_cheap_model = False
+        self.current_model_index = -1 # -1 indicates main_llm
+        self.current_step_index = current_step_index
 
         # Prepare arguments for the parent Agent class
         agent_kwargs = kwargs.copy()
@@ -96,6 +99,7 @@ class BrowserUseAgent(Agent):
 
         self.main_llm = self.llm  # Store the primary (high-quality) LLM
         self.last_domain = None
+        self.successful_steps_since_switch = 0
         self.memory_manager = get_memory_manager() if self.use_custom_memory else None
         self.heuristics = AgentHeuristics(self)
 
@@ -129,6 +133,7 @@ class BrowserUseAgent(Agent):
 
             # Execute initial actions if provided
             if self.initial_actions:
+                logger.info(f"🚀 Executing initial actions: {self.initial_actions}")
                 result = await self.multi_act(self.initial_actions, check_for_new_elements=False)
                 self.state.last_result = result
 
@@ -155,6 +160,9 @@ class BrowserUseAgent(Agent):
         except KeyboardInterrupt:
             # Already handled by our signal handler, but catch any direct KeyboardInterrupt as well
             logger.info('Got KeyboardInterrupt during execution, returning current history')
+            return self.state.history
+        except asyncio.CancelledError:
+            logger.info('Agent execution cancelled')
             return self.state.history
 
         finally:
@@ -185,7 +193,45 @@ class BrowserUseAgent(Agent):
             response_text = response.content.strip()
             logger.info(f"✅ Confirmer response: {response_text}")
 
-            if response_text.upper().startswith("YES"):
+            is_confirmed = response_text.upper().startswith("YES")
+            
+            # Extract reason
+            reason = response_text[3:].strip(" .:-")
+            if not reason:
+                reason = "Confirmed by LLM." if is_confirmed else "Rejected by LLM."
+
+            # Update plan status immediately and handle dynamic plan changes
+            if self.current_step_index is not None and self.controller and hasattr(self.controller, "webui_manager"):
+                    manager = self.controller.webui_manager
+                    if manager and hasattr(manager, "update_plan_step_status"):
+                        
+                        # 1. Check for Critical Blockers to update Plan (Dynamic Planning)
+                        if not is_confirmed:
+                            new_step_desc = None
+                            reason_upper = reason.upper()
+                            if "CAPTCHA" in reason_upper:
+                                new_step_desc = "Solve CAPTCHA detected on page"
+                            elif "LOGIN" in reason_upper or "SIGN IN" in reason_upper:
+                                new_step_desc = "Perform Login/Authentication"
+                            
+                            if new_step_desc:
+                                insert_idx = self.current_step_index + 1
+                                manager.add_plan_step(new_step_desc, index=insert_idx)
+                                manager.update_plan_step_status(self.current_step_index, "failed", result=f"Blocked: {reason}")
+                                logger.info(f"🚨 Confirmer detected blocker. Added recovery step: '{new_step_desc}' at index {insert_idx}")
+                                self.state.stopped = True # Stop current agent to switch to new step
+                                return False
+
+                        # 2. Normal Status Update
+                        status = "completed" if is_confirmed else "in_progress"
+                        display_result = reason
+                        if not is_confirmed:
+                            display_result = f"⚠️ Rejection: {reason}"
+                        
+                        manager.update_plan_step_status(self.current_step_index, status, result=display_result)
+                        logger.info(f"✅ Confirmer updated plan step {self.current_step_index + 1}. Status: {status}. Reason: {reason}")
+
+            if is_confirmed:
                 return True
             
             self._handle_confirmer_rejection(response_text)

@@ -126,6 +126,8 @@ SYSTEM_PROMPT_EXTENSIONS = """
    - **Batch Extraction**: If you need to extract multiple items (e.g., "top 5 news"), do it in ONE step using `extract_list_items` or a custom extraction action. Do not iterate one by one unless detailed interaction is required for each.
    - **Fail Fast**: If a selector fails twice, STOP trying it. Switch to a text-based selector or use `find_navigation_options` to find an alternative path.
    - **State Verification**: After clicking a button that should change the page (e.g., "Next", "Submit"), verify the URL has changed or new content has appeared. If not, the click likely failed.
+   - **Ignore HUD**: You may see an overlay at the bottom of the screen labeled "AI BROWSER" or "agent-hud-bottom-panel". This is for the USER, not for you. DO NOT interact with it. DO NOT type into its input field. Ignore it completely.
+   - **CAPTCHA Handling**: If you see a CAPTCHA or "Verify you are human", use the `solve_captcha` tool. Do NOT try to close it or click around it.
 """
 
 FULL_SYSTEM_PROMPT = LEARNING_INSTRUCTIONS + SYSTEM_PROMPT_EXTENSIONS
@@ -152,46 +154,43 @@ If nothing useful is found, return 'NONE'.
 
 DEFAULT_PLANNER_PROMPT = """
 You are an expert web navigation strategist and autonomous agent planner.
-Your goal is to analyze the user's request and create a highly efficient, step-by-step navigation plan.
+Your goal is to analyze the user's request and create a highly detailed, step-by-step execution plan.
 The agent can browse websites, search, click, type, and extract data.
 
 **Strategic Guidelines:**
-1. **Assess & Orient**: Start by assessing the page structure (headers, footers, sitemaps) to understand navigation paths. Use tools like `get_page_structure` or `find_navigation_options` early.
-2. **Direct Navigation**: Prefer direct URL manipulation or specific search queries over aimless browsing.
-3. **Incremental Steps**: Break complex tasks into logical sub-goals (e.g., 'Navigate to X', 'Filter by Y', 'Extract Z').
-4. **Verification**: Include steps to verify success (e.g., 'Confirm order status', 'Check for error messages').
-5. **Efficiency**: Avoid redundant steps. Group data extraction tasks.
-6. **Adherence**: Stick strictly to the user's constraints and requirements.
-7. **Visibility & Scrolling**: Always assume content may be hidden below the fold. Include steps to 'Scroll down' or 'Assess page' before giving up on finding elements.
-8. **Stuck Prevention**: If an action (like clicking) has no effect, do not repeat it. Plan to look for alternative buttons (Next, Submit) or scroll.
-9. **Homework & Academic Delegation**:
-   - **Reading**: Plan to "Navigate to material", "Scroll/Read full content", and "Summarize/Extract key points".
-   - **Quizzes**: Plan to "Navigate to quiz", "Start Quiz", "Answer questions (analyze options)", "Verify selection", and "Submit".
-   - **Writing**: Plan to "Research/Gather info", "Navigate to editor", "Draft content", and "Save".
-10. **Etymological & Semantic Priority**: When planning navigation, prioritize links/buttons based on their semantic meaning and etymological roots relative to the goal (e.g., for "history", prefer "About" or "Archives"; for "buying", prefer "Shop" or "Catalog").
-11. **Re-Assessment Strategy**: If a step fails or the path is unclear, explicitly plan to "Assess page structure" or "Find navigation options" to re-orient.
-12. **Productivity & Batching**: For repetitive tasks (e.g. "download all"), plan to extract all targets first, then iterate. Do not plan one-by-one unless necessary.
-13. **Loop Avoidance**: If a task involves repeating actions, explicitly state "Repeat for all items" rather than listing every single iteration, unless the list is short (<5).
-14. **Hierarchical Breakdown**: Start from the top-level goal. Break it down into sequential, executable sub-tasks. Ensure the first step establishes the context (e.g., Navigate to URL).
-15. **Context Awareness**: If provided with current browser state (URL, Title), use it! Do not plan to navigate to a site you are already on.
-16. **Login Handling**: If the task requires login, check if already logged in first.
+1. **Granularity**: Break down complex tasks into atomic, executable actions. Instead of "Search for X", prefer:
+   - "Navigate to Google"
+   - "Type 'X' into search bar"
+   - "Click 'Google Search'"
+2. **Action Assignment**: For EVERY step, you MUST assign a specific tool action if possible.
+   - `go_to_url(url)`: For navigation.
+   - `type_into_element_by_text(text, value)`: For typing.
+   - `click_element_by_text(text)`: For clicking.
+   - `scroll_down()`: For visibility.
+   - `extract_page_links()`: For finding paths.
+   - `google_search(query)`: If available, or use navigation + typing.
+3. **Verification**: Include steps to verify success (e.g., "Verify search results appear").
+4. **Efficiency**: Group data extraction tasks.
+5. **Context Awareness**: If provided with current browser state (URL, Title), use it!
 
-Return ONLY a JSON array of objects. Each object MUST have a "description" field describing the subtask.
-Do NOT include specific tool actions or parameters at this stage. The agent will determine the best actions during execution.
+Return ONLY a JSON array of objects. Each object MUST have:
+- "description": A clear, natural language description of the step.
+- "action": The specific tool name (e.g., "go_to_url", "click_element_by_text"). If uncertain, use "smart_action".
+- "params": A dictionary of parameters for the action (e.g., {"url": "https://google.com"}).
 
 Example:
 [
-  {"description": "Navigate to Google"},
-  {"description": "Search for 'weather'"},
-  {"description": "Verify search results are displayed"},
-  {"description": "Scroll down to find the forecast table"}
+  {"description": "Navigate to Google", "action": "go_to_url", "params": {"url": "https://www.google.com"}},
+  {"description": "Type search query", "action": "type_into_element_by_text", "params": {"text": "Search", "value": "weather"}},
+  {"description": "Click search button", "action": "click_element_by_text", "params": {"text": "Google Search"}}
 ]
 Do not include markdown formatting like ```json.
 """
 
 CONFIRMER_PROMPT_FAST = """
 Quickly verify if the task '{task}' is done based on the screenshot/text.
-Respond 'YES' if it looks mostly correct. Respond 'NO' only if clearly wrong.
+Respond 'YES' followed by a short reason if it looks mostly correct. 
+Respond 'NO' if clearly wrong. If a CAPTCHA or Login blocks the task, respond 'NO. CAPTCHA' or 'NO. LOGIN'.
 Be brief.
 """
 
@@ -205,11 +204,13 @@ Strictness Level: {strictness}/10.
 2. **Logical Completion**: If the user asked to "Find X", and the agent's thought says "Found X: [details]", this is a success. Do not require a specific "success page" for information retrieval tasks.
 3. **State Change**: Did the agent's last action (e.g., 'Submit') result in a new page or state?
 4. **Error Check**: Are there visible error messages (e.g., "Invalid", "Error")? If so, the task is NOT done.
-5. **Smartness Check**: Did the agent take a logical path? If the agent is looping or trying the same failed action, respond 'NO'.
+5. **Blocker Detection**: Check for CAPTCHAs, Login screens, or Popups that prevent the task.
+6. **Smartness Check**: Did the agent take a logical path? If the agent is looping or trying the same failed action, respond 'NO'.
 
 **Response Format:**
-- If the task appears complete or the agent has provided the requested information: Respond 'YES'.
+- If the task appears complete or the agent has provided the requested information: Respond 'YES' followed by a **concise reason** (e.g., "YES. Found the price on the page.").
 - If the task is clearly incomplete or failed: Respond 'NO' followed by a **concise reason** and a **suggested next step** (e.g., "NO. Login failed. Try 'Forgot Password'.").
+- If a **BLOCKER** is detected (CAPTCHA, Login, Popup): Respond 'NO' and explicitly mention the blocker (e.g., "NO. CAPTCHA detected.", "NO. Login required.").
 - If the agent is stuck or looping: Respond 'NO' and suggest a **strategy shift** (e.g., "NO. Clicking failed twice. Try searching for the element text instead.").
 """
 
@@ -380,7 +381,7 @@ IMPORTANT:
 
 ENHANCED_AGENT_ACTION_USER_PROMPT = """Goal: "{goal}"
 Quiz Progress: {status_summary}
-Rubric/Requirements: {rubric_constraints}
+e for the heurisRubric/Requirements: {rubric_constraints}
 Last Action Result: {last_result}
 Page Content (first 2000 chars):
 ---

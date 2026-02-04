@@ -59,6 +59,8 @@ class WebuiManager:
         self.bu_task_start_time: Optional[float] = None
         self.task_manager = TaskManager()
         self.workflow_manager = WorkflowManager()
+        self.bu_plan: List[Dict[str, Any]] = []
+        self.bu_plan_updated: bool = False
 
     def init_deep_research_agent(self) -> None:
         """
@@ -228,3 +230,35 @@ class WebuiManager:
         config_path = os.path.join(self.settings_save_dir, "last_config.json")
         if os.path.exists(config_path):
             yield from self.load_config(config_path)
+
+    # --- Plan Management Helpers ---
+
+    def set_plan(self, plan: List[Dict[str, Any]]) -> None:
+        """Sets the entire plan and marks it as updated."""
+        self.bu_plan = plan
+        self.bu_plan_updated = True
+
+    def update_plan_step_status(self, index: int, status: str, result: Optional[str] = None) -> bool:
+        """
+        Updates the status of a specific step and marks plan as updated.
+        
+        This sets self.bu_plan_updated = True, which signals the UI polling loop 
+        (in browser_use_agent_handlers.py) to refresh the plan display in the next tick.
+        This ensures the UI stays in sync with the Agent's actions without manual refresh.
+        """
+        if 0 <= index < len(self.bu_plan):
+            self.bu_plan[index]["status"] = status
+            if result:
+                self.bu_plan[index]["result"] = result
+            self.bu_plan_updated = True
+            return True
+        return False
+
+    def add_plan_step(self, description: str, index: Optional[int] = None) -> None:
+        """Adds a step to the plan and marks it as updated."""
+        step = {"step": description, "status": "pending"}
+        if index is not None and 0 <= index <= len(self.bu_plan):
+            self.bu_plan.insert(index, step)
+        else:
+            self.bu_plan.append(step)
+        self.bu_plan_updated = True

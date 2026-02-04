@@ -79,46 +79,73 @@ class AgentHeuristics:
                      logger.warning(f"MessageManager missing add_message method and messages list for fallback injection.")
              except Exception as inner_e:
                  logger.warning(f"Failed to inject strategy hint via fallback: {inner_e}")
-
+    
     def manage_model_switching(self):
         """Handles Cost Saver and Smart Retry logic."""
+        agent = self.agent
+        if not agent.model_priority_list or not (agent.enable_smart_retry or agent.enable_cost_saver):
+            # Reset to main if heuristics are off or no list is provided
+            if agent.llm != agent.main_llm: agent.llm = agent.main_llm
+            agent.current_model_index = -1
+            agent.switched_to_retry_model = False
+            agent.using_cheap_model = False
+            return
+
+        current_priority = agent.model_priority_list[agent.current_model_index]['priority'] if agent.current_model_index != -1 else 0
+
+        # --- Smart Retry: Upgrade on failure ---
+        if agent.enable_smart_retry and agent.state.consecutive_failures >= 2:
+            # Find the next model with a lower priority number (higher strength)
+            candidates = [m for m in agent.model_priority_list if m['priority'] < current_priority]
+            if not candidates and current_priority > 0: # If we are not on main, we can always go back to main
+                pass # Will fall through to the reset logic below
+            elif candidates:
+                best_fallback = max(candidates, key=lambda x: x['priority'])
+                new_index = agent.model_priority_list.index(next(m for m in agent.model_priority_list if m['priority'] == best_fallback['priority']))
+                
+                if new_index != agent.current_model_index:
+                    logger.warning(f'⚠️ Smart Retry: Switching to stronger model (Priority {best_fallback["priority"]}).')
+                    agent.llm = best_fallback['llm']
+                    agent.current_model_index = new_index
+                    agent.switched_to_retry_model = True
+                    agent.using_cheap_model = False
+                    agent.state.consecutive_failures = 0
+                    agent.successful_steps_since_switch = 0
+                    self.inject_message("Switched to a stronger model to resolve issue.")
+                    return
+
+        # --- Cost Saver: Downgrade on success ---
+        if agent.enable_cost_saver and agent.state.consecutive_failures == 0 and agent.successful_steps_since_switch >= 3:
+            # Find the next model with a higher priority number (lower cost/strength)
+            candidates = [m for m in agent.model_priority_list if m['priority'] > current_priority]
+            if candidates:
+                cheapest_option = min(candidates, key=lambda x: x['priority'])
+                new_index = agent.model_priority_list.index(next(m for m in agent.model_priority_list if m['priority'] == cheapest_option['priority']))
+
+                if new_index != agent.current_model_index:
+                    logger.info(f'💰 Cost Saver: Downgrading to cheaper model (Priority {cheapest_option["priority"]}).')
+                    agent.llm = cheapest_option['llm']
+                    agent.current_model_index = new_index
+                    agent.switched_to_retry_model = False
+                    agent.using_cheap_model = True
+                    agent.successful_steps_since_switch = 0
+                    return
+
+        # --- Fallback: Revert to main model on any failure ---
+        if agent.state.consecutive_failures > 0 and agent.current_model_index != -1:
+            logger.warning(f"Failure on model (Priority {current_priority}). Reverting to main model.")
+            agent.llm = agent.main_llm
+            agent.current_model_index = -1
+            agent.switched_to_retry_model = False
+            agent.using_cheap_model = False
+            agent.successful_steps_since_switch = 0
+            return
         
-        # Check if we just failed with the cheap model
-        if self.agent.using_cheap_model and self.agent.state.consecutive_failures > 0:
-            self.cheap_model_probation = 3  # Penalty: Stay on main model for 3 successful steps
-            logger.info(f"📉 Cheap model failed. Applying probation for {self.cheap_model_probation} steps.")
-
-        # Decrement probation if we are succeeding
-        if self.cheap_model_probation > 0 and self.agent.state.consecutive_failures == 0:
-            self.cheap_model_probation -= 1
-
-        # Cost Saver Logic
-        if self.agent.enable_cost_saver and self.agent.cheap_llm and not self.agent.switched_to_retry_model:
-            # Only switch to cheap if no failures AND no probation
-            if self.agent.state.consecutive_failures == 0 and self.cheap_model_probation == 0:
-                if self.agent.llm != self.agent.cheap_llm:
-                    logger.info('💰 Cost Saver: Switching to Cheap LLM.')
-                    self.agent.llm = self.agent.cheap_llm
-                    self.agent.using_cheap_model = True
-            else:
-                # If we have failures OR probation, ensure we are on Main LLM (unless already on Smart Retry)
-                if self.agent.llm != self.agent.main_llm:
-                    reason = "Failures detected" if self.agent.state.consecutive_failures > 0 else "Cheap model probation"
-                    logger.info(f'⚠️ Cost Saver: {reason}. Switching to Main LLM.')
-                    self.agent.llm = self.agent.main_llm
-                    self.agent.using_cheap_model = False
-
-        # Smart Retry Logic
-        if self.agent.smart_retry_llm and not self.agent.switched_to_retry_model and self.agent.state.consecutive_failures >= 2:
-            logger.warning(f'⚠️ Detected {self.agent.state.consecutive_failures} consecutive failures. Switching to Smart Retry Model.')
-            self.agent.llm = self.agent.smart_retry_llm
-            self.agent.switched_to_retry_model = True
-            # Add a system message to inform the new model of the situation
-            msg = f"Previous model failed {self.agent.state.consecutive_failures} times. You are now in control. Please analyze the situation carefully and try a different approach."
-            self.inject_message(msg)
-            
-            self.agent.using_cheap_model = False # Ensure we don't show cost saver badge
-            self.agent.state.consecutive_failures = 0  # Reset counter to give new model a chance
+        # --- Track successful steps for cost-saving ---
+        if agent.state.consecutive_failures == 0:
+            agent.successful_steps_since_switch += 1
+        else:
+            agent.successful_steps_since_switch = 0
 
     def suggest_alternative_strategy(self):
         """Injects strategy hints if the agent is failing."""
@@ -188,6 +215,13 @@ class AgentHeuristics:
         """Checks for blocking elements (ads/popups) and injects a warning."""
         try:
             page = await self._get_current_page()
+            
+            # 1. Check for CAPTCHA (Priority)
+            content = await page.evaluate("document.body.innerText.toLowerCase()")
+            if "captcha" in content or "verify you are human" in content or "security check" in content:
+                 self.inject_message("SYSTEM ALERT: CAPTCHA detected. You MUST use the `solve_captcha` tool immediately. Do NOT use `clear_view` or `close_difficult_popup` as they will fail.")
+                 return
+
             is_blocked = await page.evaluate(JS_DETECT_BLOCKING_ELEMENTS)
             if is_blocked:
                 msg = "SYSTEM ALERT: A large overlay, ad, or popup seems to be blocking the screen. This may prevent you from interacting with the page. Try using `clear_view` or `close_difficult_popup` to remove it."

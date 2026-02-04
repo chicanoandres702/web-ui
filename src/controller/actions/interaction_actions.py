@@ -252,7 +252,7 @@ class InteractionActionsMixin:
         async def read_clipboard():
             return self.clipboard_content if self.clipboard_content else "Clipboard is empty."
 
-        @self.registry.action("Attempt to solve simple CAPTCHAs (checkboxes)")
+        @self.registry.action("Attempt to solve CAPTCHAs (reCAPTCHA, Turnstile, or generic checkboxes). Use this if the page asks to 'Verify you are human'.")
         async def solve_captcha(browser: BrowserContext):
             page = await browser.get_current_page()
             try:
