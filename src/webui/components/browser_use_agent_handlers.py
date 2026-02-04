@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 from src.webui.components.agent_logic import initialize_browser_infrastructure, configure_controller, construct_agent, prepare_directories
 from src.webui.components.shared import get_agent_settings_values, get_browser_settings_values, initialize_agent_llms, read_text_file, save_text_file, format_agent_output, render_plan_markdown, process_knowledge_generation
-from src.utils.utils import get_progress_bar_html, parse_agent_thought
+from src.utils.utils import get_progress_bar_html, parse_agent_thought, clean_json_string, parse_json_safe
 from src.webui.components.knowledge_base_logic import list_kb_files, load_kb_content
 from src.utils.io_manager import IOManager
 
@@ -485,13 +485,21 @@ async def run_agent_task(
             if current_step_idx != -1:
                 step_data = webui_manager.bu_plan[current_step_idx]
                 if step_data.get("action") and step_data["action"] != "smart_action":
-                    params = step_data.get("params", {})
-                    if isinstance(params, str):
+                    params = step_data.get("params")
+                    if params is None:
+                        params = {}
+                    elif isinstance(params, str):
                         try:
-                            params = json.loads(params)
+                            # Use parse_json_safe to handle potential markdown and single quotes
+                            params = parse_json_safe(params)
+                            if not isinstance(params, dict):
+                                params = {}
                         except Exception as e:
                             logger.error(f"Failed to parse params for step {current_step_idx}: {e}")
                             params = {}
+                    
+                    # Ensure params is a dict for execute_action_by_name
+                    if not isinstance(params, dict): params = {}
                     current_step_actions = [{step_data["action"]: params}]
             
             if current_step_idx == -1:

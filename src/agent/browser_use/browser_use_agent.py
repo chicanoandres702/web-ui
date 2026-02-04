@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 
 # from lmnr.sdk.decorators import observe
@@ -133,9 +134,19 @@ class BrowserUseAgent(Agent):
 
             # Execute initial actions if provided
             if self.initial_actions:
-                logger.info(f"🚀 Executing initial actions: {self.initial_actions}")
-                result = await self.multi_act(self.initial_actions, check_for_new_elements=False)
-                self.state.last_result = result
+                # Use custom execution to ensure actions are run reliably via controller
+                results = await self._execute_initial_actions()
+                if results:
+                    # Inject into message history so the agent knows what happened
+                    summary = "\n".join(results)
+                    msg = f"SYSTEM NOTE: The following actions were already executed for this step:\n{summary}\n\nCheck the current state. If the goal is achieved, output {{'finish': ...}}. Do NOT repeat the above actions."
+                    if hasattr(self, "message_manager"):
+                        if hasattr(self.message_manager, "add_user_message"):
+                            self.message_manager.add_user_message(msg)
+                        elif hasattr(self.message_manager, "add_message"):
+                            self.message_manager.add_message(HumanMessage(content=msg))
+                    # Also set last_result for good measure if the parent class uses it
+                    self.state.last_result = [ActionResult(extracted_content=summary, include_in_memory=True)]
 
             for step in range(max_steps):
                 if await self._handle_pre_step():
@@ -167,6 +178,37 @@ class BrowserUseAgent(Agent):
 
         finally:
             await self._handle_cleanup()
+
+    async def _execute_initial_actions(self) -> List[str]:
+        """
+        Executes initial actions directly using the controller.
+        This bypasses the standard agent loop for forced plan steps.
+        Returns a list of result strings.
+        """
+        if not self.initial_actions:
+            return []
+
+        results = []
+        for action_data in self.initial_actions:
+            # Handle Pydantic models (ActionModel) if browser_use converted them
+            if hasattr(action_data, "model_dump"):
+                action_data = action_data.model_dump(exclude_none=True)
+            elif hasattr(action_data, "dict"):
+                action_data = action_data.dict(exclude_none=True)
+
+            for action_name, params in action_data.items():
+                try:
+                    logger.info(f"🚀 Executing initial action: {action_name} with params: {params}")
+                    if self.controller and hasattr(self.controller, "execute_action_by_name"):
+                        result = await self.controller.execute_action_by_name(action_name, params, self.browser_context)
+                        results.append(f"Action '{action_name}' executed. Result: {result}")
+                        logger.info(f"✅ Result: {result}")
+                    else:
+                        results.append(f"Action '{action_name}' skipped (Controller missing).")
+                except Exception as e:
+                    logger.error(f"❌ Error executing initial action {action_name}: {e}")
+                    results.append(f"Action '{action_name}' failed: {e}")
+        return results
 
     async def _validate_output(self) -> bool:
         """
@@ -373,7 +415,7 @@ class BrowserUseAgent(Agent):
                 knowledge = self.memory_manager.get_site_knowledge(current_url)
                 if knowledge:
                     msg = f"🧠 Memory Retrieval: I have previous knowledge about {domain}:\n{knowledge}"
-                    self._inject_message(msg)
+                    self.heuristics.inject_message(msg)
                     logger.info(f"Injected site knowledge for {domain}")
         except Exception as e:
             logger.warning(f"Failed to inject site knowledge: {e}")

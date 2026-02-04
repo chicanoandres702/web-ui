@@ -39,6 +39,15 @@ class NavigationActionsMixin:
                 return f"URL '{url}' is flagged as SUSPICIOUS (potential distraction). Proceed with caution."
             return f"URL '{url}' is EXTERNAL. Verify relevance to task."
 
+        @self.registry.action("Navigate to a specific URL")
+        async def go_to_url(browser: BrowserContext, url: str):
+            page = await browser.get_current_page()
+            try:
+                await page.goto(url, wait_until="domcontentloaded")
+                return f"Navigated to {url}"
+            except Exception as e:
+                return f"Error navigating to {url}: {e}"
+
         @self.registry.action("Smartly navigate to a URL with full validation")
         async def smart_navigate(browser: BrowserContext, url: str):
             page = await browser.get_current_page()

@@ -59,7 +59,12 @@ class CustomController(
     async def execute_action_by_name(self, action_name: str, params: dict, browser_context: BrowserContext):
         """Executes a registered action by name, handling registry lookup."""
         # Access the internal actions dict if registry is an object
-        registry_actions = self.registry.actions if hasattr(self.registry, 'actions') else self.registry
+        registry_actions = self.registry
+        if hasattr(self.registry, 'actions'):
+            registry_actions = self.registry.actions
+        elif hasattr(self.registry, 'registry') and hasattr(self.registry.registry, 'actions'):
+             # Handle nested registry case if applicable
+             registry_actions = self.registry.registry.actions
         
         if action_name not in registry_actions:
             return f"Action '{action_name}' not found."
@@ -67,6 +72,17 @@ class CustomController(
         action = registry_actions[action_name]
         try:
             return await action.function(browser_context, **params)
+        except TypeError as e:
+            # Retry logic for argument mismatch (e.g. if browser is expected as kwarg or second arg)
+            if "multiple values" in str(e) or "unexpected keyword" in str(e) or "missing" in str(e):
+                try:
+                    params_retry = params.copy()
+                    params_retry["browser"] = browser_context
+                    return await action.function(**params_retry)
+                except Exception:
+                    pass
+            logger.error(f"Error executing {action_name}: {e}")
+            return f"Error executing {action_name}: {e}"
         except Exception as e:
             logger.error(f"Error executing {action_name}: {e}")
             return f"Error executing {action_name}: {e}"
