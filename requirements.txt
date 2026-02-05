@@ -8,3 +8,5 @@ langchain-ibm==0.3.10
 langchain_mcp_adapters==0.0.9
 langgraph==0.3.34
 langchain-community
+browser-use[memory]==0.1.48
+json_repair

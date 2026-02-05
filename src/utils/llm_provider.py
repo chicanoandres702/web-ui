@@ -40,13 +40,41 @@ from typing import (
     Union,
     cast, List,
 )
-from langchain_anthropic import ChatAnthropic
-from langchain_mistralai import ChatMistralAI
-from langchain_google_genai import ChatGoogleGenerativeAI
+
+try:
+    from langchain_anthropic import ChatAnthropic
+except ImportError:
+    ChatAnthropic = None
+
+try:
+    from langchain_mistralai import ChatMistralAI
+except ImportError:
+    ChatMistralAI = None
+
+try:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+except ImportError:
+    ChatGoogleGenerativeAI = None
+
 from langchain_ollama import ChatOllama
+
+try:
+    from langchain_google_vertexai import ChatVertexAI
+except ImportError:
+    ChatVertexAI = None
+
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
-from langchain_ibm import ChatWatsonx
-from langchain_aws import ChatBedrock
+
+try:
+    from langchain_ibm import ChatWatsonx
+except ImportError:
+    ChatWatsonx = None
+
+try:
+    from langchain_aws import ChatBedrock
+except ImportError:
+    ChatBedrock = None
+
 from pydantic import SecretStr
 
 from src.utils import config
@@ -166,6 +194,8 @@ def get_llm_model(provider: str, **kwargs):
         kwargs["api_key"] = api_key
 
     if provider == "anthropic":
+        if not ChatAnthropic:
+            raise ValueError("Anthropic support not available. Please install langchain-anthropic.")
         if not kwargs.get("base_url", ""):
             base_url = "https://api.anthropic.com"
         else:
@@ -178,6 +208,8 @@ def get_llm_model(provider: str, **kwargs):
             api_key=api_key,
         )
     elif provider == 'mistral':
+        if not ChatMistralAI:
+            raise ValueError("Mistral support not available. Please install langchain-mistralai.")
         if not kwargs.get("base_url", ""):
             base_url = os.getenv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1")
         else:
@@ -238,10 +270,20 @@ def get_llm_model(provider: str, **kwargs):
                 api_key=api_key,
             )
     elif provider == "google":
+        if not ChatGoogleGenerativeAI:
+            raise ValueError("Google GenAI support not available. Please install langchain-google-genai.")
         return ChatGoogleGenerativeAI(
             model=kwargs.get("model_name", "gemini-2.0-flash-exp"),
             temperature=kwargs.get("temperature", 0.0),
             api_key=api_key,
+        )
+    elif provider == "vertex":
+        if not ChatVertexAI:
+            raise ValueError("Google VertexAI support not available. Please install langchain-google-vertexai.")
+        return ChatVertexAI(
+            model_name=kwargs.get("model_name", "imagen-4.0-fast-generate-preview-06-06"),
+            temperature=kwargs.get("temperature", 0.0),
+            project=kwargs.get("project_id", None)
         )
     elif provider == "ollama":
         if not kwargs.get("base_url", ""):
@@ -290,6 +332,8 @@ def get_llm_model(provider: str, **kwargs):
             api_key=api_key,
         )
     elif provider == "ibm":
+        if not ChatWatsonx:
+            raise ValueError("IBM Watsonx support not available. Please install langchain-ibm.")
         parameters = {
             "temperature": kwargs.get("temperature", 0.0),
             "max_tokens": kwargs.get("num_ctx", 32000)

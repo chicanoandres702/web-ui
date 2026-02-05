@@ -2,6 +2,13 @@ import logging
 import re
 import os
 import asyncio
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path so 'src' imports work
+if str(Path(__file__).resolve().parents[3]) not in sys.path:
+    sys.path.append(str(Path(__file__).resolve().parents[3]))
+
 from datetime import datetime
 from langchain_core.messages import HumanMessage
 from browser_use.agent.views import ActionResult, AgentStepInfo
@@ -45,7 +52,12 @@ class AgentHeuristics:
     def inject_message(self, content: str):
         """Injects a system message or state update into the agent's message manager."""
         if hasattr(self.agent, "message_manager"):
-             # Attempt to add state message only if state is fully initialized
+             # 1. Try adding as a HumanMessage via Agent helper
+             if hasattr(self.agent, "inject_notification"):
+                 self.agent.inject_notification(content)
+                 return
+
+             # 2. Fallback: Attempt to add state message only if state is fully initialized
              has_element_tree = False
              if hasattr(self.agent.state, "element_tree") and self.agent.state.element_tree:
                  has_element_tree = True
@@ -63,22 +75,6 @@ class AgentHeuristics:
                     return
                  except Exception as e:
                      logger.warning(f"Failed to inject strategy hint via state message: {e}")
-             
-             # Fallback: Try adding as a HumanMessage
-             try:
-                 msg = HumanMessage(content=f"System Notification: {content}")
-                 if hasattr(self.agent.message_manager, "add_message"):
-                    self.agent.message_manager.add_message(msg)
-                 elif hasattr(self.agent.message_manager, "add_new_task"):
-                    self.agent.message_manager.add_new_task(f"System Notification: {content}")
-                 elif hasattr(self.agent.message_manager, "messages") and isinstance(self.agent.message_manager.messages, list):
-                    self.agent.message_manager.messages.append(msg)
-                 elif hasattr(self.agent.message_manager, "_messages") and isinstance(self.agent.message_manager._messages, list):
-                    self.agent.message_manager._messages.append(msg)
-                 else:
-                     logger.warning(f"MessageManager missing add_message method and messages list for fallback injection.")
-             except Exception as inner_e:
-                 logger.warning(f"Failed to inject strategy hint via fallback: {inner_e}")
     
     def manage_model_switching(self):
         """Handles Cost Saver and Smart Retry logic."""
@@ -222,6 +218,22 @@ class AgentHeuristics:
                  self.inject_message("SYSTEM ALERT: CAPTCHA detected. You MUST use the `solve_captcha` tool immediately. Do NOT use `clear_view` or `close_difficult_popup` as they will fail.")
                  return
 
+            # 2. Check for Chrome Promotion (Auto-Dismiss)
+            if "make google chrome your default browser" in content or "switch to chrome" in content or "get google chrome" in content:
+                try:
+                    for btn_text in ["No thanks", "Not now", "No, thanks", "Later", "Dismiss"]:
+                        # XPath for case-insensitive text match on buttons or links
+                        xpath = f"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')] | //a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')]"
+                        element = page.locator(xpath).first
+                        if await element.is_visible():
+                            await element.click()
+                            logger.info(f"🛡️ Heuristics: Auto-dismissed Chrome promotion via '{btn_text}'")
+                            self.inject_message(f"System Notification: I automatically dismissed a Chrome promotion popup by clicking '{btn_text}'.")
+                            await page.wait_for_timeout(500)
+                            return
+                except Exception as e:
+                    logger.warning(f"Failed to auto-dismiss Chrome popup: {e}")
+
             is_blocked = await page.evaluate(JS_DETECT_BLOCKING_ELEMENTS)
             if is_blocked:
                 msg = "SYSTEM ALERT: A large overlay, ad, or popup seems to be blocking the screen. This may prevent you from interacting with the page. Try using `clear_view` or `close_difficult_popup` to remove it."
@@ -269,6 +281,15 @@ class AgentHeuristics:
             step = len(self.agent.state.history.history)
             max_steps = getattr(self.agent.settings, 'max_steps', 100)
             
+            # Check for Timeouts in recent history
+            history = self.agent.state.history.history
+            if history:
+                last_result = history[-1].result
+                if last_result:
+                    error_msg = "".join([r.error for r in last_result if r.error])
+                    if "Timeout" in error_msg and "exceeded" in error_msg:
+                        self.inject_message("SYSTEM ALERT: The previous action timed out. The page might be loaded but blocked by ads or slow scripts. Try using 'refresh' or 'scroll_down' to trigger a render. Do not retry the exact same navigation immediately.")
+
             assessment = evaluate_site_state(full_context, step, max_steps)
             
             if assessment["status"] != "on_track":

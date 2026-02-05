@@ -1,5 +1,6 @@
 import logging
 import json
+import urllib.parse
 from browser_use.browser.context import BrowserContext
 from src.utils.browser_scripts import (
     JS_SCROLL_SLOW,
@@ -39,6 +40,27 @@ class NavigationActionsMixin:
                 return f"URL '{url}' is flagged as SUSPICIOUS (potential distraction). Proceed with caution."
             return f"URL '{url}' is EXTERNAL. Verify relevance to task."
 
+        @self.registry.action("Search Google for a query (Optimized)")
+        async def search_google(browser: BrowserContext, query: str):
+            page = await browser.get_current_page()
+            try:
+                encoded_query = urllib.parse.quote(query)
+                # udm=14 forces 'Web' tab, removing AI overviews and widgets that slow down loading
+                url = f"https://www.google.com/search?q={encoded_query}&udm=14"
+                await page.goto(url, wait_until="domcontentloaded")
+                return f"Searched Google for '{query}'"
+            except Exception as e:
+                return f"Error searching Google: {e}"
+
+        @self.registry.action("Reload the current page")
+        async def reload_page(browser: BrowserContext):
+            page = await browser.get_current_page()
+            try:
+                await page.reload(wait_until="domcontentloaded")
+                return "Page reloaded."
+            except Exception as e:
+                return f"Error reloading page: {e}"
+
         @self.registry.action("Navigate to a specific URL")
         async def go_to_url(browser: BrowserContext, url: str):
             page = await browser.get_current_page()
@@ -75,42 +97,6 @@ class NavigationActionsMixin:
             except Exception as e:
                 return f"Error during smart navigation: {e}"
 
-        @self.registry.action("Click an element and wait for a specific condition (navigation or visual change)")
-        async def smart_click(browser: BrowserContext, selector: str, wait_for: str = "navigation"):
-            """
-            Clicks an element and waits for a condition.
-            wait_for: 'navigation' (default), 'dom_change', 'none'
-            """
-            page = await browser.get_current_page()
-            try:
-                loc = page.locator(selector).first
-                if not await loc.is_visible():
-                    # Try text match if selector fails
-                    loc = page.locator(f"text={selector}").first
-                    if not await loc.is_visible():
-                        return f"Element '{selector}' not found or not visible."
-                
-                if wait_for == "navigation":
-                    try:
-                        async with page.expect_navigation(timeout=5000):
-                            await loc.click()
-                        return f"Clicked '{selector}' and navigated to {page.url}."
-                    except Exception:
-                        return f"Clicked '{selector}', but no navigation occurred within 5s."
-                elif wait_for == "dom_change":
-                    content_before = await page.content()
-                    await loc.click()
-                    await page.wait_for_timeout(2000)
-                    content_after = await page.content()
-                    if content_before != content_after:
-                        return f"Clicked '{selector}' and page content updated."
-                    return f"Clicked '{selector}' but page content did not seem to change."
-                else:
-                    await loc.click()
-                    return f"Clicked '{selector}'."
-            except Exception as e:
-                return f"Error in smart_click: {e}"
-
         @self.registry.action("Clear all blocking elements (popups, ads, cookie banners) to restore view")
         async def clear_view(browser: BrowserContext):
             page = await browser.get_current_page()
@@ -121,6 +107,20 @@ class NavigationActionsMixin:
                 if await dismiss_vignette(page):
                     results.append("Dismissed Google Vignette")
                     await page.wait_for_timeout(500)
+            except Exception: pass
+
+            # 0.5 Chrome Promotion
+            try:
+                body_text = await page.evaluate("document.body.innerText.toLowerCase()")
+                if "make google chrome your default browser" in body_text or "switch to chrome" in body_text:
+                    for btn_text in ["No thanks", "Not now", "No, thanks", "Later"]:
+                         xpath = f"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')] | //a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')]"
+                         element = page.locator(xpath).first
+                         if await element.is_visible():
+                             await element.click()
+                             results.append(f"Dismissed Chrome promotion ({btn_text})")
+                             await page.wait_for_timeout(500)
+                             break
             except Exception: pass
 
             # 1. Cookie Banners
@@ -157,6 +157,13 @@ class NavigationActionsMixin:
                     results.append("Clicked close button(s)")
             except Exception: pass
             
+            # 2.1 Chat Widgets
+            try:
+                chat_msg = await close_chat_widget(browser)
+                if "Removed" in chat_msg:
+                    results.append(chat_msg)
+            except Exception: pass
+            
             # 3. Purify Page (Advanced Cleaning)
             try:
                 purify_result = await purify_page(page)
@@ -186,6 +193,54 @@ class NavigationActionsMixin:
                 return "No blocking elements found or removed."
             return " | ".join(results) + "."
 
+        @self.registry.action("Click an element, handling overlays automatically if needed")
+        async def smart_click(browser: BrowserContext, selector: str, wait_for: str = "navigation"):
+            """
+            Clicks an element and waits for a condition. Automatically handles blocking overlays.
+            wait_for: 'navigation' (default), 'dom_change', 'none'
+            """
+            page = await browser.get_current_page()
+            
+            async def _perform_click():
+                loc = page.locator(selector).first
+                if not await loc.is_visible():
+                    # Try text match if selector fails
+                    loc = page.locator(f"text={selector}").first
+                    if not await loc.is_visible():
+                        return False, f"Element '{selector}' not found or not visible."
+                
+                try:
+                    if wait_for == "navigation":
+                        async with page.expect_navigation(timeout=5000):
+                            await loc.click(timeout=3000)
+                        return True, f"Clicked '{selector}' and navigated to {page.url}."
+                    elif wait_for == "dom_change":
+                        content_before = await page.content()
+                        await loc.click(timeout=3000)
+                        await page.wait_for_timeout(2000)
+                        content_after = await page.content()
+                        if content_before != content_after:
+                            return True, f"Clicked '{selector}' and page content updated."
+                        return True, f"Clicked '{selector}' but page content did not seem to change."
+                    else:
+                        await loc.click(timeout=3000)
+                        return True, f"Clicked '{selector}'."
+                except Exception as e:
+                    return False, str(e)
+
+            success, result = await _perform_click()
+            
+            # If failed due to blocking element, try to clear view and retry
+            if not success and ("receive the click" in result or "intercept" in result or "obscured" in result):
+                logger.info(f"smart_click blocked by overlay. Attempting clear_view... Error: {result}")
+                await clear_view(browser)
+                await page.wait_for_timeout(500)
+                success, result = await _perform_click()
+                if success:
+                    return f"Recovered from overlay and {result}"
+            
+            return result
+
         @self.registry.action("Close difficult popups, modals, or overlays that block the screen")
         async def close_difficult_popup(browser: BrowserContext):
             page = await browser.get_current_page()
@@ -209,6 +264,50 @@ class NavigationActionsMixin:
                 logger.warning(f"Failed to remove overlays: {e}")
 
             return "Attempted to close popup using Escape key and common selectors."
+
+        @self.registry.action("Close or remove live chat widgets and support bots")
+        async def close_chat_widget(browser: BrowserContext):
+            page = await browser.get_current_page()
+            
+            # JavaScript to identify and remove common chat widgets
+            JS_REMOVE_CHAT = """
+            () => {
+                const selectors = [
+                    'iframe[title*="chat" i]',
+                    'iframe[title*="Chat" i]',
+                    'iframe[src*="intercom"]',
+                    'iframe[src*="zendesk"]',
+                    'iframe[src*="drift"]',
+                    'iframe[src*="tawk"]',
+                    '#hubspot-messages-iframe-container',
+                    '#intercom-container',
+                    '#drift-widget-container',
+                    '.intercom-lightweight-app',
+                    '#launcher', 
+                    '[class*="chat-widget"]',
+                    '[id*="chat-widget"]',
+                    'div[aria-label="Chat"]',
+                    'div[role="dialog"][aria-label*="Chat"]'
+                ];
+                
+                let count = 0;
+                selectors.forEach(sel => {
+                    document.querySelectorAll(sel).forEach(el => {
+                        el.remove();
+                        count++;
+                    });
+                });
+                return count;
+            }
+            """
+            
+            try:
+                removed = await page.evaluate(JS_REMOVE_CHAT)
+                if removed > 0:
+                    return f"Removed {removed} chat widget elements."
+                return "No common chat widgets found."
+            except Exception as e:
+                return f"Error removing chat widget: {e}"
 
         @self.registry.action("Remove ads and tracking elements from the page")
         async def remove_ads(browser: BrowserContext):

@@ -3,9 +3,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import json
 import re
+import sys
+from pathlib import Path
+import json_repair
 from typing import List, Dict, Optional, Any
 from datetime import datetime
+
+# Ensure project root is in sys.path so 'src' imports work
+if str(Path(__file__).resolve().parents[3]) not in sys.path:
+    sys.path.append(str(Path(__file__).resolve().parents[3]))
 
 # from lmnr.sdk.decorators import observe
 from browser_use.agent.gif import create_history_gif
@@ -21,6 +29,7 @@ from browser_use.agent.views import (
 from browser_use.browser.views import BrowserStateHistory
 from browser_use.utils import time_execution_async
 from dotenv import load_dotenv
+
 from browser_use.agent.message_manager.utils import is_model_without_tool_support
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from src.utils.utils import retry_async
@@ -36,7 +45,6 @@ from src.utils.io_manager import IOManager
 SKIP_LLM_API_KEY_VERIFICATION = (
         os.environ.get("SKIP_LLM_API_KEY_VERIFICATION", "false").lower()[0] in "ty1"
 )
-
 
 class BrowserUseAgent(Agent):
     def __init__(
@@ -54,6 +62,7 @@ class BrowserUseAgent(Agent):
         system_prompt: str = None,
         inhibit_close: bool = False,
         current_step_index: int = None,
+        validation_callback=None,
         **kwargs
     ):
         self.confirmer_llm = confirmer_llm
@@ -71,6 +80,7 @@ class BrowserUseAgent(Agent):
         self.using_cheap_model = False
         self.current_model_index = -1 # -1 indicates main_llm
         self.current_step_index = current_step_index
+        self.validation_callback = validation_callback
 
         # Prepare arguments for the parent Agent class
         agent_kwargs = kwargs.copy()
@@ -79,6 +89,11 @@ class BrowserUseAgent(Agent):
         # We intercept 'use_memory' to use our own SimpleMemoryManager instead of mem0
         self.use_custom_memory = agent_kwargs.pop('use_memory', False)
         
+        # Extract planner args
+        self.planner_llm = agent_kwargs.pop('planner_llm', None)
+        self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
+        self.planner_task = None
+        
         # Note: We do NOT pass 'use_memory' to super().__init__ to avoid TypeError if the parent class doesn't support it.
 
         if confirmer_llm:
@@ -86,6 +101,11 @@ class BrowserUseAgent(Agent):
             
         if history:
             agent_kwargs['history'] = history
+
+        # Patch LLM to fix Qwen/Ollama JSON format issues BEFORE passing to parent
+        # We patch the instance directly to satisfy Pydantic validation checks for BaseChatModel
+        if 'llm' in agent_kwargs:
+            agent_kwargs['llm'] = self._patch_llm_with_qwen_fix(agent_kwargs['llm'])
 
         super().__init__(**agent_kwargs)
         
@@ -104,10 +124,53 @@ class BrowserUseAgent(Agent):
         self.memory_manager = get_memory_manager() if self.use_custom_memory else None
         self.heuristics = AgentHeuristics(self)
 
+    def _patch_llm_with_qwen_fix(self, llm):
+        """Patches the LLM instance's ainvoke method to fix JSON output."""
+        if not hasattr(llm, 'ainvoke'):
+            return llm
+
+        original_ainvoke = llm.ainvoke
+
+        async def patched_ainvoke(input, config=None, **kwargs):
+            response = await original_ainvoke(input, config=config, **kwargs)
+            if hasattr(response, 'content') and isinstance(response.content, str):
+                content = response.content.strip()
+                if content:
+                    try:
+                        data = json_repair.loads(content)
+                        if isinstance(data, (dict, list)):
+                            if isinstance(data, dict) and data.get("name") == "AgentOutput" and "arguments" in data:
+                                logger.info("🔧 Fixed Qwen/Ollama output format by extracting 'arguments'.")
+                                response.content = json.dumps(data["arguments"])
+                            else:
+                                response.content = json.dumps(data)
+                    except Exception as e:
+                        logger.debug(f"QwenFixWrapper: json_repair failed: {e}")
+                        try:
+                            if '{' in content and not content.endswith('}'):
+                                 fixed_content = content + '}' * (content.count('{') - content.count('}'))
+                                 data = json_repair.loads(fixed_content)
+                                 response.content = json.dumps(data)
+                        except:
+                            pass
+            return response
+        
+        try:
+            llm.ainvoke = patched_ainvoke
+        except Exception:
+            object.__setattr__(llm, "ainvoke", patched_ainvoke)
+        return llm
+
     def _set_tool_calling_method(self) -> ToolCallingMethod | None:
         tool_calling_method = self.settings.tool_calling_method
         if tool_calling_method == 'auto':
-            if is_model_without_tool_support(self.model_name):
+            if 'Ollama' in self.chat_model_library:
+                return 'raw'
+            # Optimization: Explicitly enable function calling for known capable models
+            # This prevents them from falling back to 'raw' mode which causes parsing errors with empty content
+            elif any(m in self.model_name.lower() for m in ['qwen', 'deepseek', 'gpt', 'claude']) and 'Ollama' not in self.chat_model_library:
+                return 'function_calling'
+            elif is_model_without_tool_support(self.model_name):
                 return 'raw'
             elif self.chat_model_library == 'ChatGoogleGenerativeAI':
                 return None
@@ -132,6 +195,10 @@ class BrowserUseAgent(Agent):
         try:
             self._log_agent_run()
 
+            # Start Planner Loop if enabled
+            if self.planner_llm:
+                self.planner_task = asyncio.create_task(self._planner_loop())
+
             # Execute initial actions if provided
             if self.initial_actions:
                 # Use custom execution to ensure actions are run reliably via controller
@@ -149,20 +216,34 @@ class BrowserUseAgent(Agent):
                     self.state.last_result = [ActionResult(extracted_content=summary, include_in_memory=True)]
 
             for step in range(max_steps):
-                if await self._handle_pre_step():
-                    break
+                try:
+                    if await self._handle_pre_step():
+                        break
 
-                if on_step_start is not None:
-                    await on_step_start(self)
+                    if on_step_start is not None:
+                        await on_step_start(self)
 
-                step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
-                await self.step(step_info)
+                    step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
+                    await self.step(step_info)
 
-                if on_step_end is not None:
-                    await on_step_end(self)
+                    if on_step_end is not None:
+                        await on_step_end(self)
 
-                if await self._handle_post_step(step, max_steps):
-                    break
+                    if await self._handle_post_step(step, max_steps):
+                        break
+                except Exception as e:
+                    if "Timeout" in str(e) and "exceeded" in str(e):
+                        logger.warning(f"⚠️ Step {step + 1} timed out: {e}. Attempting to recover by reloading page.")
+                        self.state.consecutive_failures += 1
+                        try:
+                            page = await self.heuristics._get_current_page()
+                            if page and not page.is_closed():
+                                await page.reload(wait_until="domcontentloaded", timeout=15000)
+                                self.heuristics.inject_message("SYSTEM: A timeout occurred. I have reloaded the page to recover. Please re-assess the current state.")
+                        except Exception as reload_e:
+                            logger.error(f"Failed to reload page after timeout: {reload_e}")
+                        continue
+                    raise e
             else:
                 self._handle_max_steps_reached()
 
@@ -178,6 +259,74 @@ class BrowserUseAgent(Agent):
 
         finally:
             await self._handle_cleanup()
+
+    async def _planner_loop(self):
+        """Background task to dynamically update the plan."""
+        if not self.planner_llm:
+            return
+
+        logger.info("🧠 Planner Loop started.")
+        
+        while not self.state.stopped:
+            try:
+                await asyncio.sleep(self.planner_interval)
+
+                if self.state.paused or self.is_validating or self.state.history.is_done() or len(self.state.history.history) < 2:
+                    continue
+
+                # Check dependencies
+                if not self.controller or not hasattr(self.controller, "webui_manager"):
+                    continue
+                
+                manager = self.controller.webui_manager
+                if not manager or not hasattr(manager, "bu_plan") or not manager.bu_plan:
+                    continue
+
+                # --- 1. Gather Context for Planner ---
+                last_step = self.state.history.history[-1]
+                plan_str = json.dumps(manager.bu_plan, indent=2)
+                page_summary = (last_step.state.element_tree or "")[:4000]
+                last_thought = getattr(last_step.model_output, "thought", "N/A") if last_step.model_output else "N/A"
+
+                # --- 2. Construct Prompt ---
+                # NOTE: This requires PLANNER_PROMPT to be defined in src/utils/prompts.py
+                from src.utils.prompts import PLANNER_PROMPT
+                prompt = PLANNER_PROMPT.format(
+                    goal=self.task,
+                    plan=plan_str,
+                    last_thought=last_thought,
+                    page_summary=page_summary
+                )
+
+                # --- 3. Call Planner LLM & Parse ---
+                response = await self.planner_llm.ainvoke([HumanMessage(content=prompt)])
+                plan_update = json_repair.loads(response.content.strip())
+
+                # --- 4. Apply Plan Update ---
+                if isinstance(plan_update, dict) and "action" in plan_update:
+                    action = plan_update.get("action")
+                    logger.info(f"🧠 Planner decided to '{action}' the plan.")
+
+                    if action == "add" and "step_description" in plan_update:
+                        desc = plan_update["step_description"]
+                        after_idx = plan_update.get("after_index") # 1-based index to insert after
+                        insert_pos = int(after_idx) if after_idx is not None else len(manager.bu_plan)
+                        manager.add_plan_step(desc, index=insert_pos)
+                        self.heuristics.inject_message(f"SYSTEM (Planner): I've added a new step to the plan: '{desc}'")
+
+                    elif action == "update" and "step_index" in plan_update and "status" in plan_update:
+                        idx = int(plan_update["step_index"]) - 1 # Convert 1-based to 0-based
+                        status = plan_update["status"]
+                        reason = plan_update.get("reason", "")
+                        manager.update_plan_step_status(idx, status, result=reason)
+                        self.heuristics.inject_message(f"SYSTEM (Planner): I've updated step {idx + 1} to '{status}'. Reason: {reason}")
+                
+            except asyncio.CancelledError:
+                logger.info("🧠 Planner Loop: Cancelled")
+                break
+            except Exception as e:
+                logger.error(f"🧠 Planner Loop Error: {e}")
+                await asyncio.sleep(10)
 
     async def _execute_initial_actions(self) -> List[str]:
         """
@@ -235,12 +384,33 @@ class BrowserUseAgent(Agent):
             response_text = response.content.strip()
             logger.info(f"✅ Confirmer response: {response_text}")
 
-            is_confirmed = response_text.upper().startswith("YES")
+            # Clean response of potential think tags (DeepSeek style)
+            think_match = re.search(r'<think>(.*?)</think>', response_text, flags=re.DOTALL)
+            think_content = think_match.group(1).strip() if think_match else None
+
+            clean_response = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL).strip()
+
+            is_confirmed = clean_response.upper().startswith("YES")
             
             # Extract reason
-            reason = response_text[3:].strip(" .:-")
+            if is_confirmed:
+                reason = clean_response[3:].strip(" .:-")
+            elif clean_response.upper().startswith("NO"):
+                reason = clean_response[2:].strip(" .:-")
+            else:
+                reason = clean_response
+
             if not reason:
                 reason = "Confirmed by LLM." if is_confirmed else "Rejected by LLM."
+
+            if self.validation_callback:
+                try:
+                    if asyncio.iscoroutinefunction(self.validation_callback):
+                        await self.validation_callback(think_content, reason, is_confirmed)
+                    else:
+                        self.validation_callback(think_content, reason, is_confirmed)
+                except Exception as e:
+                    logger.error(f"Validation callback failed: {e}")
 
             # Update plan status immediately and handle dynamic plan changes
             if self.current_step_index is not None and self.controller and hasattr(self.controller, "webui_manager"):
@@ -276,7 +446,7 @@ class BrowserUseAgent(Agent):
             if is_confirmed:
                 return True
             
-            self._handle_confirmer_rejection(response_text)
+            self._handle_confirmer_rejection(reason)
             return False
 
         except Exception as e:
@@ -318,10 +488,30 @@ class BrowserUseAgent(Agent):
         msg = f"Confirmer rejected completion: {response_text}"
         
         # Inject strategy hint to force re-assessment
-        strategy_hint = " STRATEGY UPDATE: Task not confirmed. STOP and RE-ASSESS. 1. Use `assess_page_section` or `get_page_structure` to understand the current state. 2. Use `find_navigation_options` to find the correct path. 3. Scroll if needed."
+        strategy_hint = " STRATEGY UPDATE: The previous action did NOT complete the task. You MUST change your approach. 1. Do NOT repeat the same action. 2. Use `assess_page_section` or `get_page_structure` to re-orient. 3. Check for popups or errors."
         full_msg = msg + strategy_hint
 
         self.heuristics.inject_message(full_msg)
+
+    def inject_notification(self, content: str):
+        """
+        Injects a system notification into the message manager as a HumanMessage.
+        This is used by heuristics to guide the agent.
+        """
+        if not hasattr(self, "message_manager"):
+            return
+
+        msg = HumanMessage(content=f"System Notification: {content}")
+
+        try:
+            if hasattr(self.message_manager, "add_message"):
+                self.message_manager.add_message(msg)
+            elif hasattr(self.message_manager, "add_new_task"):
+                self.message_manager.add_new_task(msg.content)
+            elif hasattr(self.message_manager, "messages") and isinstance(self.message_manager.messages, list):
+                self.message_manager.messages.append(msg)
+        except Exception as e:
+            logger.warning(f"Failed to inject notification: {e}")
 
     def _manage_model_switching(self):
         """Handles Cost Saver and Smart Retry logic."""
@@ -509,6 +699,13 @@ class BrowserUseAgent(Agent):
 
     async def _handle_cleanup(self):
         """Handles cleanup after run."""
+        if self.planner_task and not self.planner_task.done():
+            self.planner_task.cancel()
+            try:
+                await self.planner_task
+            except asyncio.CancelledError:
+                pass
+
         if self.inhibit_close:
             logger.info("🚫 Cleanup inhibited: Browser will remain open.")
         else:
