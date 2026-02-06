@@ -45,6 +45,8 @@ from src.utils.utils import ensure_default_extraction_models, suppress_asyncio_c
 
 load_dotenv(override=True) # Added override=True to ensure .env takes precedence
 
+KB_DIR = "./tmp/knowledge_base" # Define a directory for the general knowledge base
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,7 @@ app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "your-secret-key-here"))
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/tmp", StaticFiles(directory="./tmp"), name="tmp")
+os.makedirs(KB_DIR, exist_ok=True) # Ensure the knowledge base directory exists
 
 @app.on_event("startup")
 async def startup_check_ollama():
@@ -1021,7 +1024,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 output_model = None
                                 if extraction_model_name:
                                     output_model = load_model_from_file(extraction_model_name)
-                                controller = CustomController(output_model=output_model)
+                                controller = CustomController(output_model=output_model, kb_dir=KB_DIR)
                                 
                                 async def validation_callback(think, reason, is_confirmed):
                                     await websocket.send_json({
@@ -1117,7 +1120,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.error(f"WebSocket message error: {e}", exc_info=True)
                 await websocket.send_json({"type": "error", "content": f"WebSocket message processing error: {e}"})
                     
-    except asyncio.CancelledError: # This catches cancellation of the websocket itself
+    except asyncio.CancelledError: # This catches cancellation of the websocket 8itself
         logger.info("Client disconnected or WebSocket task cancelled.")
         if runner_task and not runner_task.done():
             runner_task.cancel() # Ensure the agent job is cancelled too
