@@ -98,9 +98,11 @@ class BrowserUseAgent(Agent):
         # We intercept 'use_memory' to use our own SimpleMemoryManager instead of mem0
         self.use_custom_memory = agent_kwargs.pop('use_memory', False)
         
-        # Extract planner args
+        # Extract agent-specific args that should not be passed to the base Agent class
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
+        self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', False)
+        
         self.planner_task = None
         
         # Note: We do NOT pass 'use_memory' to super().__init__ to avoid TypeError if the parent class doesn't support it.

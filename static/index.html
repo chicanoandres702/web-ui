@@ -1111,6 +1111,14 @@
         </div>
         
         <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="margin-bottom: 10px;">
+                <label>Browser Binary Path (Optional)</label>
+                <input type="text" id="browserBinaryPath" placeholder="e.g., C:\Program Files\Google\Chrome\Application\chrome.exe" onchange="updateBrowserSettings()" />
+            </div>
+            <div style="margin-bottom: 10px;">
+                <label>Browser User Data Dir (Optional)</label>
+                <input type="text" id="browserUserDataDir" placeholder="e.g., C:\Users\YourUser\AppData\Local\Google\Chrome\User Data" onchange="updateBrowserSettings()" />
+            </div>
             <label>Advanced Settings (JSON)</label>
             <textarea id="settingsJson" style="flex: 1; font-family: monospace; font-size: 0.8rem;">{
   "llm": {
@@ -1130,7 +1138,9 @@
   "browser": {
     "headless": false,
     "window_w": 1280,
-    "window_h": 1100,
+    "window_h": 1100, 
+    "browser_binary_path": "",
+    "browser_user_data_dir": "",
     "enable_live_view": false
   }
 }</textarea>
@@ -2076,6 +2086,8 @@
                 document.getElementById('useVision').checked = s.agent.use_vision !== false;
                 if (s.agent.max_consecutive_failures) document.getElementById('maxConsecutiveFailures').value = s.agent.max_consecutive_failures;
             }
+            if (s.browser && s.browser.browser_binary_path) document.getElementById('browserBinaryPath').value = s.browser.browser_binary_path;
+            if (s.browser && s.browser.browser_user_data_dir) document.getElementById('browserUserDataDir').value = s.browser.browser_user_data_dir;
             updateLLMSettings();
         } catch(e) {}
         

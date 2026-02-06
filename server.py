@@ -28,7 +28,6 @@ from fastapi.responses import FileResponse, HTMLResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from langchain_core.callbacks import BaseCallbackHandler
 import uvicorn
 
 from src.agent.browser_use.browser_use_agent import BrowserUseAgent
@@ -1064,7 +1063,22 @@ async def websocket_endpoint(websocket: WebSocket):
                         # Local variables to ensure thread safety and cleanup per task
                         nonlocal browser, browser_context
                         local_task_id = None
+                        
+                        task = task_payload.get("task")
+                        agent_type = task_payload.get("agent_type", "browser")
+                        llm_settings = task_payload.get("llm", {})
+                        agent_settings = task_payload.get("agent", {})
+                        browser_settings = task_payload.get("browser", {})
 
+                        # Get browser settings from payload, defaulting to None if not present or empty string
+                        browser_binary_path = browser_settings.get("browser_binary_path") or None
+                        browser_user_data_dir = browser_settings.get("browser_user_data_dir") or None
+                        keep_browser_open_setting = browser_settings.get("keep_browser_open", False)
+
+                        # Deep Research specific
+                        resume_task_id = task_payload.get("resume_task_id")
+                        mcp_config = task_payload.get("mcp_config")
+                        extraction_model_name = task_payload.get("extraction_model")
                         # Streamlining: Close previous context to ensure clean slate for new task
                         try:
                             keep_browser_open_setting = browser_settings.get("keep_browser_open", False)
@@ -1162,7 +1176,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "stop_requested": False,
                                     "error_message": None,
                                     "memory_file": None, # Not supported in simple server yet
-                                    "google_docs_template_url": payload.get("google_docs_template_url", "a new Google Doc")
+                                    "google_docs_template_url": task_payload.get("google_docs_template_url", "a new Google Doc")
                                 }
 
                                 if resume_task_id:
@@ -1246,6 +1260,29 @@ async def websocket_endpoint(websocket: WebSocket):
                                         "is_confirmed": is_confirmed
                                     })
 
+                                # Browser and context creation
+                                # Update browser_settings with user-provided paths, or None for auto-detection
+                                browser_settings["browser_binary_path"] = browser_binary_path
+                                browser_settings["browser_user_data_dir"] = browser_user_data_dir
+                                browser_settings["use_own_browser"] = True # Always enable for custom paths or auto-detection
+
+                                browser_config_instance = BrowserConfig(**browser_settings)
+                                
+                                # If we are not keeping the browser open, or if it's the first run, or if settings changed significantly,
+                                # close existing browser/context and create new ones.
+                                # For simplicity, if keep_browser_open_setting is false, always create new.
+                                # If keep_browser_open_setting is true, only create if browser is None.
+                                if not keep_browser_open_setting or browser is None:
+                                    if browser_context:
+                                        await browser_context.close()
+                                        browser_context = None
+                                    if browser:
+                                        await browser.close()
+                                        browser = None
+                                    
+                                    browser = await create_browser(browser_config_instance.model_dump()) # Pass dict for now
+                                    browser_context = await create_context(browser, browser_config_instance.new_context_config.model_dump()) # Pass dict for now
+                                
                                 agent = BrowserUseAgent(
                                     task=task,
                                     llm=llm,
@@ -1262,7 +1299,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                     validation_callback=validation_callback,
                                     use_memory=True, # Enable custom memory manager for site knowledge
                                     enable_user_interaction_dialog=agent_settings.get("enable_user_interaction_dialog", False), # New setting
-                                    tool_calling_method=agent_settings.get("tool_calling_method", "auto")
+                                    tool_calling_method=agent_settings.get("tool_calling_method", "auto"),
+                                    send_agent_message_callback=send_agent_message_callback,
+                                    confirmation_event=confirmation_event,
+                                    confirmation_response_queue=confirmation_response_queue,
+                                    agent_control_queue=agent_control_queue # Pass the control queue to the agent
                                 )
                                 
                                 await send_agent_message_callback({"type": "agent_status", "status": "Pfcipating"})
@@ -1290,14 +1331,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                         })
                                     except Exception as e:
                                         logger.error(f"Error in callback: {e}")
-                                agent = BrowserUseAgent(
-                                    # ... existing parameters ...
-                                    send_agent_message_callback=send_agent_message_callback,
-                                    confirmation_event=confirmation_event,
-                                    confirmation_response_queue=confirmation_response_queue,
-                                    agent_control_queue=agent_control_queue # Pass the control queue to the agent
-                                )
-
+                                
                                 agent.step_callback = step_callback
                                 
                                 await websocket.send_json({"type": "log", "content": "Agent started..."})
@@ -1331,38 +1365,48 @@ async def websocket_endpoint(websocket: WebSocket):
                                         except asyncio.CancelledError:
                                             pass
                         
-                        finally:
-                            if local_task_id:
-                                await stop_browsers_for_task(local_task_id)
-
-                    runner_task = asyncio.create_task(run_agent_job())
+                        finally: # This is the main finally block for run_agent_job_wrapper
+                            # Cleanup logic after agent run
+                            if not keep_browser_open_setting:
+                                if browser_context:
+                                    await browser_context.close()
+                                    browser_context = None
+                                if browser:
+                                    await browser.close()
+                                    browser = None
+                            
+                            if local_task_id and local_task_id in _AGENT_STOP_FLAGS:
+                                del _AGENT_STOP_FLAGS[local_task_id]
+       
+                        # Start the agent job in the background
+                        runner_task = asyncio.create_task(run_agent_job_wrapper(payload))
+            
+            elif action == "confirmation_response" and runner_task and not runner_task.done():
+                response_data = {
+                    "response": payload.get("response"),
+                    "custom_task": payload.get("custom_task"),
+                    "edited_text": payload.get("edited_text") # Handle edited draft
+                }
+                # The confirmation_response_queue is used by the agent to get user input for confirmation dialogs
+                logger.info(f"Received confirmation response: {response_data}")
+                await confirmation_response_queue.put(response_data)
+                continue
                 
-            except Exception as e:
-                # This outer try-except catches errors in parsing payload or starting run_agent_job
-                logger.error(f"WebSocket message error: {e}", exc_info=True)
-                await websocket.send_json({"type": "error", "content": f"WebSocket message processing error: {e}"})
-                    
+        except json.JSONDecodeError:
+            await websocket.send_json({"type": "error", "content": "Invalid JSON payload"})
+        except Exception as e:
+            logger.error(f"Error processing message: {e}", exc_info=True)
+            await websocket.send_json({"type": "error", "content": str(e)})
+                
     except asyncio.CancelledError: # This catches cancellation of the websocket itself
         logger.info("Client disconnected or WebSocket task cancelled.")
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {e}", exc_info=True)
+    finally: # Final cleanup to ensure no browsers are left hanging
         if runner_task and not runner_task.done():
             runner_task.cancel() # Ensure the agent job is cancelled too
-        # Ensure browser and context are closed on client disconnect if they were kept open
-        if browser_context: await browser_context.close()
-        if browser: 
-            await browser.close()
-            logger.error(f"WebSocket message error: {e}")
-                    
-    except WebSocketDisconnect:
-        logger.info("Client disconnected")
-        if runner_task and not runner_task.done():
-            runner_task.cancel()
-        # Ensure browser and context are closed on client disconnect if they were kept open
-        if browser_context: await browser_context.close() # Ensure context is closed
-        if browser: await browser.close() # Ensure browser is closed
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {e}")
-    finally:
-        # Final cleanup to ensure no browsers are left hanging
         if browser_context: await browser_context.close()
         if browser: await browser.close()
         logger.info("WebSocket connection closed and resources cleaned up.")
@@ -1375,4 +1419,8 @@ if __name__ == "__main__":
 
     print(f"Starting FastAPI server at http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
+
+
+
+
     
