@@ -182,6 +182,7 @@ def get_agent_settings_values(webui_manager, components: Dict[Component, Any]) -
     settings["disable_hud"] = get_setting("disable_hud", False)
     settings["restrict_to_knowledge_base"] = get_setting("restrict_to_knowledge_base", False)
     settings["max_input_tokens"] = safe_int(get_setting("max_input_tokens"), 128000)
+    settings["max_consecutive_failures"] = safe_int(get_setting("max_consecutive_failures"), 5)
     
     tool_calling_str = get_setting("tool_calling_method", "auto")
     settings["tool_calling_method"] = tool_calling_str if tool_calling_str != "None" else None

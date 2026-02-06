@@ -77,12 +77,13 @@ async def construct_agent(webui_manager, task, agent_settings, llms, history_fil
     # Extract settings
     use_vision = agent_settings.get("use_vision", True)
     max_input_tokens = agent_settings.get("max_input_tokens", 128000)
-    confirmer_strictness = agent_settings.get("confirmer_strictness", 5)
+    confirmer_strictness = agent_settings.get("confirmer_strictness", 7)
     enable_cost_saver = agent_settings.get("enable_cost_saver", False)    
     enable_smart_retry = agent_settings.get("enable_smart_retry", False)
     auto_save_on_stuck = agent_settings.get("auto_save_on_stuck", True)
     use_memory = agent_settings.get("use_memory", False)
     override_system_prompt = agent_settings.get("override_system_prompt", None)
+    max_consecutive_failures = agent_settings.get("max_consecutive_failures", 1000)
     extend_system_prompt = agent_settings.get("extend_system_prompt", None)
     
     final_system_prompt = override_system_prompt
@@ -112,7 +113,8 @@ async def construct_agent(webui_manager, task, agent_settings, llms, history_fil
         system_prompt=final_system_prompt,
         save_history_path=history_file,
         initial_actions=initial_actions,
-        current_step_index=current_step_index
+        current_step_index=current_step_index,
+        max_consecutive_failures=max_consecutive_failures,
     )
     
     if callbacks:

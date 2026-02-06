@@ -64,6 +64,7 @@ class BrowserUseAgent(Agent):
         inhibit_close: bool = False,
         current_step_index: int = None,
         validation_callback=None,
+        max_consecutive_failures: int = 5,
         **kwargs
     ):
         self.confirmer_llm = confirmer_llm
@@ -82,6 +83,7 @@ class BrowserUseAgent(Agent):
         self.current_model_index = -1 # -1 indicates main_llm
         self.current_step_index = current_step_index
         self.validation_callback = validation_callback
+        self.max_consecutive_failures = max_consecutive_failures
 
         # Prepare arguments for the parent Agent class
         agent_kwargs = kwargs.copy()

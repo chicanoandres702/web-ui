@@ -234,6 +234,10 @@ html = """
                 <input type="checkbox" id="showConfirmerReasoning" style="width: auto;" onchange="toggleConfirmerReasoning()" />
                 <label for="showConfirmerReasoning" style="margin: 0; cursor: pointer;">Show Confirmer Reasoning</label>
             </div>
+            <div style="margin-top: 10px;">
+                <label>Max Consecutive Failures</label>
+                <input type="number" id="maxConsecutiveFailures" value="5" onchange="updateAgentSettings()" />
+            </div>
         </div>
         
         <div>
@@ -524,10 +528,12 @@ html = """
 
         function updateAgentSettings() {
             var useVision = document.getElementById('useVision').checked;
+            var maxConsecutiveFailures = document.getElementById('maxConsecutiveFailures').value;
             try {
                 var settings = JSON.parse(document.getElementById("settingsJson").value);
                 if (!settings.agent) settings.agent = {};
                 settings.agent.use_vision = useVision;
+                settings.agent.max_consecutive_failures = parseInt(maxConsecutiveFailures);
                 document.getElementById("settingsJson").value = JSON.stringify(settings, null, 2);
             } catch(e) {
                 console.error("Invalid JSON in settings", e);
@@ -627,6 +633,7 @@ html = """
             }
             if (s.agent) {
                 document.getElementById('useVision').checked = s.agent.use_vision !== false;
+                if (s.agent.max_consecutive_failures) document.getElementById('maxConsecutiveFailures').value = s.agent.max_consecutive_failures;
             }
             updateLLMSettings(); // Set initial state
         } catch(e) {}
