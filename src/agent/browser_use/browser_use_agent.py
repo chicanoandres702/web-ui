@@ -646,21 +646,6 @@ class BrowserUseAgent(Agent):
         # Check login status (New)
         await self.heuristics.check_login_status()
 
-        # Refresh HUD
-        if self.controller and hasattr(self.controller, "refresh_hud"):
-            last_action_str = ""
-            if self.state.history.history:
-                last_model_output = self.state.history.history[-1].model_output
-                if last_model_output:
-                    try:
-                        actions = last_model_output.action
-                        if isinstance(actions, list):
-                            last_action_str = " | ".join([str(a) for a in actions])
-                        else:
-                            last_action_str = str(actions)
-                    except: pass
-            await self.controller.refresh_hud(self.browser_context, last_action=last_action_str[:100])
-
         if self.state.history.is_done():
             if self.settings.validate_output and step < max_steps - 1:
                 if not await self._validate_output():
