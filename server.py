@@ -813,9 +813,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Apply user-specified browser executable path and profile
                     browser_settings["browser_binary_path"] = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
                     browser_settings["use_own_browser"] = True # Enable using system browser and its user data
+                    browser_settings["browser_user_data_dir"] = "C:\\Users\\Andrew\\AppData\\Local\\Microsoft\\Edge\\User Data" # Use specified user data folder
                     browser_settings["keep_browser_open"] = False # Explicitly disable persistent browser
-                    # browser_settings["chrome_profile_name"] = "Capella"
-
+                    browser_settings["chrome_profile_name"] = "DEFAULT"
                     # Deep Research specific
                     resume_task_id = payload.get("resume_task_id")
                     mcp_config = payload.get("mcp_config")
@@ -957,47 +957,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             else:
                                 # Standard Browser Agent - Use browser_factory for consistent setup
                                 
-                                # If browser is not initialized, or if keep_browser_open is false, recreate the browser.
-                                if not browser or not keep_browser_open_setting:
-                                    if browser: # If browser exists but we need to recreate it
-                                        logger.info("♻️  Closing existing browser for recreation due to settings or keep_browser_open=False...")
-                                        await browser.close()
-                                    logger.info("🚀 Creating new browser instance using browser_factory...")
-                                    browser = create_browser(browser_settings)
-                                else:
-                                    logger.info("✅ Reusing existing browser instance.")
-                                
-                                # Always close previous context if it exists, to ensure fresh state for new task
-                                # If keep_browser_open is true, we want to reuse the browser instance but get a fresh context.
-                                if browser_context: 
-                                    await browser_context.close() 
-                                    browser_context = None
-
-                                logger.info("✨ Creating new browser context using browser_factory...")
-                                browser_context = await create_context(browser, browser_settings)
-
                                 # Initialize Planner/Confirmer if configured
-                                planner_llm = None
-                                if agent_settings.get("planner", {}).get("enabled", False):
-                                    p_conf = agent_settings.get("planner", {})
-                                    planner_llm = llm_provider.get_llm_model(
-                                        provider=p_conf.get("provider", llm_settings.get("provider", "openai")),
-                                        model_name=p_conf.get("model_name", llm_settings.get("model_name", "gpt-4o")),
-                                        temperature=p_conf.get("temperature", 0.8),
-                                        base_url=p_conf.get("base_url", ""),
-                                        api_key=p_conf.get("api_key", "")
-                                    )
+                                planner_llm = llm # Assign the main LLM to the planner
                                 
-                                confirmer_llm = None
-                                if agent_settings.get("confirmer", {}).get("enabled", False):
-                                    c_conf = agent_settings.get("confirmer", {})
-                                    confirmer_llm = llm_provider.get_llm_model(
-                                        provider=c_conf.get("provider", llm_settings.get("provider", "openai")),
-                                        model_name=c_conf.get("model_name", llm_settings.get("model_name", "gpt-4o")),
-                                        temperature=c_conf.get("temperature", 0.8),
-                                        base_url=c_conf.get("base_url", ""),
-                                        api_key=c_conf.get("api_key", "")
-                                    )
+                                confirmer_llm = llm # Assign the main LLM to the confirmer
                                 
                                 # --- Heuristic Model Switching Setup ---
                                 enable_smart_retry = agent_settings.get("enable_smart_retry", False)
@@ -1054,6 +1017,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     enable_cost_saver=enable_cost_saver,
                                     model_priority_list=model_priority_list,
                                     validation_callback=validation_callback,
+                                    use_memory=True, # Enable custom memory manager for site knowledge
                                     tool_calling_method=agent_settings.get("tool_calling_method", "auto")
                                 )
                                 

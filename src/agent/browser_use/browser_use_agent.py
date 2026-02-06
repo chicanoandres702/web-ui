@@ -17,7 +17,7 @@ if str(Path(__file__).resolve().parents[3]) not in sys.path:
 
 # from lmnr.sdk.decorators import observe
 from browser_use.agent.gif import create_history_gif
-from browser_use.agent.service import Agent, AgentHookFunc
+from browser_use.agent.service import Agent, AgentHookFunc # AIMessage is from langchain_core.messages
 from browser_use.agent.views import (
     ActionResult,
     AgentHistory,
@@ -32,7 +32,8 @@ from dotenv import load_dotenv
 
 from browser_use.agent.message_manager.utils import is_model_without_tool_support
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
-from src.utils.utils import retry_async
+from src.utils.utils import retry_async, parse_json_safe # Ensure parse_json_safe is imported
+from langchain_core.runnables import Runnable, RunnableLambda # Import RunnableLambda
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 from src.utils.memory_utils import get_memory_manager
 from src.agent.browser_use.agent_heuristics import AgentHeuristics
@@ -105,7 +106,21 @@ class BrowserUseAgent(Agent):
         # Patch LLM to fix Qwen/Ollama JSON format issues BEFORE passing to parent
         # We patch the instance directly to satisfy Pydantic validation checks for BaseChatModel
         if 'llm' in agent_kwargs:
-            agent_kwargs['llm'] = self._patch_llm_with_qwen_fix(agent_kwargs['llm'])
+            original_llm = agent_kwargs['llm']
+            
+            # Apply structured output using AgentOutput schema
+            # This instructs the LLM to produce output conforming to AgentOutput
+            if isinstance(original_llm, Runnable):
+                structured_llm = original_llm.with_structured_output(AgentOutput)
+                logger.info("Applied AgentOutput schema to LLM using with_structured_output.")
+            else:
+                logger.warning("LLM is not a Runnable, cannot apply with_structured_output. Proceeding without structured output enforcement.")
+                structured_llm = original_llm
+            logger.debug(f"Type of LLM after structured output: {type(structured_llm)}")
+
+            # Then apply the Qwen fix to this (potentially structured) LLM
+            # agent_kwargs['llm'] = self._patch_llm_with_qwen_fix(structured_llm)
+            agent_kwargs['llm'] = original_llm
 
         super().__init__(**agent_kwargs)
         
@@ -124,43 +139,96 @@ class BrowserUseAgent(Agent):
         self.memory_manager = get_memory_manager() if self.use_custom_memory else None
         self.heuristics = AgentHeuristics(self)
 
-    def _patch_llm_with_qwen_fix(self, llm):
-        """Patches the LLM instance's ainvoke method to fix JSON output."""
-        if not hasattr(llm, 'ainvoke'):
-            return llm
-
-        original_ainvoke = llm.ainvoke
-
-        async def patched_ainvoke(input, config=None, **kwargs):
-            response = await original_ainvoke(input, config=config, **kwargs)
-            if hasattr(response, 'content') and isinstance(response.content, str):
-                content = response.content.strip()
-                if content:
-                    try:
-                        data = json_repair.loads(content)
-                        if isinstance(data, (dict, list)):
-                            if isinstance(data, dict) and data.get("name") == "AgentOutput" and "arguments" in data:
-                                logger.info("🔧 Fixed Qwen/Ollama output format by extracting 'arguments'.")
-                                response.content = json.dumps(data["arguments"])
-                            else:
-                                response.content = json.dumps(data)
-                    except Exception as e:
-                        logger.debug(f"QwenFixWrapper: json_repair failed: {e}")
-                        try:
-                            if '{' in content and not content.endswith('}'):
-                                 fixed_content = content + '}' * (content.count('{') - content.count('}'))
-                                 data = json_repair.loads(fixed_content)
-                                 response.content = json.dumps(data)
-                        except:
-                            pass
-            return response
+    def _convert_agent_output_to_aimessage(self, agent_output: AgentOutput) -> BaseMessage:
+        """
+        Converts an AgentOutput Pydantic model to an AIMessage.
+        The AIMessage's content will be the JSON string of the AgentOutput.
+        The AIMessage's tool_calls will be derived from AgentOutput.action.
+        """
+        # The content of the AIMessage will be the JSON string of the AgentOutput
+        # This ensures that the agent's message_manager and other parsing logic
+        # receive a JSON string, which they expect.
+        json_content = agent_output.model_dump_json()
         
-        try:
-            llm.ainvoke = patched_ainvoke
-        except Exception:
-            object.__setattr__(llm, "ainvoke", patched_ainvoke)
-        return llm
+        tool_calls = []
+        if agent_output.action:
+            actions_list = agent_output.action if isinstance(agent_output.action, list) else [agent_output.action]
+            for action_model in actions_list:
+                if isinstance(action_model, ActionModel): # Ensure it's an ActionModel
+                    # LangChain's ToolCall format: {"name": "tool_name", "args": {"arg1": "value1"}}
+                    # We need to ensure 'name' is not duplicated in 'args'
+                    action_args = action_model.model_dump(exclude_unset=True)
+                    tool_name = action_args.pop("name", None) # Extract 'name' and remove from args
+                    
+                    if tool_name:
+                        tool_calls.append({
+                            "name": tool_name,
+                            "args": action_args
+                        })
+                    else:
+                        logger.warning(f"ActionModel found without a 'name' attribute: {action_model}. Skipping tool call conversion.")
+                else:
+                    logger.warning(f"Unexpected action type in AgentOutput: {type(action_model)}. Skipping tool call conversion.")
 
+        return AIMessage(content=json_content, tool_calls=tool_calls)
+
+    def _apply_qwen_fix_logic(self, response: BaseMessage) -> BaseMessage:
+        """
+        Applies the Qwen/Ollama JSON fix logic to an LLM response (BaseMessage).
+        This function is designed to be used within a RunnableLambda.
+        """
+        # Ensure the response is mutable if we need to change its content
+        # For AIMessage, content is usually mutable, but for other BaseMessage types, it might not be.
+        # We'll assume it's an AIMessage or similar where content can be set.
+        if not hasattr(response, 'content') or not isinstance(response.content, str):
+            return response
+
+        content = response.content.strip()
+        if not content:
+            return response
+
+        try:
+            logger.debug(f"QwenFixWrapper: Attempting to parse raw LLM output: '{content}'")
+            # Attempt to parse with json_repair.loads
+            data = parse_json_safe(content) # Use parse_json_safe from utils
+            if isinstance(data, (dict, list)):
+                # Specific fix for AgentOutput wrapped in a dict
+                if isinstance(data, dict) and data.get("name") == "AgentOutput" and "arguments" in data:
+                    logger.info("🔧 Fixed Qwen/Ollama output format by extracting 'arguments'.")
+                    response.content = json.dumps(data["arguments"])
+                else:
+                    response.content = json.dumps(data)
+        except Exception as e:
+            logger.debug(f"QwenFixWrapper: Initial json_repair failed: {e}. Attempting more aggressive repair.")
+            # Fallback to more aggressive repair or default to empty JSON
+            try:
+                if '{' in content and not content.endswith('}'):
+                     # Attempt to close unclosed JSON object
+                     fixed_content = content + '}' * (content.count('{') - content.count('}'))
+                     data = json_repair.loads(fixed_content)
+                     response.content = json.dumps(data)
+                # If all repair attempts fail, the outer exception will catch it,
+                # or the content will remain as is if no repair was possible.
+                # We don't want to default to "{}" here unless absolutely necessary,
+                # as it might mask the actual problematic output.
+            except Exception as inner_e:
+                logger.warning(f"QwenFixWrapper: Inner repair attempt failed: {inner_e}. Original: '{content}'")
+                response.content = "{}"
+        return response
+
+    def _patch_llm_with_qwen_fix(self, llm: Runnable) -> Runnable:
+        """
+        Wraps the LLM with a RunnableLambda that applies the Qwen/Ollama JSON fix logic.
+        This avoids direct patching of ainvoke and allows chaining.
+        """
+        # First, ensure the output is converted to an AIMessage with JSON content
+        # if it's an AgentOutput Pydantic model.
+        # This RunnableLambda will be applied *after* the structured_llm produces AgentOutput.
+        llm_with_aimessage_output = llm | RunnableLambda(self._convert_agent_output_to_aimessage)
+
+        # Then, apply the Qwen fix logic to this AIMessage (which now has JSON string content)
+        # The _apply_qwen_fix_logic expects a BaseMessage and will process its string content.
+        return llm_with_aimessage_output | RunnableLambda(self._apply_qwen_fix_logic)
     def _set_tool_calling_method(self) -> ToolCallingMethod | None:
         tool_calling_method = self.settings.tool_calling_method
         if tool_calling_method == 'auto':

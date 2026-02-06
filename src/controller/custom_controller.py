@@ -23,13 +23,13 @@ class CustomController(
     SystemActionsMixin,
     UserActionsMixin
 ):
-    def __init__(self, exclude_actions: list[str] = [], **kwargs):
+    def __init__(self, exclude_actions: list[str] = [], kb_dir: str = None, **kwargs):
+        self.kb_dir = kb_dir # Store kb_dir before calling super()
         super().__init__(exclude_actions=exclude_actions, **kwargs)
         self.memory_file = None
         self.fast_mode = False
         self.require_confirmation = False
         self.agent = None
-        self.kb_dir = None
         self.clipboard_content = ""
         self.nav_controller = NavigationController()
         self.webui_manager = None
@@ -60,6 +60,7 @@ class CustomController(
         """Executes a registered action by name, handling registry lookup."""
         # Access the internal actions dict if registry is an object
         registry_actions = self.registry
+        
         if hasattr(self.registry, 'actions'):
             registry_actions = self.registry.actions
         elif hasattr(self.registry, 'registry') and hasattr(self.registry.registry, 'actions'):
