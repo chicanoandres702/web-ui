@@ -810,6 +810,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     agent_settings = payload.get("agent", {})
                     browser_settings = payload.get("browser", {})
                     
+                    # Apply user-specified browser executable path and profile
+                    browser_settings["browser_binary_path"] = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+                    browser_settings["use_own_browser"] = True # Enable using system browser and its user data
+                    browser_settings["keep_browser_open"] = False # Explicitly disable persistent browser
+                    # browser_settings["chrome_profile_name"] = "Capella"
+
                     # Deep Research specific
                     resume_task_id = payload.get("resume_task_id")
                     mcp_config = payload.get("mcp_config")
