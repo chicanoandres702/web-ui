@@ -115,7 +115,7 @@ def load_model_from_file(model_name: str):
         return None
 
 # Simple HTML client for testing the WebSocket connection
-html = """
+""" # The HTML content is moved to static/index.html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -160,47 +160,147 @@ html = """
         .message.error { border-left: 3px solid var(--error); background: rgba(239, 68, 68, 0.1); }
         .step-header { font-weight: bold; margin-bottom: 8px; display: flex; justify-content: space-between; color: var(--accent); }
         .thought { color: var(--text-secondary); font-style: italic; margin-bottom: 8px; display: block; line-height: 1.4; }
-        .url { background: rgba(59, 130, 246, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-family: monospace; display: inline-block; }
-        .screenshot { max-width: 100%; border-radius: 6px; margin-top: 10px; border: 1px solid var(--border); }
-        
-        /* Artifacts */
-        .artifacts { background: var(--panel-bg); padding: 15px; border-radius: 8px; border: 1px solid var(--border); max-height: 150px; overflow-y: auto; }
-        .artifacts ul { list-style: none; padding: 0; margin: 0; }
-        .artifacts li { margin-bottom: 5px; font-size: 0.9rem; }
-        .artifacts a { color: var(--accent); text-decoration: none; }
-        .artifacts a:hover { text-decoration: underline; }
-        
+        /* Agent Status Display */
+        #agentStatusDisplay {
+            display: none;
+            font-size: 4rem;
+            font-weight: bold;
+            text-align: center;
+            color: var(--accent);
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none; /* Allow clicks through */
+        }
+
+        /* Live Monitor */
+        #liveMonitor {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        #liveMonitor div { margin-bottom: 5px; }
+        #liveMonitor .monitor-label { font-weight: bold; color: var(--accent); margin-right: 5px; }
+        #liveMonitor .monitor-value { color: var(--text-primary); }
+        #liveMonitor #monitorGoal { font-size: 1.1rem; color: var(--success); }
+        #liveMonitor #monitorState { font-size: 1.1rem; color: var(--accent); }
+
+
         /* Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
+        .url { background: rgba(59, 130, 246, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-family: monospace; display: inline-block; }
+        .screenshot { max-width: 100%; border-radius: 6px; margin-top: 10px; border: 1px solid var(--border); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* General grouping for sidebar and control panel */
+        .control-group {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            marg
+            in-bottom: 15px; /* Spacing between groups */
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .control-group h3 {
+            margin-top: 0;
+            margin-bottom: 5px;
+            font-size: 1rem;
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+        }
+        .control-group.primary-actions {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .control-group.agent-interaction,
+        .control-group.agent-tuning,
+        .control-group.specialized-tools {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); /* Responsive grid for buttons */
+            gap: 10px;
+        }
+        .control-panel {
+            margin-top: 20px; /* Space above the control panel */
+        }
     </style>
 </head>
 <body>
+    <!-- Confirmation Dialog -->
+    <div id="confirmationOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 1000; display: flex; justify-content: center; align-items: center;">
+        <div id="confirmationDialog" style="background: var(--panel-bg); padding: 30px; border-radius: 10px; border: 1px solid var(--border); box-shadow: 0 5px 15px rgba(0,0,0,0.3); width: 500px; max-width: 90%;">
+            <h2 style="margin-top: 0; color: var(--text-primary); text-align: center;">Action Required</h2>
+            <p id="confirmationMessage" style="color: var(--text-secondary); margin-bottom: 15px; font-size: 1.1rem; text-align: center;">Are you sure you want to proceed with this action?</p>
+            <div style="margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px;">
+                <div style="margin-bottom: 5px;"><span style="font-weight: bold; color: var(--accent);">[INTEL]:</span> <span id="dialogIntel"></span></div>
+                <div><span style="font-weight: bold; color: var(--accent);">[NEXT TASK]:</span> <span id="dialogNextTask"></span></div>
+            </div>
+            <input type="text" id="customTaskInput" placeholder="Type a new custom task here (optional)" style="width: calc(100% - 20px); margin-bottom: 15px; padding: 10px; font-size: 0.9rem;" />
+            <div style="display: flex; justify-content: center; gap: 10px;">
+                <button id="confirmYesBtn" style="width: 120px; background: var(--success);">Yes</button>
+                <button id="confirmNoBtn" style="width: 120px; background: var(--error);">No</button>
+            </div>
+        </div>
+    </div>
+
     <div class="sidebar">
         <div class="header">
-            <h1>Browser Use UI</h1>
+            <h1>Agent Configuration</h1>
         </div>
         
-        <div>
-            <label>Agent Type</label>
-            <select id="agentType">
-                <option value="browser">Browser Agent</option>
-                <option value="deep_research">Deep Research Agent</option>
-            </select>
+        <div class="control-group">
+            <h3>Agent & Task Setup</h3>
+            <div>
+                <label>Agent Type</label>
+                <select id="agentType">
+                    <option value="browser">Browser Agent</option>
+                    <option value="deep_research">Deep Research Agent</option>
+                </select>
+            </div>
+            <div>
+                <label>Extraction Model</label>
+                <select id="extractionModel">
+                    <option value="">No Extraction Model</option>
+                </select>
+            </div>
+            <div>
+                <label>Resume Task ID</label>
+                <input type="text" id="resumeTaskId" placeholder="Optional UUID" />
+            </div>
+            <div>
+                <label>Google Docs Template</label>
+                <input type="text" id="googleDocsTemplate" placeholder="Optional URL" />
+            </div>
         </div>
         
-        <div style="background: var(--panel-bg); padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
-            <label>LLM Provider</label>
-            <select id="llmProvider" onchange="updateLLMSettings()">
-                <option value="openai">OpenAI</option>
-                <option value="gemini">Gemini (Google)</option>
-                <option value="vertex">Vertex AI</option>
-                <option value="ollama">Ollama</option>
-                <option value="anthropic">Anthropic</option>
-            </select>
-            
-            <div id="googleLoginPanel" style="display: none; margin-top: 10px; padding: 10px; background: rgba(66, 133, 244, 0.1); border-radius: 4px;">
+        <div class="control-group">
+            <h3>LLM Configuration</h3>
+            <div>
+                <label>LLM Provider</label>
+                <select id="llmProvider" onchange="updateLLMSettings()">
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini (Google)</option>
+                    <option value="vertex">Vertex AI</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="anthropic">Anthropic</option>
+                </select>
+            </div>
+            <div id="googleLoginPanel" style="display: none; padding: 10px; background: rgba(66, 133, 244, 0.1); border-radius: 4px;">
                 <div id="loginStatus" style="font-size: 0.8rem; margin-bottom: 5px; color: var(--text-secondary);">Not logged in</div>
                 <a id="loginBtn" href="/auth/login" style="text-decoration: none;">
                     <button type="button" style="background: #4285F4; border: none; color: white;">Sign in with Google</button>
@@ -209,62 +309,47 @@ html = """
                     <button type="button" style="background: var(--border); border: none; color: var(--text-primary);">Sign out</button>
                 </a>
             </div>
-
-            <div id="apiKeyField" style="margin-top: 10px;">
+            <div id="apiKeyField">
                 <label>API Key</label>
                 <input type="password" id="apiKey" placeholder="Enter API Key..." onchange="updateLLMSettings()" />
             </div>
-            <div id="googleProjectIdField" style="margin-top: 10px; display: none;">
+            <div id="googleProjectIdField" style="display: none;">
                 <label>Google Project ID</label>
                 <input type="text" id="googleProjectId" placeholder="Enter Google Project ID..." onchange="updateLLMSettings()" />
             </div>
-            <div id="baseUrlField" style="margin-top: 10px; display: none;">
+            <div id="baseUrlField" style="display: none;">
                 <label>Base URL</label>
                 <input type="text" id="baseUrl" placeholder="http://localhost:11434" value="http://localhost:11434" onchange="updateLLMSettings()" />
             </div>
-            <div style="margin-top: 10px;">
+            <div>
                 <label>Model Name</label>
-                <input type="text" id="modelName" placeholder="gpt-4o / gemini-2.0-flash-exp" onchange="updateLLMSettings()" />
+                <input type="text" id="modelName" placeholder="gemini-flash-latest" onchange="updateLLMSettings()" />
             </div>
-            <div style="margin-top: 10px; display: flex; align-items: center; gap: 5px;">
+            <div>
+                <label>Quick Load Ollama Model</label>
+                <select id="ollamaModel" onchange="updateOllamaSettings()">
+                    <option value="">Select a model...</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <h3>Agent Behavior</h3>
+            <div style="display: flex; align-items: center; gap: 5px;">
                 <input type="checkbox" id="useVision" style="width: auto;" onchange="updateAgentSettings()" checked />
                 <label for="useVision" style="margin: 0; cursor: pointer;">Use Vision</label>
             </div>
-            <div style="margin-top: 5px; display: flex; align-items: center; gap: 5px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
                 <input type="checkbox" id="showConfirmerReasoning" style="width: auto;" onchange="toggleConfirmerReasoning()" />
                 <label for="showConfirmerReasoning" style="margin: 0; cursor: pointer;">Show Confirmer Reasoning</label>
             </div>
-            <div style="margin-top: 10px;">
+            <div>
                 <label>Max Consecutive Failures</label>
                 <input type="number" id="maxConsecutiveFailures" value="5" onchange="updateAgentSettings()" />
             </div>
         </div>
         
-        <div>
-            <label>Quick Load Ollama Model</label>
-            <select id="ollamaModel" onchange="updateOllamaSettings()">
-                <option value="">Select a model...</option>
-            </select>
-        </div>
-        
-        <div>
-            <label>Extraction Model</label>
-            <select id="extractionModel">
-                <option value="">No Extraction Model</option>
-            </select>
-        </div>
-        
-        <div>
-            <label>Resume Task ID</label>
-            <input type="text" id="resumeTaskId" placeholder="Optional UUID" />
-        </div>
-        
-        <div>
-            <label>Google Docs Template</label>
-            <input type="text" id="googleDocsTemplate" placeholder="Optional URL" />
-        </div>
-        
-        <div style="border-top: 1px solid var(--border); padding-top: 15px;">
+        <div class="control-group">
             <label>File Upload</label>
             <div style="display: flex; gap: 5px;">
                 <input type="file" id="fileInput" style="font-size: 0.8rem;" />
@@ -273,17 +358,17 @@ html = """
             <div id="uploadStatus" style="font-size: 0.8rem; margin-top: 5px; color: var(--text-secondary);"></div>
         </div>
         
-        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+        <div class="control-group" style="flex: 1; display: flex; flex-direction: column;">
             <label>Advanced Settings (JSON)</label>
             <textarea id="settingsJson" style="flex: 1; font-family: monospace; font-size: 0.8rem;">{
   "llm": {
-    "provider": "openai",
-    "model_name": "gpt-4o",
+    "provider": "gemini",
+    "model_name": "gemini-flash-latest",
     "temperature": 0.0
   },
   "agent": {
-    "max_steps": 50,
-    "use_vision": true,
+    "max_steps": 500,
+    "use_vision": ,
     "max_parallel_browsers": 1,
     "enable_smart_retry": false,
     "enable_cost_saver": false,
@@ -294,7 +379,7 @@ html = """
     "headless": false,
     "window_w": 1280,
     "window_h": 1100,
-    "enable_live_view": false
+    "enable_live_view": true
   }
 }</textarea>
         </div>
@@ -302,6 +387,12 @@ html = """
     
     <div class="main">
         <div id="liveView" style="display:none; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #000;">
+            <div id="liveMonitor">
+                <div><span class="monitor-label"># [STATE]:</span> <span id="monitorState" class="monitor-value"></span></div>
+                <div><span class="monitor-label"># [GOAL]:</span> <span id="monitorGoal" class="monitor-value"></span></div>
+                <div><span class="monitor-label"># [DATA]:</span> <span id="monitorData" class="monitor-value"></span></div>
+            </div>
+            <div id="agentStatusDisplay"></div>
             <div style="padding: 5px 10px; background: var(--panel-bg); border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 0.8rem; display: flex; justify-content: space-between;">
                 <span>LIVE VIEW</span>
                 <span style="color: var(--error);">● REC</span>
@@ -315,12 +406,42 @@ html = """
             </div>
         </div>
         
-        <div class="artifacts">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                <h3>Generated Artifacts</h3>
-                <button class="secondary" onclick="refreshFiles()" style="width: auto; padding: 2px 8px; font-size: 0.8rem;">Refresh</button>
+        <!-- Center Control Bar -->
+        <div class="center-console" style="margin-bottom: 20px;">
+            <div class="console-section">
+                <h3>Manual Override</h3>
+                <button id="forceReviewBtn" onclick="sendControl('force_review')">👁️ Force Review</button>
+                <button id="forceParticipateBtn" onclick="sendControl('force_participate')">✍️ Force Participate</button>
+                <button id="emergencyStopBtn" onclick="stopAgent(event)" style="background: var(--error);">🛑 Emergency All-Stop</button>
             </div>
-            <ul id="fileList"></ul>
+            <div class="console-section">
+                <h3>Context Shifters</h3>
+                <button id="readVitalSourceBtn" onclick="sendControl('read_vitalsource')">📖 Read VitalSource</button>
+                <button id="syncHotlinksBtn" onclick="sendControl('sync_hotlinks')">🌐 Sync Hotlinks</button>
+                <button id="rubricCheckBtn" onclick="sendControl('rubric_check')">📋 Rubric Check</button>
+            </div>
+            <div class="console-section">
+                <h3>Navigation & Speed</h3>
+                <label for="speedSlider">Speed: <span id="speedValue">Human Pace</span></label>
+                <input type="range" id="speedSlider" min="0" max="10" value="5" oninput="updateSpeed(this.value)">
+                <button id="skipStepBtn" onclick="sendControl('skip_step')">⏭️ Skip Step</button>
+                <button id="reloadRetryBtn" onclick="sendControl('reload_retry')">🔄 Reload/Retry</button>
+            </div>
+            <div class="console-section">
+                <h3>Handshake Response</h3>
+                <button id="letsGoBtn" onclick="sendConfirmation('yes')">✅ LETS GO</button>
+                <button id="editDraftBtn" onclick="showEditDraftDialog()">📝 EDIT DRAFT</button>
+                <button id="explainBtn" onclick="sendControl('explain_action')">❓ EXPLAIN</button>
+                <div id="editDraftDialog" style="display: none; margin-top: 10px;">
+                    <textarea id="editDraftText" placeholder="Edit AI's draft here..." style="width: 100%; height: 80px; margin-bottom: 5px;"></textarea>
+                    <button onclick="sendEditedDraft()">Submit Edit</button>
+                    <button onclick="hideEditDraftDialog()" class="secondary">Cancel</button>
+                </div>
+            </div>
+            <div class="console-section">
+                <h3>Utility</h3>
+                <button id="showFocusBtn" onclick="sendControl('toggle_ghost_mouse')">🖱️ Show Focus</button>
+            </div>
         </div>
         
         <form onsubmit="sendMessage(event)" style="display: flex; gap: 10px;">
@@ -329,11 +450,37 @@ html = """
             <button id="stopBtn" onclick="stopAgent(event)" type="button" disabled style="width: 80px;">Stop</button>
         </form>
     </div>
+    
+    <div class="right-sidebar">
+        <div class="header">
+            <h1>Task Management</h1>
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <h3>Current Task</h3>
+            <div id="currentTaskDisplay" style="background: var(--bg-color); padding: 10px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-primary);">No task running</div>
+        </div>
+        
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <h3>Task Queue</h3>
+            <ul id="taskList" style="list-style: none; padding: 0; margin: 0; flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-color);">
+                <!-- Task items will be added here by JS -->
+                <li style="padding: 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                    <span>Example Task 1</span> <button style="width: auto; padding: 4px 8px; font-size: 0.7rem; background: var(--error);">✖️</button>
+                </li>
+            </ul>
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="newTaskInput" placeholder="Add new task..." style="flex: 1;" /> 
+                <button id="addTaskBtn" style="width: auto; padding: 8px 12px;">➕</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         var ws = new WebSocket("ws://" + window.location.host + "/ws");
         var sendBtn = document.getElementById("sendBtn");
         var stopBtn = document.getElementById("stopBtn");
+        var currentConfirmationPayload = null; // To store the payload from request_confirmation
         
         ws.onopen = function() {
             console.log("Connected to WebSocket");
@@ -366,7 +513,6 @@ html = """
                         select.disabled = true;
                     }
                 });
-            refreshFiles();
         };
 
         ws.onmessage = function(event) {
@@ -379,6 +525,20 @@ html = """
             if (data.type === 'log') {
                 div.classList.add('agent');
                 div.innerHTML = "<div class='step-header'>Log</div><div class='thought'>ℹ️ " + data.content + "</div>";
+            } else if (data.type === 'agent_status') {
+                var statusDisplay = document.getElementById('agentStatusDisplay');
+                if (data.status) {
+                    statusDisplay.textContent = data.status;
+                    statusDisplay.style.display = 'block';
+                } else {
+                    statusDisplay.style.display = 'none';
+                }
+            } else if (data.type === 'agent_goal') {
+                document.getElementById('monitorGoal').textContent = data.goal;
+                document.getElementById('liveMonitor').style.display = 'block';
+            } else if (data.type === 'agent_data') {
+                document.getElementById('monitorData').textContent = data.data;
+                document.getElementById('liveMonitor').style.display = 'block';
             } else if (data.type === 'stream') {
                 var view = document.getElementById('liveView');
                 var img = document.getElementById('liveImg');
@@ -411,6 +571,14 @@ html = """
                 if (data.think) {
                     div.innerHTML += "<div class='confirmer-reasoning' style='margin-top:5px; padding:8px; background:rgba(0,0,0,0.3); border-left:2px solid #9ca3af; font-family:monospace; font-size:0.85rem; white-space: pre-wrap; display:none;'>" + data.think + "</div>";
                 }
+            } else if (data.type === 'request_confirmation') {
+                showConfirmationDialog(
+                    data.message || "Are you sure you want to proceed with this action?", // message
+                    data.intel || "No specific new information.", // intel
+                    data.next_task || "Agent is considering its next move." // next_task
+                );
+                currentConfirmationPayload = data; // Store the full payload
+                return; // Do not append to messages, it's a modal
             } else if (data.type === 'result') {
                 div.classList.add('agent');
                 div.style.borderColor = 'var(--success)';
@@ -418,19 +586,24 @@ html = """
                 sendBtn.disabled = false;
                 sendBtn.textContent = "Run";
                 stopBtn.disabled = true;
+                document.getElementById('liveMonitor').style.display = 'none'; // Hide monitor on task end
+                document.getElementById('agentStatusDisplay').style.display = 'none'; // Hide agent status on task end
+                document.getElementById('currentTaskDisplay').textContent = "No task running"; // Clear current task
             } else if (data.type === 'error') {
                 div.classList.add('error');
                 div.innerHTML = "<div class='step-header' style='color: var(--error)'>❌ Error</div><div>" + data.content + "</div>";
                 sendBtn.disabled = false;
                 sendBtn.textContent = "Run";
                 stopBtn.disabled = true;
+                document.getElementById('liveMonitor').style.display = 'none'; // Hide monitor on task end
+                document.getElementById('agentStatusDisplay').style.display = 'none'; // Hide agent status on task end
+                document.getElementById('currentTaskDisplay').textContent = "No task running"; // Clear current task
             }
             
             messages.appendChild(div);
             messages.scrollTop = messages.scrollHeight;
-            refreshFiles();
         };
-
+        
         ws.onclose = function() {
             var messages = document.getElementById('messages');
             var div = document.createElement('div');
@@ -439,12 +612,13 @@ html = """
             messages.appendChild(div);
         };
 
-        function sendMessage(event) {
-            event.preventDefault();
+        function sendMessage(event) { // Changed to be called by onclick, not form onsubmit
             var input = document.getElementById("messageText");
             if (!input.value) return;
             
             var messages = document.getElementById('messages');
+            document.getElementById('liveMonitor').style.display = 'none'; // Hide monitor on new task
+            document.getElementById('agentStatusDisplay').style.display = 'none'; // Hide status on new task
             messages.innerHTML = ''; // Clear previous
             
             var agentType = document.getElementById("agentType").value;
@@ -463,6 +637,9 @@ html = """
             var userDiv = document.createElement('div');
             userDiv.className = 'message user';
             userDiv.innerHTML = "<div class='step-header'>User Task</div><div>" + input.value + "</div>";
+            
+            // Update current task display in the right sidebar
+            document.getElementById('currentTaskDisplay').textContent = input.value;
             messages.appendChild(userDiv);
             
             ws.send(JSON.stringify({action: "run", task: input.value, agent_type: agentType, resume_task_id: resumeTaskId, google_docs_template_url: googleDocsTemplate, extraction_model: extractionModel, ...settings}));
@@ -477,6 +654,16 @@ html = """
             event.preventDefault();
             ws.send(JSON.stringify({action: "stop"}));
             stopBtn.disabled = true;
+        }
+
+        // New functions for confirmation dialog
+        document.getElementById('confirmYesBtn').onclick = function() { sendConfirmation('yes'); };
+        document.getElementById('confirmNoBtn').onclick = function() { sendConfirmation('no'); };
+        function showConfirmationDialog(message, intel, nextTask) {
+            document.getElementById('confirmationMessage').textContent = message;
+            document.getElementById('dialogIntel').textContent = intel;
+            document.getElementById('dialogNextTask').textContent = nextTask;
+            document.getElementById('confirmationOverlay').style.display = 'flex';
         }
 
         async function uploadFile(event) {
@@ -510,22 +697,6 @@ html = """
             }
         }
 
-        async function refreshFiles() {
-            try {
-                var response = await fetch('/files');
-                var files = await response.json();
-                var list = document.getElementById('fileList');
-                list.innerHTML = '';
-                files.forEach(file => {
-                    var li = document.createElement('li');
-                    li.innerHTML = '<a href="/' + file + '" target="_blank">' + file + '</a>';
-                    list.appendChild(li);
-                });
-            } catch(e) {
-                console.error("Failed to load files", e);
-            }
-        }
-
         function updateAgentSettings() {
             var useVision = document.getElementById('useVision').checked;
             var maxConsecutiveFailures = document.getElementById('maxConsecutiveFailures').value;
@@ -549,6 +720,55 @@ html = """
                 document.head.appendChild(style);
             }
             style.textContent = checked ? ".confirmer-reasoning { display: block !important; }" : ".confirmer-reasoning { display: none !important; }";
+        }
+
+        // New functions for Center Console controls
+        function sendControl(command, value = null) {
+            // Emergency stop is handled by the existing stopAgent function
+            ws.send(JSON.stringify({action: "control", command: command, value: value}));
+        }
+
+        function updateSpeed(value) {
+            const speedLabel = document.getElementById('speedValue');
+            let speedText = '';
+            if (value == 0) speedText = 'Paused';
+            else if (value <= 3) speedText = 'Human Pace (Slow/Safe)';
+            else if (value <= 7) speedText = 'Normal';
+            else speedText = 'Turbo (Fast/High-Risk)';
+            speedLabel.textContent = speedText;
+            sendControl('set_speed', value);
+        }
+
+        function sendConfirmation(responseType, customTask = null, editedText = null) {
+            // Use currentConfirmationPayload if available for context, otherwise default
+            const payloadToSend = {
+                action: "confirmation_response",
+                response: responseType,
+                custom_task: customTask || document.getElementById('customTaskInput').value,
+                edited_text: editedText, // New field for edited draft
+                // Optionally, include original intel/next_task from currentConfirmationPayload if needed by backend
+                original_intel: currentConfirmationPayload ? currentConfirmationPayload.intel : null,
+                original_next_task: currentConfirmationPayload ? currentConfirmationPayload.next_task : null,
+            };
+            ws.send(JSON.stringify(payloadToSend));
+            document.getElementById('confirmationOverlay').style.display = 'none';
+            document.getElementById('customTaskInput').value = ''; // Clear input after sending
+            currentConfirmationPayload = null; // Clear stored payload
+        }
+
+        function showEditDraftDialog() {
+            document.getElementById('editDraftDialog').style.display = 'block';
+            document.getElementById('editDraftText').value = ''; // Clear previous
+        }
+
+        function hideEditDraftDialog() {
+            document.getElementById('editDraftDialog').style.display = 'none';
+        }
+
+        function sendEditedDraft() {
+            const editedText = document.getElementById('editDraftText').value;
+            sendConfirmation('edit', null, editedText);
+            hideEditDraftDialog();
         }
 
         function updateOllamaSettings() {
@@ -649,13 +869,10 @@ html = """
         });
     </script>
 </body>
-</html>
-"""
+</html>""" # End of HTML content
 
 @app.get("/")
 async def get():
-    return HTMLResponse(html)
-async def read_root():
     return FileResponse("static/index.html")
 
 @app.get("/extraction_models")
@@ -788,6 +1005,10 @@ async def websocket_endpoint(websocket: WebSocket):
     browser = None
     browser_context = None
     runner_task = None
+    agent_control_queue = asyncio.Queue() # Queue for sending control commands to the running agent
+
+    confirmation_event = asyncio.Event()
+    confirmation_response_queue = asyncio.Queue()
     
     try:
         while True:
@@ -797,12 +1018,20 @@ async def websocket_endpoint(websocket: WebSocket):
                 action = payload.get("action", "run")
                 
                 if action == "stop":
+                    logger.info("Received 'stop' action. Cancelling runner task.")
                     if runner_task and not runner_task.done():
                         runner_task.cancel()
                     continue
 
+                if action == "control":
+                    command = payload.get("command")
+                    value = payload.get("value")
+                    logger.info(f"Received control command: {command} with value: {value}")
+                    await agent_control_queue.put({"command": command, "value": value})
+                    continue
+
                 if action == "run":
-                    task = payload.get("task")
+                    task = payload.get("task") # This is the main task for the agent
                     agent_type = payload.get("agent_type", "browser")
 
                     if not task:
@@ -811,6 +1040,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     if runner_task and not runner_task.done():
                         await websocket.send_json({"type": "error", "content": "Agent already running"})
                         continue
+
+                    # Reset confirmation state for a new run
+                    confirmation_event.clear()
+                    while not confirmation_response_queue.empty(): # Clear any stale responses
+                        try: await confirmation_response_queue.get_nowait()
+                        except asyncio.QueueEmpty: pass
+                
+                elif action == "confirmation_response" and runner_task and not runner_task.done():
+                    response_data = {
+                        "response": payload.get("response"),
+                        "custom_task": payload.get("custom_task"),
+                        "edited_text": payload.get("edited_text") # Handle edited draft
+                    }
+                    # The confirmation_response_queue is used by the agent to get user input for confirmation dialogs
+                    logger.info(f"Received confirmation response: {response_data}")
+                    await confirmation_response_queue.put(response_data)
+                    continue
                     
                     # Extract settings
                     llm_settings = payload.get("llm", {})
@@ -962,6 +1208,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                     await websocket.send_json({"type": "error", "content": "Deep research finished without generating a report."})
 
                             else:
+                                # Define the callback for agent status updates and confirmation requests
+                                async def send_agent_message_callback(message_payload):
+                                    await websocket.send_json(message_payload)
+
                                 # Standard Browser Agent - Use browser_factory for consistent setup
                                 
                                 # Initialize Planner/Confirmer if configured
@@ -1025,9 +1275,11 @@ async def websocket_endpoint(websocket: WebSocket):
                                     model_priority_list=model_priority_list,
                                     validation_callback=validation_callback,
                                     use_memory=True, # Enable custom memory manager for site knowledge
+                                    enable_user_interaction_dialog=agent_settings.get("enable_user_interaction_dialog", False), # New setting
                                     tool_calling_method=agent_settings.get("tool_calling_method", "auto")
                                 )
                                 
+                                await send_agent_message_callback({"type": "agent_status", "status": "Pfcipating"})
                                 async def step_callback(state, model_output, step_number):
                                     try:
                                         thought = getattr(model_output, "thought", "") if model_output else ""
@@ -1052,6 +1304,13 @@ async def websocket_endpoint(websocket: WebSocket):
                                         })
                                     except Exception as e:
                                         logger.error(f"Error in callback: {e}")
+                                agent = BrowserUseAgent(
+                                    # ... existing parameters ...
+                                    send_agent_message_callback=send_agent_message_callback,
+                                    confirmation_event=confirmation_event,
+                                    confirmation_response_queue=confirmation_response_queue,
+                                    agent_control_queue=agent_control_queue # Pass the control queue to the agent
+                                )
 
                                 agent.step_callback = step_callback
                                 
@@ -1097,7 +1356,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.error(f"WebSocket message error: {e}", exc_info=True)
                 await websocket.send_json({"type": "error", "content": f"WebSocket message processing error: {e}"})
                     
-    except asyncio.CancelledError: # This catches cancellation of the websocket 8itself
+    except asyncio.CancelledError: # This catches cancellation of the websocket itself
         logger.info("Client disconnected or WebSocket task cancelled.")
         if runner_task and not runner_task.done():
             runner_task.cancel() # Ensure the agent job is cancelled too
@@ -1130,3 +1389,4 @@ if __name__ == "__main__":
 
     print(f"Starting FastAPI server at http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
+    

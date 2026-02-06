@@ -10,7 +10,7 @@ from pathlib import Path
 import json_repair
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-
+from typing import Callable, Union
 # Ensure project root is in sys.path so 'src' imports work
 if str(Path(__file__).resolve().parents[3]) not in sys.path:
     sys.path.append(str(Path(__file__).resolve().parents[3]))
@@ -64,6 +64,9 @@ class BrowserUseAgent(Agent):
         inhibit_close: bool = False,
         current_step_index: int = None,
         validation_callback=None,
+        send_agent_message_callback: Optional[Callable] = None,
+        confirmation_event: Optional[asyncio.Event] = None,
+        confirmation_response_queue: Optional[asyncio.Queue] = None,
         max_consecutive_failures: int = 5,
         **kwargs
     ):
@@ -84,6 +87,9 @@ class BrowserUseAgent(Agent):
         self.current_step_index = current_step_index
         self.validation_callback = validation_callback
         self.max_consecutive_failures = max_consecutive_failures
+        self.send_agent_message_callback = send_agent_message_callback
+        self.confirmation_event = confirmation_event
+        self.confirmation_response_queue = confirmation_response_queue
 
         # Prepare arguments for the parent Agent class
         agent_kwargs = kwargs.copy()
@@ -262,6 +268,10 @@ class BrowserUseAgent(Agent):
 
         loop = asyncio.get_event_loop()
 
+        if self.send_agent_message_callback:
+            await self.send_agent_message_callback({"type": "agent_goal", "goal": self.task})
+            await self.send_agent_message_callback({"type": "agent_status", "status": "Participating"})
+
         try:
             self._log_agent_run()
 
@@ -301,6 +311,10 @@ class BrowserUseAgent(Agent):
 
                     if await self._handle_post_step(step, max_steps):
                         break
+
+                    # If a custom task was provided, the agent.task would have been updated.
+                    # We should continue the loop to process the new task.
+
                 except Exception as e:
                     if "Timeout" in str(e) and "exceeded" in str(e):
                         logger.warning(f"⚠️ Step {step + 1} timed out: {e}. Attempting to recover by reloading page.")
@@ -715,6 +729,39 @@ class BrowserUseAgent(Agent):
 
         # Check login status (New)
         await self.heuristics.check_login_status()
+
+        # --- User Interaction Dialog ---
+        # This dialog appears after the agent has processed the current page
+        # and before it decides its next action or declares completion.
+        if self.settings.get("enable_user_interaction_dialog", False):
+            last_step_info = self.state.history.history[-1] if self.state.history.history else None
+            
+            intel = "No specific new information from this step."
+            if last_step_info and last_step_info.model_output and last_step_info.model_output.thought:
+                intel = last_step_info.model_output.thought
+            
+            next_action_desc = "Agent is considering its next move."
+            if last_step_info and last_step_info.model_output and last_step_info.model_output.action:
+                actions_list = last_step_info.model_output.action if isinstance(last_step_info.model_output.action, list) else [last_step_info.model_output.action]
+                action_strings = []
+                for action_model in actions_list:
+                    if hasattr(action_model, "name") and hasattr(action_model, "args"):
+                        action_strings.append(f"{action_model.name}({json.dumps(action_model.args)})")
+                    else:
+                        action_strings.append(str(action_model)) # Fallback for non-standard actions
+                next_action_desc = ", ".join(action_strings)
+                if not next_action_desc:
+                    next_action_desc = "Agent is considering its next move."
+            
+            user_decision = await self.request_user_decision(intel, next_action_desc)
+
+            if user_decision is False: # User chose No/Abort
+                self.state.stopped = True
+                return True # Break the loop
+            elif isinstance(user_decision, str): # User provided a custom task
+                self.task = user_decision # Update the main task for the agent to re-evaluate
+                self.heuristics.inject_message(f"SYSTEM: User provided new task: '{user_decision}'. Re-evaluating plan.")
+                return False # Continue the loop, agent will now work on the new task
 
         if self.state.history.is_done():
             if self.settings.validate_output and step < max_steps - 1:
