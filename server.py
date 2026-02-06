@@ -38,11 +38,12 @@ from src.controller.custom_controller import CustomController
 from browser_use.browser.browser import BrowserConfig
 from browser_use.browser.context import BrowserContextConfig
 from src.utils import llm_provider
+from src.utils.browser_factory import create_browser, create_context
 from src.agent.deep_research.search_tool import stop_browsers_for_task, _AGENT_STOP_FLAGS
 from src.agent.deep_research.state_manager import DeepResearchStateManager
 from src.utils.utils import ensure_default_extraction_models, suppress_asyncio_cleanup_errors
 
-load_dotenv()
+load_dotenv(override=True) # Added override=True to ensure .env takes precedence
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -817,12 +818,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         local_task_id = None
 
                         # Streamlining: Close previous context to ensure clean slate for new task
-                        if browser_context:
-                            logger.info("♻️  Resetting browser context for new task...")
-                            await browser_context.close()
-                            browser_context = None
-                        
                         try:
+                            keep_browser_open_setting = browser_settings.get("keep_browser_open", False)
+
+                            # Determine if browser/context needs to be recreated or reused.
+                            # Recreate if keep_browser_open is false, or if browser is not yet initialized.
+                            # More sophisticated logic could compare current browser_settings with previous ones.
                             await websocket.send_json({"type": "log", "content": f"Initializing {agent_type} agent for task: {task}"})
                             
                             provider = llm_settings.get("provider", "openai")
@@ -945,34 +946,26 @@ async def websocket_endpoint(websocket: WebSocket):
                                     await websocket.send_json({"type": "error", "content": "Deep research finished without generating a report."})
 
                             else:
-                                # Standard Browser Agent
+                                # Standard Browser Agent - Use browser_factory for consistent setup
                                 
-                                # Check if we need to re-initialize browser due to settings change
-                                if browser_settings and browser:
-                                    await browser.close()
-                                    browser = None
+                                # If browser is not initialized, or if keep_browser_open is false, recreate the browser.
+                                if not browser or not keep_browser_open_setting:
+                                    if browser: # If browser exists but we need to recreate it
+                                        logger.info("♻️  Closing existing browser for recreation due to settings or keep_browser_open=False...")
+                                        await browser.close()
+                                    logger.info("🚀 Creating new browser instance using browser_factory...")
+                                    browser = create_browser(browser_settings)
+                                else:
+                                    logger.info("✅ Reusing existing browser instance.")
+                                
+                                # Always close previous context if it exists, to ensure fresh state for new task
+                                # If keep_browser_open is true, we want to reuse the browser instance but get a fresh context.
+                                if browser_context: 
+                                    await browser_context.close() 
                                     browser_context = None
 
-                                if browser is None:
-                                    browser = CustomBrowser(
-                                        config=BrowserConfig(
-                                            headless=browser_settings.get("headless", False),
-                                            disable_security=browser_settings.get("disable_security", True),
-                                            wss_url=browser_settings.get("wss_url"),
-                                            cdp_url=browser_settings.get("cdp_url"),
-                                            extra_browser_args=browser_settings.get("extra_browser_args", [])
-                                        )
-                                    )
-                                
-                                if browser_context is None:
-                                    browser_context = await browser.new_context(
-                                        config=BrowserContextConfig(
-                                            window_width=browser_settings.get("window_w", 1280),
-                                            window_height=browser_settings.get("window_h", 1100),
-                                            save_recording_path=browser_settings.get("save_recording_path"),
-                                            trace_path=browser_settings.get("save_trace_path")
-                                        )
-                                    )
+                                logger.info("✨ Creating new browser context using browser_factory...")
+                                browser_context = await create_context(browser, browser_settings)
 
                                 # Initialize Planner/Confirmer if configured
                                 planner_llm = None
@@ -1044,10 +1037,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                     browser=browser,
                                     browser_context=browser_context,
                                     controller=controller,
-                                    use_vision=agent_settings.get("use_vision", True),
+                                    use_vision=agent_settings.get("use_vision", True), # Use the setting from agent_settings
                                     planner_llm=planner_llm,
                                     confirmer_llm=confirmer_llm,
-                                    inhibit_close=True,
+                                    inhibit_close=keep_browser_open_setting, # Inhibit closing if keep_browser_open is true
                                     enable_smart_retry=enable_smart_retry,
                                     enable_cost_saver=enable_cost_saver,
                                     model_priority_list=model_priority_list,
@@ -1113,12 +1106,6 @@ async def websocket_endpoint(websocket: WebSocket):
                                         except asyncio.CancelledError:
                                             pass
                         
-                        except asyncio.CancelledError:
-                            await websocket.send_json({"type": "log", "content": "🛑 Agent stopped by user."})
-                            await websocket.send_json({"type": "error", "content": "Task Cancelled"})
-                        except Exception as e:
-                            logger.error(f"Task execution error: {e}", exc_info=True)
-                            await websocket.send_json({"type": "error", "content": str(e)})
                         finally:
                             if local_task_id:
                                 await stop_browsers_for_task(local_task_id)
@@ -1126,21 +1113,34 @@ async def websocket_endpoint(websocket: WebSocket):
                     runner_task = asyncio.create_task(run_agent_job())
                 
             except Exception as e:
-                logger.error(f"WebSocket message error: {e}")
+                # This outer try-except catches errors in parsing payload or starting run_agent_job
+                logger.error(f"WebSocket message error: {e}", exc_info=True)
+                await websocket.send_json({"type": "error", "content": f"WebSocket message processing error: {e}"})
+                    
+    except asyncio.CancelledError: # This catches cancellation of the websocket itself
+        logger.info("Client disconnected or WebSocket task cancelled.")
+        if runner_task and not runner_task.done():
+            runner_task.cancel() # Ensure the agent job is cancelled too
+        # Ensure browser and context are closed on client disconnect if they were kept open
+        if browser_context: await browser_context.close()
+        if browser: 
+            await browser.close()
+            logger.error(f"WebSocket message error: {e}")
                     
     except WebSocketDisconnect:
         logger.info("Client disconnected")
         if runner_task and not runner_task.done():
             runner_task.cancel()
+        # Ensure browser and context are closed on client disconnect if they were kept open
+        if browser_context: await browser_context.close() # Ensure context is closed
+        if browser: await browser.close() # Ensure browser is closed
     except Exception as e:
         logger.error(f"WebSocket connection error: {e}")
     finally:
-        if runner_task and not runner_task.done():
-            runner_task.cancel()
-        if browser_context:
-            await browser_context.close()
-        if browser:
-            await browser.close()
+        # Final cleanup to ensure no browsers are left hanging
+        if browser_context: await browser_context.close()
+        if browser: await browser.close()
+        logger.info("WebSocket connection closed and resources cleaned up.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Browser Agent Server")

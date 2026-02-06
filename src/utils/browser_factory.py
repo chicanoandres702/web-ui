@@ -19,10 +19,12 @@ def get_system_default_user_data_dir() -> Optional[str]:
     system = platform.system()
     home = os.path.expanduser("~")
     
+    logger.debug(f"Detecting system default user data directory for OS: {system}")
     paths = []
     
     if system == "Windows":
         local_app_data = os.environ.get("LOCALAPPDATA", os.path.join(home, "AppData", "Local"))
+        logger.debug(f"Windows LOCALAPPDATA: {local_app_data}")
         paths.append(os.path.join(local_app_data, "Google", "Chrome", "User Data"))
         paths.append(os.path.join(local_app_data, "Microsoft", "Edge", "User Data"))
         paths.append(os.path.join(local_app_data, "BraveSoftware", "Brave-Browser", "User Data"))
@@ -34,9 +36,11 @@ def get_system_default_user_data_dir() -> Optional[str]:
         paths.append(os.path.join(home, ".config", "google-chrome"))
         paths.append(os.path.join(home, ".config", "microsoft-edge"))
         paths.append(os.path.join(home, ".config", "brave-browser"))
-        
+
+    logger.debug(f"Checking potential user data paths: {paths}")
     for p in paths:
         if os.path.exists(p):
+            logger.debug(f"Found existing user data path: {p}")
             return p
             
     return None
@@ -45,6 +49,7 @@ def get_system_default_browser_binary() -> Optional[str]:
     """Detects the default browser binary path."""
     system = platform.system()
     paths = []
+    logger.debug(f"Detecting system default browser binary for OS: {system}")
     if system == "Windows":
         paths.append(os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"))
         paths.append(os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"))
@@ -55,9 +60,11 @@ def get_system_default_browser_binary() -> Optional[str]:
     elif system == "Linux":
         paths.append("/usr/bin/google-chrome")
         paths.append("/usr/bin/microsoft-edge")
-    
+
+    logger.debug(f"Checking potential browser binary paths: {paths}")
     for p in paths:
         if os.path.exists(p):
+            logger.debug(f"Found existing browser binary path: {p}")
             return p
     return None
 
@@ -180,6 +187,7 @@ async def create_context(browser: CustomBrowser, config: dict):
             "headless": browser_config.headless,
             "args": browser_config.extra_browser_args,
             "viewport": {"width": window_w, "height": window_h},
+            "timeout": 60000, # Add a timeout for persistent context launch
             "device_scale_factor": 1,
             "downloads_path": save_downloads_path,
         }
