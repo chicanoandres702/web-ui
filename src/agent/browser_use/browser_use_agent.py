@@ -24,14 +24,13 @@ from browser_use.agent.views import (
     AgentOutput,
     AgentHistoryList,
     AgentStepInfo,
-    ToolCallingMethod,
 )
 from browser_use.browser.views import BrowserStateHistory
 from browser_use.utils import time_execution_async
 from dotenv import load_dotenv
 
 from browser_use.agent.message_manager.utils import is_model_without_tool_support
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from src.utils.utils import retry_async, parse_json_safe # Ensure parse_json_safe is imported
 from langchain_core.runnables import Runnable, RunnableLambda # Import RunnableLambda
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
@@ -46,6 +45,9 @@ from src.utils.io_manager import IOManager
 SKIP_LLM_API_KEY_VERIFICATION = (
         os.environ.get("SKIP_LLM_API_KEY_VERIFICATION", "false").lower()[0] in "ty1"
 )
+
+# Define ToolCallingMethod locally as it might be missing in newer browser_use versions
+ToolCallingMethod = str
 
 class BrowserUseAgent(Agent):
     def __init__(
@@ -102,6 +104,7 @@ class BrowserUseAgent(Agent):
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
         self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', False)
+        self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
         
         self.planner_task = None
         
@@ -164,7 +167,7 @@ class BrowserUseAgent(Agent):
         if agent_output.action:
             actions_list = agent_output.action if isinstance(agent_output.action, list) else [agent_output.action]
             for action_model in actions_list:
-                if isinstance(action_model, ActionModel): # Ensure it's an ActionModel
+                if hasattr(action_model, "model_dump"): # Ensure it's an ActionModel-like object
                     # LangChain's ToolCall format: {"name": "tool_name", "args": {"arg1": "value1"}}
                     # We need to ensure 'name' is not duplicated in 'args'
                     action_args = action_model.model_dump(exclude_unset=True)
@@ -632,11 +635,40 @@ class BrowserUseAgent(Agent):
             except Exception as e:
                 logger.error(f"Error in done_callback: {e}")
 
+    async def _process_control_queue(self):
+        """Processes commands from the control queue."""
+        if not self.agent_control_queue:
+            return
+
+        while not self.agent_control_queue.empty():
+            try:
+                control_data = self.agent_control_queue.get_nowait()
+                command = control_data.get("command")
+                value = control_data.get("value")
+                
+                logger.info(f"Processing control command: {command}")
+
+                if command == "pause":
+                    self.pause()
+                elif command == "resume":
+                    self.resume()
+                elif command == "stop":
+                    self.stop()
+                elif command == "add_task":
+                    if hasattr(self, "message_manager"):
+                         self.message_manager.add_user_message(value)
+                         self.heuristics.inject_message(f"SYSTEM: User added new task to queue: '{value}'. Update your plan.")
+                
+            except asyncio.QueueEmpty:
+                break
+
     async def _handle_pre_step(self) -> bool:
         """
         Handles pre-step checks: pause, stop, model switching, failures.
         Returns True if the agent should stop/break the loop.
         """
+        # Process control queue
+        await self._process_control_queue()
 
         # Manage Model Switching (Cost Saver / Smart Retry)
         self._manage_model_switching()
@@ -733,37 +765,8 @@ class BrowserUseAgent(Agent):
         await self.heuristics.check_login_status()
 
         # --- User Interaction Dialog ---
-        # This dialog appears after the agent has processed the current page
-        # and before it decides its next action or declares completion.
-        if self.settings.get("enable_user_interaction_dialog", False):
-            last_step_info = self.state.history.history[-1] if self.state.history.history else None
-            
-            intel = "No specific new information from this step."
-            if last_step_info and last_step_info.model_output and last_step_info.model_output.thought:
-                intel = last_step_info.model_output.thought
-            
-            next_action_desc = "Agent is considering its next move."
-            if last_step_info and last_step_info.model_output and last_step_info.model_output.action:
-                actions_list = last_step_info.model_output.action if isinstance(last_step_info.model_output.action, list) else [last_step_info.model_output.action]
-                action_strings = []
-                for action_model in actions_list:
-                    if hasattr(action_model, "name") and hasattr(action_model, "args"):
-                        action_strings.append(f"{action_model.name}({json.dumps(action_model.args)})")
-                    else:
-                        action_strings.append(str(action_model)) # Fallback for non-standard actions
-                next_action_desc = ", ".join(action_strings)
-                if not next_action_desc:
-                    next_action_desc = "Agent is considering its next move."
-            
-            user_decision = await self.request_user_decision(intel, next_action_desc)
-
-            if user_decision is False: # User chose No/Abort
-                self.state.stopped = True
-                return True # Break the loop
-            elif isinstance(user_decision, str): # User provided a custom task
-                self.task = user_decision # Update the main task for the agent to re-evaluate
-                self.heuristics.inject_message(f"SYSTEM: User provided new task: '{user_decision}'. Re-evaluating plan.")
-                return False # Continue the loop, agent will now work on the new task
+        if await self._handle_user_interaction():
+            return True # Stop requested
 
         if self.state.history.is_done():
             if self.settings.validate_output and step < max_steps - 1:
@@ -774,6 +777,97 @@ class BrowserUseAgent(Agent):
             return True # Task done, break loop
         
         return False
+
+    async def _handle_user_interaction(self) -> bool:
+        """
+        Handles the user interaction dialog.
+        Returns True if the agent should stop (User aborted), False otherwise.
+        """
+        if not self.enable_user_interaction_dialog:
+            return False
+
+        last_step_info = self.state.history.history[-1] if self.state.history.history else None
+        
+        intel = "No specific new information from this step."
+        if last_step_info and last_step_info.model_output and last_step_info.model_output.thought:
+            intel = last_step_info.model_output.thought
+        
+        next_action_desc = "Agent is considering its next move."
+        if last_step_info and last_step_info.model_output and last_step_info.model_output.action:
+            actions_list = last_step_info.model_output.action if isinstance(last_step_info.model_output.action, list) else [last_step_info.model_output.action]
+            action_strings = []
+            for action_model in actions_list:
+                if hasattr(action_model, "name") and hasattr(action_model, "args"):
+                    action_strings.append(f"{action_model.name}({json.dumps(action_model.args)})")
+                else:
+                    action_strings.append(str(action_model)) # Fallback for non-standard actions
+            next_action_desc = ", ".join(action_strings)
+            if not next_action_desc:
+                next_action_desc = "Agent is considering its next move."
+        
+        user_decision = await self.request_user_decision(intel, next_action_desc)
+
+        if user_decision is False: # User chose No/Abort
+            self.state.stopped = True
+            return True # Break the loop
+        elif isinstance(user_decision, str): # User provided a custom task
+            self.task = user_decision # Update the main task for the agent to re-evaluate
+            self.heuristics.inject_message(f"SYSTEM: User provided new task: '{user_decision}'. Re-evaluating plan.")
+            return False # Continue the loop, agent will now work on the new task
+        
+        return False
+
+    async def request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]:
+        """
+        Requests confirmation/input from the user via WebSocket.
+        """
+        if not self.send_agent_message_callback or not self.confirmation_response_queue:
+            return True
+
+        await self.send_agent_message_callback({
+            "type": "request_confirmation",
+            "message": "Agent is pausing for your review.",
+            "intel": intel,
+            "next_task": next_task
+        })
+
+        while True:
+            # Create tasks for both queues
+            confirmation_task = asyncio.create_task(self.confirmation_response_queue.get())
+            control_task = asyncio.create_task(self.agent_control_queue.get()) if self.agent_control_queue else None
+            
+            tasks = [confirmation_task]
+            if control_task:
+                tasks.append(control_task)
+            
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            
+            # Cancel pending tasks
+            for task in pending:
+                task.cancel()
+            
+            if confirmation_task in done:
+                response_data = confirmation_task.result()
+                response = response_data.get("response")
+                custom_task = response_data.get("custom_task")
+
+                if response == "yes": return True
+                if response == "no": return False
+                if custom_task: return custom_task
+            
+            if control_task and control_task in done:
+                control_data = control_task.result()
+                command = control_data.get("command")
+                
+                if command == "pause":
+                    self.pause()
+                    logger.info("Agent paused via user request during confirmation.")
+                elif command == "resume":
+                    self.resume()
+                    logger.info("Agent resumed via user request during confirmation.")
+                elif command == "stop":
+                    self.stop()
+                    return False
 
     def _handle_max_steps_reached(self):
         """Handles the case where the agent reaches maximum steps without completion."""

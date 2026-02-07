@@ -381,8 +381,8 @@ class AgentHeuristics:
 
     async def check_max_failures(self) -> bool:
         """Checks if max failures reached and handles auto-save."""
-        if self.agent.state.consecutive_failures >= self.agent.settings.max_failures:
-            logger.error(f'❌ Stopping due to {self.agent.settings.max_failures} consecutive failures')
+        if self.agent.state.consecutive_failures >= self.agent.max_consecutive_failures:
+            logger.error(f'❌ Stopping due to {self.agent.max_consecutive_failures} consecutive failures')
             if self.agent.auto_save_on_stuck:
                 logger.info("💾 Auto-saving page content due to failure...")
                 try:

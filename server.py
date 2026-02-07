@@ -367,7 +367,7 @@ def load_model_from_file(model_name: str):
   },
   "agent": {
     "max_steps": 500,
-    "use_vision": ,
+    "use_vision": true,
     "max_parallel_browsers": 1,
     "enable_smart_retry": false,
     "enable_cost_saver": false,
@@ -480,6 +480,27 @@ def load_model_from_file(model_name: str):
         var sendBtn = document.getElementById("sendBtn");
         var stopBtn = document.getElementById("stopBtn");
         var currentConfirmationPayload = null; // To store the payload from request_confirmation
+        
+        // Task Queue Manager
+        document.getElementById('addTaskBtn').onclick = function() {
+            var input = document.getElementById('newTaskInput');
+            var task = input.value;
+            if (!task) return;
+            
+            var list = document.getElementById('taskList');
+            // Clear example if present
+            if (list.children.length > 0 && list.children[0].innerText.includes("Example Task")) {
+                list.innerHTML = "";
+            }
+
+            var li = document.createElement('li');
+            li.style.cssText = "padding: 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;";
+            li.innerHTML = "<span>" + task + "</span> <button onclick='this.parentElement.remove()' style='width: auto; padding: 4px 8px; font-size: 0.7rem; background: var(--error);'>✖️</button>";
+            list.appendChild(li);
+            
+            sendControl('add_task', task);
+            input.value = '';
+        };
         
         ws.onopen = function() {
             console.log("Connected to WebSocket");
@@ -612,6 +633,7 @@ def load_model_from_file(model_name: str):
         };
 
         function sendMessage(event) { // Changed to be called by onclick, not form onsubmit
+            event.preventDefault();
             var input = document.getElementById("messageText");
             if (!input.value) return;
             
@@ -1009,6 +1031,322 @@ async def websocket_endpoint(websocket: WebSocket):
     confirmation_event = asyncio.Event()
     confirmation_response_queue = asyncio.Queue()
     
+    async def run_agent_job_wrapper(task_payload):
+        # Local variables to ensure thread safety and cleanup per task
+        nonlocal browser, browser_context
+        local_task_id = None
+        
+        task = task_payload.get("task")
+        agent_type = task_payload.get("agent_type", "browser")
+        llm_settings = task_payload.get("llm", {})
+        agent_settings = task_payload.get("agent", {})
+        browser_settings = task_payload.get("browser", {})
+
+        # Get browser settings from payload, defaulting to None if not present or empty string
+        browser_binary_path = browser_settings.get("browser_binary_path") or None
+        browser_user_data_dir = browser_settings.get("browser_user_data_dir") or None
+        keep_browser_open_setting = browser_settings.get("keep_browser_open", False)
+
+        # Deep Research specific
+        resume_task_id = task_payload.get("resume_task_id")
+        mcp_config = task_payload.get("mcp_config")
+        extraction_model_name = task_payload.get("extraction_model")
+
+        try:
+            await websocket.send_json({"type": "log", "content": f"Initializing {agent_type} agent for task: {task}"})
+            
+            provider = llm_settings.get("provider", "openai")
+            if provider == "gemini":
+                try:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    
+                    # Check for OAuth credentials in session
+                    creds_data = websocket.session.get("google_creds")
+                    
+                    # Check for Service Account file
+                    service_account_path = "service_account.json"
+                    
+                    if os.path.exists(service_account_path):
+                        from google.oauth2 import service_account
+                        creds = service_account.Credentials.from_service_account_file(service_account_path)
+                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with Service Account"})
+                        llm = ChatGoogleGenerativeAI(
+                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
+                            temperature=float(llm_settings.get("temperature", 0.8)),
+                            credentials=creds
+                        )
+                    elif creds_data:
+                        from google.oauth2.credentials import Credentials
+                        creds = Credentials(**creds_data)
+                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with OAuth Credentials"})
+                        llm = ChatGoogleGenerativeAI(
+                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
+                            temperature=float(llm_settings.get("temperature", 0.8)),
+                            credentials=creds
+                        )
+                    else:
+                        # Fallback to API Key
+                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with API Key"})
+                        llm = ChatGoogleGenerativeAI(
+                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
+                            temperature=float(llm_settings.get("temperature", 0.8)),
+                            google_api_key=llm_settings.get("api_key", "")
+                        )
+                except ImportError:
+                    await websocket.send_json({"type": "error", "content": "Please install langchain-google-genai to use Gemini."})
+                    return
+            else:
+                llm = llm_provider.get_llm_model(
+                    provider=provider,
+                    model_name=llm_settings.get("model_name", "gpt-4o"),
+                    temperature=float(llm_settings.get("temperature", 0.8)),
+                    base_url=llm_settings.get("base_url", ""),
+                    api_key=llm_settings.get("api_key", ""),
+                    project_id=llm_settings.get("google_project_id", "")
+                )
+
+            if agent_type == "deep_research":
+                await websocket.send_json({"type": "log", "content": "🔬 Initializing full Deep Research Agent..."})
+                
+                deep_research_agent = DeepResearchAgent(
+                    llm=llm,
+                    browser_config=browser_settings,
+                    mcp_server_config=mcp_config
+                )
+                
+                local_task_id = resume_task_id if resume_task_id else str(uuid.uuid4())
+                output_dir = os.path.join("./tmp/deep_research", local_task_id)
+                os.makedirs(output_dir, exist_ok=True)
+                
+                stop_event = threading.Event()
+                _AGENT_STOP_FLAGS[local_task_id] = stop_event
+                
+                agent_tools = await deep_research_agent._setup_tools(
+                    task_id=local_task_id,
+                    stop_event=stop_event,
+                    max_parallel_browsers=agent_settings.get("max_parallel_browsers", 1)
+                )
+
+                initial_state = {
+                    "task_id": local_task_id,
+                    "topic": task,
+                    "research_plan": [],
+                    "search_results": [],
+                    "messages": [],
+                    "llm": llm,
+                    "tools": agent_tools,
+                    "output_dir": Path(output_dir),
+                    "browser_config": browser_settings,
+                    "final_report": None,
+                    "current_category_index": 0,
+                    "current_task_index_in_category": 0,
+                    "stop_requested": False,
+                    "error_message": None,
+                    "memory_file": None, # Not supported in simple server yet
+                    "google_docs_template_url": task_payload.get("google_docs_template_url", "a new Google Doc")
+                }
+
+                if resume_task_id:
+                    state_manager = DeepResearchStateManager(output_dir)
+                    loaded_state = await asyncio.to_thread(state_manager.load_state)
+                    if loaded_state:
+                        initial_state.update(loaded_state)
+                        initial_state["topic"] = task
+
+                final_report = None
+                final_state = None
+                async for state_update in deep_research_agent.graph.astream(initial_state):
+                    node_name = list(state_update.keys())[0]
+                    node_output = state_update[node_name]
+                    final_state = node_output
+
+                    await websocket.send_json({"type": "log", "content": f"Executing node: {node_name}"})
+
+                    if node_name == "synthesize_report" and node_output.get("final_report"):
+                        final_report = node_output.get("final_report")
+
+                    if node_output.get("error_message"):
+                        await websocket.send_json({"type": "error", "content": node_output.get("error_message")})
+                        break
+
+                if final_report:
+                    await websocket.send_json({"type": "result", "content": final_report})
+                elif not (final_state and final_state.get("error_message")):
+                    await websocket.send_json({"type": "error", "content": "Deep research finished without generating a report."})
+
+            else:
+                # Define the callback for agent status updates and confirmation requests
+                async def send_agent_message_callback(message_payload):
+                    await websocket.send_json(message_payload)
+
+                # Standard Browser Agent - Use browser_factory for consistent setup
+                
+                # Initialize Planner/Confirmer if configured
+                planner_llm = llm # Assign the main LLM to the planner
+                
+                confirmer_llm = llm # Assign the main LLM to the confirmer
+                
+                # --- Heuristic Model Switching Setup ---
+                enable_smart_retry = agent_settings.get("enable_smart_retry", False)
+                enable_cost_saver = agent_settings.get("enable_cost_saver", False)
+                model_priority_list_config = agent_settings.get("model_priority_list", [])
+                model_priority_list = []
+
+                if (enable_smart_retry or enable_cost_saver) and model_priority_list_config:
+                    await websocket.send_json({"type": "log", "content": "⚙️ Initializing model priority list for heuristic switching..."})
+                    for model_conf in model_priority_list_config:
+                        try:
+                            priority = model_conf.get("priority")
+                            if priority is None:
+                                await websocket.send_json({"type": "log", "content": f"⚠️ Skipping model in priority list due to missing 'priority': {model_conf.get('model_name')}"})
+                                continue
+                            
+                            heuristic_llm = llm_provider.get_llm_model(
+                                provider=model_conf.get("provider"),
+                                model_name=model_conf.get("model_name"),
+                                temperature=float(model_conf.get("temperature", 0.1)),
+                                base_url=model_conf.get("base_url", ""),
+                                api_key=model_conf.get("api_key", "")
+                            )
+                            model_priority_list.append({"priority": int(priority), "llm": heuristic_llm})
+                        except Exception as e:
+                            await websocket.send_json({"type": "log", "content": f"⚠️ Failed to initialize heuristic model {model_conf.get('model_name')}: {e}"})
+                    
+                    model_priority_list.sort(key=lambda x: x['priority'])
+                
+                output_model = None
+                if extraction_model_name:
+                    output_model = load_model_from_file(extraction_model_name)
+                controller = CustomController(output_model=output_model, kb_dir=KB_DIR)
+                
+                async def validation_callback(think, reason, is_confirmed):
+                    await websocket.send_json({
+                        "type": "validation",
+                        "think": think,
+                        "reason": reason,
+                        "is_confirmed": is_confirmed
+                    })
+
+                # Browser and context creation
+                # Update browser_settings with user-provided paths, or None for auto-detection
+                browser_settings["browser_binary_path"] = browser_binary_path
+                browser_settings["browser_user_data_dir"] = browser_user_data_dir
+                browser_settings["use_own_browser"] = True # Always enable for custom paths or auto-detection
+
+                browser_config_instance = BrowserConfig(**browser_settings)
+                
+                # If we are not keeping the browser open, or if it's the first run, or if settings changed significantly,
+                # close existing browser/context and create new ones.
+                # For simplicity, if keep_browser_open_setting is false, always create new.
+                # If keep_browser_open_setting is true, only create if browser is None.
+                if not keep_browser_open_setting or browser is None:
+                    if browser_context:
+                        await browser_context.close()
+                        browser_context = None
+                    if browser:
+                        await browser.close()
+                        browser = None
+                    
+                    browser = create_browser(browser_config_instance.model_dump()) # Pass dict for now
+                    browser_context = await create_context(browser, browser_config_instance.new_context_config.model_dump()) # Pass dict for now
+                
+                agent = BrowserUseAgent(
+                    task=task,
+                    llm=llm,
+                    browser=browser,
+                    browser_context=browser_context,
+                    controller=controller,
+                    use_vision=agent_settings.get("use_vision", True), # Use the setting from agent_settings
+                    planner_llm=planner_llm,
+                    confirmer_llm=confirmer_llm,
+                    inhibit_close=keep_browser_open_setting, # Inhibit closing if keep_browser_open is true
+                    enable_smart_retry=enable_smart_retry,
+                    enable_cost_saver=enable_cost_saver,
+                    model_priority_list=model_priority_list,
+                    validation_callback=validation_callback,
+                    use_memory=True, # Enable custom memory manager for site knowledge
+                    enable_user_interaction_dialog=agent_settings.get("enable_user_interaction_dialog", False), # New setting
+                    tool_calling_method=agent_settings.get("tool_calling_method", "auto"),
+                    send_agent_message_callback=send_agent_message_callback,
+                    confirmation_event=confirmation_event,
+                    confirmation_response_queue=confirmation_response_queue,
+                    agent_control_queue=agent_control_queue # Pass the control queue to the agent
+                )
+                
+                await send_agent_message_callback({"type": "agent_status", "status": "Participating"})
+                async def step_callback(state, model_output, step_number):
+                    try:
+                        thought = getattr(model_output, "thought", "") if model_output else ""
+                        screenshot = state.screenshot if state.screenshot else None
+                        actions = []
+                        if model_output:
+                            output_actions = getattr(model_output, "action", None)
+                            if output_actions:
+                                if not isinstance(output_actions, list):
+                                    output_actions = [output_actions]
+                                for action in output_actions:
+                                    if hasattr(action, "model_dump"):
+                                        actions.append(action.model_dump())
+                        
+                        await websocket.send_json({
+                            "type": "step",
+                            "step": step_number,
+                            "thought": thought,
+                            "url": state.url,
+                            "screenshot": screenshot,
+                            "actions": actions
+                        })
+                    except Exception as e:
+                        logger.error(f"Error in callback: {e}")
+                
+                agent.step_callback = step_callback
+                
+                await websocket.send_json({"type": "log", "content": "Agent started..."})
+                
+                stream_task = None
+                if browser_settings.get("enable_live_view", False):
+                    async def stream_browser():
+                        while True:
+                            try:
+                                if browser_context:
+                                    page = await browser_context.get_current_page()
+                                    if page:
+                                        screenshot = await page.screenshot(type='jpeg', quality=50)
+                                        encoded = base64.b64encode(screenshot).decode('utf-8')
+                                        await websocket.send_json({"type": "stream", "image": encoded})
+                            except Exception:
+                                pass
+                            await asyncio.sleep(0.5)
+                    
+                    stream_task = asyncio.create_task(stream_browser())
+
+                try:
+                    history = await agent.run(max_steps=agent_settings.get("max_steps", 100))
+                    result = history.final_result()
+                    await websocket.send_json({"type": "result", "content": result})
+                finally:
+                    if stream_task:
+                        stream_task.cancel()
+                        try:
+                            await stream_task
+                        except asyncio.CancelledError:
+                            pass
+        except Exception as e:
+            logger.error(f"Error in agent wrapper: {e}", exc_info=True)
+            await websocket.send_json({"type": "error", "content": str(e)})
+        finally:
+            # Cleanup logic after agent run
+            if not keep_browser_open_setting:
+                if browser_context:
+                    await browser_context.close()
+                    browser_context = None
+                if browser:
+                    await browser.close()
+                    browser = None
+            
+            if local_task_id and local_task_id in _AGENT_STOP_FLAGS:
+                del _AGENT_STOP_FLAGS[local_task_id]
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -1046,6 +1384,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         try: await confirmation_response_queue.get_nowait()
                         except asyncio.QueueEmpty: pass
                 
+                    runner_task = asyncio.create_task(run_agent_job_wrapper(payload))
+                
                 elif action == "confirmation_response" and runner_task and not runner_task.done():
                     response_data = {
                         "response": payload.get("response"),
@@ -1056,348 +1396,17 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.info(f"Received confirmation response: {response_data}")
                     await confirmation_response_queue.put(response_data)
                     continue
-                    
-                    # Extract settings
-                
-                async def run_agent_job_wrapper(task_payload):
-                        # Local variables to ensure thread safety and cleanup per task
-                        nonlocal browser, browser_context
-                        local_task_id = None
-                        
-                        task = task_payload.get("task")
-                        agent_type = task_payload.get("agent_type", "browser")
-                        llm_settings = task_payload.get("llm", {})
-                        agent_settings = task_payload.get("agent", {})
-                        browser_settings = task_payload.get("browser", {})
-
-                        # Get browser settings from payload, defaulting to None if not present or empty string
-                        browser_binary_path = browser_settings.get("browser_binary_path") or None
-                        browser_user_data_dir = browser_settings.get("browser_user_data_dir") or None
-                        keep_browser_open_setting = browser_settings.get("keep_browser_open", False)
-
-                        # Deep Research specific
-                        resume_task_id = task_payload.get("resume_task_id")
-                        mcp_config = task_payload.get("mcp_config")
-                        extraction_model_name = task_payload.get("extraction_model")
-                        # Streamlining: Close previous context to ensure clean slate for new task
-                        try:
-                            keep_browser_open_setting = browser_settings.get("keep_browser_open", False)
-
-                            # Determine if browser/context needs to be recreated or reused.
-                            # Recreate if keep_browser_open is false, or if browser is not yet initialized.
-                            # More sophisticated logic could compare current browser_settings with previous ones.
-                            await websocket.send_json({"type": "log", "content": f"Initializing {agent_type} agent for task: {task}"})
-                            
-                            provider = llm_settings.get("provider", "openai")
-                            if provider == "gemini":
-                                try:
-                                    from langchain_google_genai import ChatGoogleGenerativeAI
-                                    
-                                    # Check for OAuth credentials in session
-                                    creds_data = websocket.session.get("google_creds")
-                                    
-                                    # Check for Service Account file
-                                    service_account_path = "service_account.json"
-                                    
-                                    if os.path.exists(service_account_path):
-                                        from google.oauth2 import service_account
-                                        creds = service_account.Credentials.from_service_account_file(service_account_path)
-                                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with Service Account"})
-                                        llm = ChatGoogleGenerativeAI(
-                                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
-                                            temperature=float(llm_settings.get("temperature", 0.8)),
-                                            credentials=creds
-                                        )
-                                    elif creds_data:
-                                        from google.oauth2.credentials import Credentials
-                                        creds = Credentials(**creds_data)
-                                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with OAuth Credentials"})
-                                        llm = ChatGoogleGenerativeAI(
-                                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
-                                            temperature=float(llm_settings.get("temperature", 0.8)),
-                                            credentials=creds
-                                        )
-                                    else:
-                                        # Fallback to API Key
-                                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with API Key"})
-                                        llm = ChatGoogleGenerativeAI(
-                                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
-                                            temperature=float(llm_settings.get("temperature", 0.8)),
-                                            google_api_key=llm_settings.get("api_key", "")
-                                        )
-                                except ImportError:
-                                    await websocket.send_json({"type": "error", "content": "Please install langchain-google-genai to use Gemini."})
-                                    return
-                            else:
-                                llm = llm_provider.get_llm_model(
-                                    provider=provider,
-                                    model_name=llm_settings.get("model_name", "gpt-4o"),
-                                    temperature=float(llm_settings.get("temperature", 0.8)),
-                                    base_url=llm_settings.get("base_url", ""),
-                                    api_key=llm_settings.get("api_key", ""),
-                                    project_id=llm_settings.get("google_project_id", "")
-                                )
-
-                            if agent_type == "deep_research":
-                                await websocket.send_json({"type": "log", "content": "🔬 Initializing full Deep Research Agent..."})
-                                
-                                deep_research_agent = DeepResearchAgent(
-                                    llm=llm,
-                                    browser_config=browser_settings,
-                                    mcp_server_config=mcp_config
-                                )
-                                
-                                local_task_id = resume_task_id if resume_task_id else str(uuid.uuid4())
-                                output_dir = os.path.join("./tmp/deep_research", local_task_id)
-                                os.makedirs(output_dir, exist_ok=True)
-                                
-                                stop_event = threading.Event()
-                                _AGENT_STOP_FLAGS[local_task_id] = stop_event
-                                
-                                agent_tools = await deep_research_agent._setup_tools(
-                                    task_id=local_task_id,
-                                    stop_event=stop_event,
-                                    max_parallel_browsers=agent_settings.get("max_parallel_browsers", 1)
-                                )
-
-                                initial_state = {
-                                    "task_id": local_task_id,
-                                    "topic": task,
-                                    "research_plan": [],
-                                    "search_results": [],
-                                    "messages": [],
-                                    "llm": llm,
-                                    "tools": agent_tools,
-                                    "output_dir": Path(output_dir),
-                                    "browser_config": browser_settings,
-                                    "final_report": None,
-                                    "current_category_index": 0,
-                                    "current_task_index_in_category": 0,
-                                    "stop_requested": False,
-                                    "error_message": None,
-                                    "memory_file": None, # Not supported in simple server yet
-                                    "google_docs_template_url": task_payload.get("google_docs_template_url", "a new Google Doc")
-                                }
-
-                                if resume_task_id:
-                                    state_manager = DeepResearchStateManager(output_dir)
-                                    loaded_state = await asyncio.to_thread(state_manager.load_state)
-                                    if loaded_state:
-                                        initial_state.update(loaded_state)
-                                        initial_state["topic"] = task
-
-                                final_report = None
-                                final_state = None
-                                async for state_update in deep_research_agent.graph.astream(initial_state):
-                                    node_name = list(state_update.keys())[0]
-                                    node_output = state_update[node_name]
-                                    final_state = node_output
-
-                                    await websocket.send_json({"type": "log", "content": f"Executing node: {node_name}"})
-
-                                    if node_name == "synthesize_report" and node_output.get("final_report"):
-                                        final_report = node_output.get("final_report")
-
-                                    if node_output.get("error_message"):
-                                        await websocket.send_json({"type": "error", "content": node_output.get("error_message")})
-                                        break
-
-                                if final_report:
-                                    await websocket.send_json({"type": "result", "content": final_report})
-                                elif not (final_state and final_state.get("error_message")):
-                                    await websocket.send_json({"type": "error", "content": "Deep research finished without generating a report."})
-
-                            else:
-                                # Define the callback for agent status updates and confirmation requests
-                                async def send_agent_message_callback(message_payload):
-                                    await websocket.send_json(message_payload)
-
-                                # Standard Browser Agent - Use browser_factory for consistent setup
-                                
-                                # Initialize Planner/Confirmer if configured
-                                planner_llm = llm # Assign the main LLM to the planner
-                                
-                                confirmer_llm = llm # Assign the main LLM to the confirmer
-                                
-                                # --- Heuristic Model Switching Setup ---
-                                enable_smart_retry = agent_settings.get("enable_smart_retry", False)
-                                enable_cost_saver = agent_settings.get("enable_cost_saver", False)
-                                model_priority_list_config = agent_settings.get("model_priority_list", [])
-                                model_priority_list = []
-
-                                if (enable_smart_retry or enable_cost_saver) and model_priority_list_config:
-                                    await websocket.send_json({"type": "log", "content": "⚙️ Initializing model priority list for heuristic switching..."})
-                                    for model_conf in model_priority_list_config:
-                                        try:
-                                            priority = model_conf.get("priority")
-                                            if priority is None:
-                                                await websocket.send_json({"type": "log", "content": f"⚠️ Skipping model in priority list due to missing 'priority': {model_conf.get('model_name')}"})
-                                                continue
-                                            
-                                            heuristic_llm = llm_provider.get_llm_model(
-                                                provider=model_conf.get("provider"),
-                                                model_name=model_conf.get("model_name"),
-                                                temperature=float(model_conf.get("temperature", 0.1)),
-                                                base_url=model_conf.get("base_url", ""),
-                                                api_key=model_conf.get("api_key", "")
-                                            )
-                                            model_priority_list.append({"priority": int(priority), "llm": heuristic_llm})
-                                        except Exception as e:
-                                            await websocket.send_json({"type": "log", "content": f"⚠️ Failed to initialize heuristic model {model_conf.get('model_name')}: {e}"})
-                                    
-                                    model_priority_list.sort(key=lambda x: x['priority'])
-                                
-                                output_model = None
-                                if extraction_model_name:
-                                    output_model = load_model_from_file(extraction_model_name)
-                                controller = CustomController(output_model=output_model, kb_dir=KB_DIR)
-                                
-                                async def validation_callback(think, reason, is_confirmed):
-                                    await websocket.send_json({
-                                        "type": "validation",
-                                        "think": think,
-                                        "reason": reason,
-                                        "is_confirmed": is_confirmed
-                                    })
-
-                                # Browser and context creation
-                                # Update browser_settings with user-provided paths, or None for auto-detection
-                                browser_settings["browser_binary_path"] = browser_binary_path
-                                browser_settings["browser_user_data_dir"] = browser_user_data_dir
-                                browser_settings["use_own_browser"] = True # Always enable for custom paths or auto-detection
-
-                                browser_config_instance = BrowserConfig(**browser_settings)
-                                
-                                # If we are not keeping the browser open, or if it's the first run, or if settings changed significantly,
-                                # close existing browser/context and create new ones.
-                                # For simplicity, if keep_browser_open_setting is false, always create new.
-                                # If keep_browser_open_setting is true, only create if browser is None.
-                                if not keep_browser_open_setting or browser is None:
-                                    if browser_context:
-                                        await browser_context.close()
-                                        browser_context = None
-                                    if browser:
-                                        await browser.close()
-                                        browser = None
-                                    
-                                    browser = await create_browser(browser_config_instance.model_dump()) # Pass dict for now
-                                    browser_context = await create_context(browser, browser_config_instance.new_context_config.model_dump()) # Pass dict for now
-                                
-                                agent = BrowserUseAgent(
-                                    task=task,
-                                    llm=llm,
-                                    browser=browser,
-                                    browser_context=browser_context,
-                                    controller=controller,
-                                    use_vision=agent_settings.get("use_vision", True), # Use the setting from agent_settings
-                                    planner_llm=planner_llm,
-                                    confirmer_llm=confirmer_llm,
-                                    inhibit_close=keep_browser_open_setting, # Inhibit closing if keep_browser_open is true
-                                    enable_smart_retry=enable_smart_retry,
-                                    enable_cost_saver=enable_cost_saver,
-                                    model_priority_list=model_priority_list,
-                                    validation_callback=validation_callback,
-                                    use_memory=True, # Enable custom memory manager for site knowledge
-                                    enable_user_interaction_dialog=agent_settings.get("enable_user_interaction_dialog", False), # New setting
-                                    tool_calling_method=agent_settings.get("tool_calling_method", "auto"),
-                                    send_agent_message_callback=send_agent_message_callback,
-                                    confirmation_event=confirmation_event,
-                                    confirmation_response_queue=confirmation_response_queue,
-                                    agent_control_queue=agent_control_queue # Pass the control queue to the agent
-                                )
-                                
-                                await send_agent_message_callback({"type": "agent_status", "status": "Pfcipating"})
-                                async def step_callback(state, model_output, step_number):
-                                    try:
-                                        thought = getattr(model_output, "thought", "") if model_output else ""
-                                        screenshot = state.screenshot if state.screenshot else None
-                                        actions = []
-                                        if model_output:
-                                            output_actions = getattr(model_output, "action", None)
-                                            if output_actions:
-                                                if not isinstance(output_actions, list):
-                                                    output_actions = [output_actions]
-                                                for action in output_actions:
-                                                    if hasattr(action, "model_dump"):
-                                                        actions.append(action.model_dump())
-                                        
-                                        await websocket.send_json({
-                                            "type": "step",
-                                            "step": step_number,
-                                            "thought": thought,
-                                            "url": state.url,
-                                            "screenshot": screenshot,
-                                            "actions": actions
-                                        })
-                                    except Exception as e:
-                                        logger.error(f"Error in callback: {e}")
-                                
-                                agent.step_callback = step_callback
-                                
-                                await websocket.send_json({"type": "log", "content": "Agent started..."})
-                                
-                                stream_task = None
-                                if browser_settings.get("enable_live_view", False):
-                                    async def stream_browser():
-                                        while True:
-                                            try:
-                                                if browser_context:
-                                                    page = await browser_context.get_current_page()
-                                                    if page:
-                                                        screenshot = await page.screenshot(type='jpeg', quality=50)
-                                                        encoded = base64.b64encode(screenshot).decode('utf-8')
-                                                        await websocket.send_json({"type": "stream", "image": encoded})
-                                            except Exception:
-                                                pass
-                                            await asyncio.sleep(0.5)
-                                    
-                                    stream_task = asyncio.create_task(stream_browser())
-
-                                try:
-                                    history = await agent.run(max_steps=agent_settings.get("max_steps", 100))
-                                    result = history.final_result()
-                                    await websocket.send_json({"type": "result", "content": result})
-                                finally:
-                                    if stream_task:
-                                        stream_task.cancel()
-                                        try:
-                                            await stream_task
-                                        except asyncio.CancelledError:
-                                            pass
-                        
-                        finally: # This is the main finally block for run_agent_job_wrapper
-                            # Cleanup logic after agent run
-                            if not keep_browser_open_setting:
-                                if browser_context:
-                                    await browser_context.close()
-                                    browser_context = None
-                                if browser:
-                                    await browser.close()
-                                    browser = None
-                            
-                            if local_task_id and local_task_id in _AGENT_STOP_FLAGS:
-                                del _AGENT_STOP_FLAGS[local_task_id]
-       
-                        # Start the agent job in the background
-                        runner_task = asyncio.create_task(run_agent_job_wrapper(payload))
-            
-            elif action == "confirmation_response" and runner_task and not runner_task.done():
-                response_data = {
-                    "response": payload.get("response"),
-                    "custom_task": payload.get("custom_task"),
-                    "edited_text": payload.get("edited_text") # Handle edited draft
-                }
-                # The confirmation_response_queue is used by the agent to get user input for confirmation dialogs
-                logger.info(f"Received confirmation response: {response_data}")
-                await confirmation_response_queue.put(response_data)
-                continue
-                
-        except json.JSONDecodeError:
-            await websocket.send_json({"type": "error", "content": "Invalid JSON payload"})
-        except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
-            await websocket.send_json({"type": "error", "content": str(e)})
-                
+                else:
+                    # If we reach here, it's an unhandled action
+                    continue
+                                 
+            except json.JSONDecodeError:
+                logger.error("Invalid JSON received")
+                await websocket.send_json({"type": "error", "content": "Invalid JSON received"})
+            except Exception as e:
+                logger.error(f"Error processing message: {e}")
+                await websocket.send_json({"type": "error", "content": str(e)})
+                                 
     except asyncio.CancelledError: # This catches cancellation of the websocket itself
         logger.info("Client disconnected or WebSocket task cancelled.")
     except WebSocketDisconnect:
