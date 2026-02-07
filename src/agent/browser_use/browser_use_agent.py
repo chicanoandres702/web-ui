@@ -650,8 +650,12 @@ class BrowserUseAgent(Agent):
 
                 if command == "pause":
                     self.pause()
+                    if self.send_agent_message_callback:
+                        await self.send_agent_message_callback({"type": "agent_status", "status": "Paused ⏸️"})
                 elif command == "resume":
                     self.resume()
+                    if self.send_agent_message_callback:
+                        await self.send_agent_message_callback({"type": "agent_status", "status": "Participating"})
                 elif command == "stop":
                     self.stop()
                 elif command == "add_task":
@@ -862,9 +866,13 @@ class BrowserUseAgent(Agent):
                 if command == "pause":
                     self.pause()
                     logger.info("Agent paused via user request during confirmation.")
+                    if self.send_agent_message_callback:
+                        await self.send_agent_message_callback({"type": "agent_status", "status": "Paused ⏸️"})
                 elif command == "resume":
                     self.resume()
                     logger.info("Agent resumed via user request during confirmation.")
+                    if self.send_agent_message_callback:
+                        await self.send_agent_message_callback({"type": "agent_status", "status": "Participating"})
                 elif command == "stop":
                     self.stop()
                     return False

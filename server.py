@@ -1364,6 +1364,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     command = payload.get("command")
                     value = payload.get("value")
                     logger.info(f"Received control command: {command} with value: {value}")
+                    
+                    if runner_task and not runner_task.done():
+                        if command == "pause":
+                            await websocket.send_json({"type": "agent_status", "status": "Paused ⏸️"})
+                        elif command == "resume":
+                            await websocket.send_json({"type": "agent_status", "status": "Participating"})
+
                     await agent_control_queue.put({"command": command, "value": value})
                     continue
 
