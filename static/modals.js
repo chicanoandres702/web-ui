@@ -1,0 +1,5 @@
+
+// Modals Module
+function initModals() {
+
+}

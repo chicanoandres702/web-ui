@@ -29,7 +29,7 @@ from browser_use.browser.views import BrowserStateHistory
 from browser_use.utils import time_execution_async
 from dotenv import load_dotenv
 
-from browser_use.agent.message_manager.utils import is_model_without_tool_support
+# from browser_use.agent.message_manager.utils import is_model_without_tool_support
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from src.utils.utils import retry_async, parse_json_safe # Ensure parse_json_safe is imported
 from langchain_core.runnables import Runnable, RunnableLambda # Import RunnableLambda
@@ -251,8 +251,8 @@ class BrowserUseAgent(Agent):
             # This prevents them from falling back to 'raw' mode which causes parsing errors with empty content
             elif any(m in self.model_name.lower() for m in ['qwen', 'deepseek', 'gpt', 'claude']) and 'Ollama' not in self.chat_model_library:
                 return 'function_calling'
-            elif is_model_without_tool_support(self.model_name):
-                return 'raw'
+            # elif is_model_without_tool_support(self.model_name):
+            #     return 'raw'
             elif self.chat_model_library == 'ChatGoogleGenerativeAI':
                 return None
             elif self.chat_model_library == 'ChatOpenAI':
