@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from langchain_core.callbacks import BaseCallbackHandler
 import uvicorn
 
 from src.agent.browser_use.browser_use_agent import BrowserUseAgent
@@ -37,14 +38,11 @@ from src.controller.custom_controller import CustomController
 from browser_use.browser.browser import BrowserConfig
 from browser_use.browser.context import BrowserContextConfig
 from src.utils import llm_provider
-from src.utils.browser_factory import create_browser, create_context
-from src.agent.deep_research.search_tool import stop_browsers_for_task, _AGENT_STOP_FLAGS
+from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS
 from src.agent.deep_research.state_manager import DeepResearchStateManager
 from src.utils.utils import ensure_default_extraction_models, suppress_asyncio_cleanup_errors
 
-load_dotenv(override=True) # Added override=True to ensure .env takes precedence
-
-KB_DIR = "./tmp/knowledge_base" # Define a directory for the general knowledge base
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,7 +54,6 @@ app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "your-secret-key-here"))
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/tmp", StaticFiles(directory="./tmp"), name="tmp")
-os.makedirs(KB_DIR, exist_ok=True) # Ensure the knowledge base directory exists
 
 @app.on_event("startup")
 async def startup_check_ollama():
@@ -112,9 +109,9 @@ def load_model_from_file(model_name: str):
     except Exception as e:
         logger.error(f"Failed to load model {model_name}: {e}")
         return None
-
+        
 # Simple HTML client for testing the WebSocket connection
-""" # The HTML content is moved to static/index.html
+html = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -159,147 +156,47 @@ def load_model_from_file(model_name: str):
         .message.error { border-left: 3px solid var(--error); background: rgba(239, 68, 68, 0.1); }
         .step-header { font-weight: bold; margin-bottom: 8px; display: flex; justify-content: space-between; color: var(--accent); }
         .thought { color: var(--text-secondary); font-style: italic; margin-bottom: 8px; display: block; line-height: 1.4; }
-        /* Agent Status Display */
-        #agentStatusDisplay {
-            display: none;
-            font-size: 4rem;
-            font-weight: bold;
-            text-align: center;
-            color: var(--accent);
-            margin-bottom: 20px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-            pointer-events: none; /* Allow clicks through */
-        }
-
-        /* Live Monitor */
-        #liveMonitor {
-            background: var(--panel-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-            font-family: monospace;
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-        }
-        #liveMonitor div { margin-bottom: 5px; }
-        #liveMonitor .monitor-label { font-weight: bold; color: var(--accent); margin-right: 5px; }
-        #liveMonitor .monitor-value { color: var(--text-primary); }
-        #liveMonitor #monitorGoal { font-size: 1.1rem; color: var(--success); }
-        #liveMonitor #monitorState { font-size: 1.1rem; color: var(--accent); }
-
-
+        .url { background: rgba(59, 130, 246, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-family: monospace; display: inline-block; }
+        .screenshot { max-width: 100%; border-radius: 6px; margin-top: 10px; border: 1px solid var(--border); }
+        
+        /* Artifacts */
+        .artifacts { background: var(--panel-bg); padding: 15px; border-radius: 8px; border: 1px solid var(--border); max-height: 150px; overflow-y: auto; }
+        .artifacts ul { list-style: none; padding: 0; margin: 0; }
+        .artifacts li { margin-bottom: 5px; font-size: 0.9rem; }
+        .artifacts a { color: var(--accent); text-decoration: none; }
+        .artifacts a:hover { text-decoration: underline; }
+        
         /* Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        .url { background: rgba(59, 130, 246, 0.1); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-family: monospace; display: inline-block; }
-        .screenshot { max-width: 100%; border-radius: 6px; margin-top: 10px; border: 1px solid var(--border); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-        /* General grouping for sidebar and control panel */
-        .control-group {
-            background: var(--panel-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 15px;
-            marg
-            in-bottom: 15px; /* Spacing between groups */
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .control-group h3 {
-            margin-top: 0;
-            margin-bottom: 5px;
-            font-size: 1rem;
-            color: var(--accent);
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 5px;
-        }
-        .control-group.primary-actions {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            gap: 10px;
-            padding: 15px;
-            background: var(--panel-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            margin-bottom: 15px;
-        }
-        .control-group.agent-interaction,
-        .control-group.agent-tuning,
-        .control-group.specialized-tools {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); /* Responsive grid for buttons */
-            gap: 10px;
-        }
-        .control-panel {
-            margin-top: 20px; /* Space above the control panel */
-        }
     </style>
 </head>
 <body>
-    <!-- Confirmation Dialog -->
-    <div id="confirmationOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 1000; display: flex; justify-content: center; align-items: center;">
-        <div id="confirmationDialog" style="background: var(--panel-bg); padding: 30px; border-radius: 10px; border: 1px solid var(--border); box-shadow: 0 5px 15px rgba(0,0,0,0.3); width: 500px; max-width: 90%;">
-            <h2 style="margin-top: 0; color: var(--text-primary); text-align: center;">Action Required</h2>
-            <p id="confirmationMessage" style="color: var(--text-secondary); margin-bottom: 15px; font-size: 1.1rem; text-align: center;">Are you sure you want to proceed with this action?</p>
-            <div style="margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px;">
-                <div style="margin-bottom: 5px;"><span style="font-weight: bold; color: var(--accent);">[INTEL]:</span> <span id="dialogIntel"></span></div>
-                <div><span style="font-weight: bold; color: var(--accent);">[NEXT TASK]:</span> <span id="dialogNextTask"></span></div>
-            </div>
-            <input type="text" id="customTaskInput" placeholder="Type a new custom task here (optional)" style="width: calc(100% - 20px); margin-bottom: 15px; padding: 10px; font-size: 0.9rem;" />
-            <div style="display: flex; justify-content: center; gap: 10px;">
-                <button id="confirmYesBtn" style="width: 120px; background: var(--success);">Yes</button>
-                <button id="confirmNoBtn" style="width: 120px; background: var(--error);">No</button>
-            </div>
-        </div>
-    </div>
-
     <div class="sidebar">
         <div class="header">
-            <h1>Agent Configuration</h1>
+            <h1>Browser Use UI</h1>
         </div>
         
-        <div class="control-group">
-            <h3>Agent & Task Setup</h3>
-            <div>
-                <label>Agent Type</label>
-                <select id="agentType">
-                    <option value="browser">Browser Agent</option>
-                    <option value="deep_research">Deep Research Agent</option>
-                </select>
-            </div>
-            <div>
-                <label>Extraction Model</label>
-                <select id="extractionModel">
-                    <option value="">No Extraction Model</option>
-                </select>
-            </div>
-            <div>
-                <label>Resume Task ID</label>
-                <input type="text" id="resumeTaskId" placeholder="Optional UUID" />
-            </div>
-            <div>
-                <label>Google Docs Template</label>
-                <input type="text" id="googleDocsTemplate" placeholder="Optional URL" />
-            </div>
+        <div>
+            <label>Agent Type</label>
+            <select id="agentType">
+                <option value="browser">Browser Agent</option>
+                <option value="deep_research">Deep Research Agent</option>
+            </select>
         </div>
         
-        <div class="control-group">
-            <h3>LLM Configuration</h3>
-            <div>
-                <label>LLM Provider</label>
-                <select id="llmProvider" onchange="updateLLMSettings()">
-                    <option value="openai">OpenAI</option>
-                    <option value="gemini">Gemini (Google)</option>
-                    <option value="vertex">Vertex AI</option>
-                    <option value="ollama">Ollama</option>
-                    <option value="anthropic">Anthropic</option>
-                </select>
-            </div>
-            <div id="googleLoginPanel" style="display: none; padding: 10px; background: rgba(66, 133, 244, 0.1); border-radius: 4px;">
+        <div style="background: var(--panel-bg); padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+            <label>LLM Provider</label>
+            <select id="llmProvider" onchange="updateLLMSettings()">
+                <option value="openai">OpenAI</option>
+                <option value="gemini">Gemini (Google)</option>
+                <option value="vertex">Vertex AI</option>
+                <option value="ollama">Ollama</option>
+                <option value="anthropic">Anthropic</option>
+            </select>
+            
+            <div id="googleLoginPanel" style="display: none; margin-top: 10px; padding: 10px; background: rgba(66, 133, 244, 0.1); border-radius: 4px;">
                 <div id="loginStatus" style="font-size: 0.8rem; margin-bottom: 5px; color: var(--text-secondary);">Not logged in</div>
                 <a id="loginBtn" href="/auth/login" style="text-decoration: none;">
                     <button type="button" style="background: #4285F4; border: none; color: white;">Sign in with Google</button>
@@ -308,47 +205,58 @@ def load_model_from_file(model_name: str):
                     <button type="button" style="background: var(--border); border: none; color: var(--text-primary);">Sign out</button>
                 </a>
             </div>
-            <div id="apiKeyField">
+
+            <div id="apiKeyField" style="margin-top: 10px;">
                 <label>API Key</label>
                 <input type="password" id="apiKey" placeholder="Enter API Key..." onchange="updateLLMSettings()" />
             </div>
-            <div id="googleProjectIdField" style="display: none;">
+            <div id="googleProjectIdField" style="margin-top: 10px; display: none;">
                 <label>Google Project ID</label>
                 <input type="text" id="googleProjectId" placeholder="Enter Google Project ID..." onchange="updateLLMSettings()" />
             </div>
-            <div id="baseUrlField" style="display: none;">
+            <div id="baseUrlField" style="margin-top: 10px; display: none;">
                 <label>Base URL</label>
                 <input type="text" id="baseUrl" placeholder="http://localhost:11434" value="http://localhost:11434" onchange="updateLLMSettings()" />
             </div>
-            <div>
+            <div style="margin-top: 10px;">
                 <label>Model Name</label>
-                <input type="text" id="modelName" placeholder="gemini-flash-latest" onchange="updateLLMSettings()" />
+                <input type="text" id="modelName" placeholder="gpt-4o / gemini-2.0-flash-exp" onchange="updateLLMSettings()" />
             </div>
-            <div>
-                <label>Quick Load Ollama Model</label>
-                <select id="ollamaModel" onchange="updateOllamaSettings()">
-                    <option value="">Select a model...</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="control-group">
-            <h3>Agent Behavior</h3>
-            <div style="display: flex; align-items: center; gap: 5px;">
+            <div style="margin-top: 10px; display: flex; align-items: center; gap: 5px;">
                 <input type="checkbox" id="useVision" style="width: auto;" onchange="updateAgentSettings()" checked />
                 <label for="useVision" style="margin: 0; cursor: pointer;">Use Vision</label>
             </div>
-            <div style="display: flex; align-items: center; gap: 5px;">
+            <div style="margin-top: 5px; display: flex; align-items: center; gap: 5px;">
                 <input type="checkbox" id="showConfirmerReasoning" style="width: auto;" onchange="toggleConfirmerReasoning()" />
                 <label for="showConfirmerReasoning" style="margin: 0; cursor: pointer;">Show Confirmer Reasoning</label>
             </div>
-            <div>
-                <label>Max Consecutive Failures</label>
-                <input type="number" id="maxConsecutiveFailures" value="5" onchange="updateAgentSettings()" />
-            </div>
         </div>
         
-        <div class="control-group">
+        <div>
+            <label>Quick Load Ollama Model</label>
+            <select id="ollamaModel" onchange="updateOllamaSettings()">
+                <option value="">Select a model...</option>
+            </select>
+        </div>
+        
+        <div>
+            <label>Extraction Model</label>
+            <select id="extractionModel">
+                <option value="">No Extraction Model</option>
+            </select>
+        </div>
+        
+        <div>
+            <label>Resume Task ID</label>
+            <input type="text" id="resumeTaskId" placeholder="Optional UUID" />
+        </div>
+        
+        <div>
+            <label>Google Docs Template</label>
+            <input type="text" id="googleDocsTemplate" placeholder="Optional URL" />
+        </div>
+        
+        <div style="border-top: 1px solid var(--border); padding-top: 15px;">
             <label>File Upload</label>
             <div style="display: flex; gap: 5px;">
                 <input type="file" id="fileInput" style="font-size: 0.8rem;" />
@@ -357,16 +265,16 @@ def load_model_from_file(model_name: str):
             <div id="uploadStatus" style="font-size: 0.8rem; margin-top: 5px; color: var(--text-secondary);"></div>
         </div>
         
-        <div class="control-group" style="flex: 1; display: flex; flex-direction: column;">
+        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
             <label>Advanced Settings (JSON)</label>
             <textarea id="settingsJson" style="flex: 1; font-family: monospace; font-size: 0.8rem;">{
   "llm": {
-    "provider": "gemini",
-    "model_name": "gemini-flash-latest",
+    "provider": "openai",
+    "model_name": "gpt-4o",
     "temperature": 0.0
   },
   "agent": {
-    "max_steps": 500,
+    "max_steps": 50,
     "use_vision": true,
     "max_parallel_browsers": 1,
     "enable_smart_retry": false,
@@ -378,7 +286,7 @@ def load_model_from_file(model_name: str):
     "headless": false,
     "window_w": 1280,
     "window_h": 1100,
-    "enable_live_view": true
+    "enable_live_view": false
   }
 }</textarea>
         </div>
@@ -386,12 +294,6 @@ def load_model_from_file(model_name: str):
     
     <div class="main">
         <div id="liveView" style="display:none; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #000;">
-            <div id="liveMonitor">
-                <div><span class="monitor-label"># [STATE]:</span> <span id="monitorState" class="monitor-value"></span></div>
-                <div><span class="monitor-label"># [GOAL]:</span> <span id="monitorGoal" class="monitor-value"></span></div>
-                <div><span class="monitor-label"># [DATA]:</span> <span id="monitorData" class="monitor-value"></span></div>
-            </div>
-            <div id="agentStatusDisplay"></div>
             <div style="padding: 5px 10px; background: var(--panel-bg); border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 0.8rem; display: flex; justify-content: space-between;">
                 <span>LIVE VIEW</span>
                 <span style="color: var(--error);">● REC</span>
@@ -405,42 +307,12 @@ def load_model_from_file(model_name: str):
             </div>
         </div>
         
-        <!-- Center Control Bar -->
-        <div class="center-console" style="margin-bottom: 20px;">
-            <div class="console-section">
-                <h3>Manual Override</h3>
-                <button id="forceReviewBtn" onclick="sendControl('force_review')">👁️ Force Review</button>
-                <button id="forceParticipateBtn" onclick="sendControl('force_participate')">✍️ Force Participate</button>
-                <button id="emergencyStopBtn" onclick="stopAgent(event)" style="background: var(--error);">🛑 Emergency All-Stop</button>
+        <div class="artifacts">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <h3>Generated Artifacts</h3>
+                <button class="secondary" onclick="refreshFiles()" style="width: auto; padding: 2px 8px; font-size: 0.8rem;">Refresh</button>
             </div>
-            <div class="console-section">
-                <h3>Context Shifters</h3>
-                <button id="readVitalSourceBtn" onclick="sendControl('read_vitalsource')">📖 Read VitalSource</button>
-                <button id="syncHotlinksBtn" onclick="sendControl('sync_hotlinks')">🌐 Sync Hotlinks</button>
-                <button id="rubricCheckBtn" onclick="sendControl('rubric_check')">📋 Rubric Check</button>
-            </div>
-            <div class="console-section">
-                <h3>Navigation & Speed</h3>
-                <label for="speedSlider">Speed: <span id="speedValue">Human Pace</span></label>
-                <input type="range" id="speedSlider" min="0" max="10" value="5" oninput="updateSpeed(this.value)">
-                <button id="skipStepBtn" onclick="sendControl('skip_step')">⏭️ Skip Step</button>
-                <button id="reloadRetryBtn" onclick="sendControl('reload_retry')">🔄 Reload/Retry</button>
-            </div>
-            <div class="console-section">
-                <h3>Handshake Response</h3>
-                <button id="letsGoBtn" onclick="sendConfirmation('yes')">✅ LETS GO</button>
-                <button id="editDraftBtn" onclick="showEditDraftDialog()">📝 EDIT DRAFT</button>
-                <button id="explainBtn" onclick="sendControl('explain_action')">❓ EXPLAIN</button>
-                <div id="editDraftDialog" style="display: none; margin-top: 10px;">
-                    <textarea id="editDraftText" placeholder="Edit AI's draft here..." style="width: 100%; height: 80px; margin-bottom: 5px;"></textarea>
-                    <button onclick="sendEditedDraft()">Submit Edit</button>
-                    <button onclick="hideEditDraftDialog()" class="secondary">Cancel</button>
-                </div>
-            </div>
-            <div class="console-section">
-                <h3>Utility</h3>
-                <button id="showFocusBtn" onclick="sendControl('toggle_ghost_mouse')">🖱️ Show Focus</button>
-            </div>
+            <ul id="fileList"></ul>
         </div>
         
         <form onsubmit="sendMessage(event)" style="display: flex; gap: 10px;">
@@ -449,58 +321,11 @@ def load_model_from_file(model_name: str):
             <button id="stopBtn" onclick="stopAgent(event)" type="button" disabled style="width: 80px;">Stop</button>
         </form>
     </div>
-    
-    <div class="right-sidebar">
-        <div class="header">
-            <h1>Task Management</h1>
-        </div>
-        
-        <div style="margin-bottom: 15px;">
-            <h3>Current Task</h3>
-            <div id="currentTaskDisplay" style="background: var(--bg-color); padding: 10px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-primary);">No task running</div>
-        </div>
-        
-        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
-            <h3>Task Queue</h3>
-            <ul id="taskList" style="list-style: none; padding: 0; margin: 0; flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-color);">
-                <!-- Task items will be added here by JS -->
-                <li style="padding: 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-                    <span>Example Task 1</span> <button style="width: auto; padding: 4px 8px; font-size: 0.7rem; background: var(--error);">✖️</button>
-                </li>
-            </ul>
-            <div style="display: flex; gap: 5px;">
-                <input type="text" id="newTaskInput" placeholder="Add new task..." style="flex: 1;" /> 
-                <button id="addTaskBtn" style="width: auto; padding: 8px 12px;">➕</button>
-            </div>
-        </div>
-    </div>
 
     <script>
         var ws = new WebSocket("ws://" + window.location.host + "/ws");
         var sendBtn = document.getElementById("sendBtn");
         var stopBtn = document.getElementById("stopBtn");
-        var currentConfirmationPayload = null; // To store the payload from request_confirmation
-        
-        // Task Queue Manager
-        document.getElementById('addTaskBtn').onclick = function() {
-            var input = document.getElementById('newTaskInput');
-            var task = input.value;
-            if (!task) return;
-            
-            var list = document.getElementById('taskList');
-            // Clear example if present
-            if (list.children.length > 0 && list.children[0].innerText.includes("Example Task")) {
-                list.innerHTML = "";
-            }
-
-            var li = document.createElement('li');
-            li.style.cssText = "padding: 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;";
-            li.innerHTML = "<span>" + task + "</span> <button onclick='this.parentElement.remove()' style='width: auto; padding: 4px 8px; font-size: 0.7rem; background: var(--error);'>✖️</button>";
-            list.appendChild(li);
-            
-            sendControl('add_task', task);
-            input.value = '';
-        };
         
         ws.onopen = function() {
             console.log("Connected to WebSocket");
@@ -533,6 +358,7 @@ def load_model_from_file(model_name: str):
                         select.disabled = true;
                     }
                 });
+            refreshFiles();
         };
 
         ws.onmessage = function(event) {
@@ -545,20 +371,6 @@ def load_model_from_file(model_name: str):
             if (data.type === 'log') {
                 div.classList.add('agent');
                 div.innerHTML = "<div class='step-header'>Log</div><div class='thought'>ℹ️ " + data.content + "</div>";
-            } else if (data.type === 'agent_status') {
-                var statusDisplay = document.getElementById('agentStatusDisplay');
-                if (data.status) {
-                    statusDisplay.textContent = data.status;
-                    statusDisplay.style.display = 'block';
-                } else {
-                    statusDisplay.style.display = 'none';
-                }
-            } else if (data.type === 'agent_goal') {
-                document.getElementById('monitorGoal').textContent = data.goal;
-                document.getElementById('liveMonitor').style.display = 'block';
-            } else if (data.type === 'agent_data') {
-                document.getElementById('monitorData').textContent = data.data;
-                document.getElementById('liveMonitor').style.display = 'block';
             } else if (data.type === 'stream') {
                 var view = document.getElementById('liveView');
                 var img = document.getElementById('liveImg');
@@ -591,14 +403,6 @@ def load_model_from_file(model_name: str):
                 if (data.think) {
                     div.innerHTML += "<div class='confirmer-reasoning' style='margin-top:5px; padding:8px; background:rgba(0,0,0,0.3); border-left:2px solid #9ca3af; font-family:monospace; font-size:0.85rem; white-space: pre-wrap; display:none;'>" + data.think + "</div>";
                 }
-            } else if (data.type === 'request_confirmation') {
-                showConfirmationDialog(
-                    data.message || "Are you sure you want to proceed with this action?", // message
-                    data.intel || "No specific new information.", // intel
-                    data.next_task || "Agent is considering its next move." // next_task
-                );
-                currentConfirmationPayload = data; // Store the full payload
-                return; // Do not append to messages, it's a modal
             } else if (data.type === 'result') {
                 div.classList.add('agent');
                 div.style.borderColor = 'var(--success)';
@@ -606,24 +410,19 @@ def load_model_from_file(model_name: str):
                 sendBtn.disabled = false;
                 sendBtn.textContent = "Run";
                 stopBtn.disabled = true;
-                document.getElementById('liveMonitor').style.display = 'none'; // Hide monitor on task end
-                document.getElementById('agentStatusDisplay').style.display = 'none'; // Hide agent status on task end
-                document.getElementById('currentTaskDisplay').textContent = "No task running"; // Clear current task
             } else if (data.type === 'error') {
                 div.classList.add('error');
                 div.innerHTML = "<div class='step-header' style='color: var(--error)'>❌ Error</div><div>" + data.content + "</div>";
                 sendBtn.disabled = false;
                 sendBtn.textContent = "Run";
                 stopBtn.disabled = true;
-                document.getElementById('liveMonitor').style.display = 'none'; // Hide monitor on task end
-                document.getElementById('agentStatusDisplay').style.display = 'none'; // Hide agent status on task end
-                document.getElementById('currentTaskDisplay').textContent = "No task running"; // Clear current task
             }
             
             messages.appendChild(div);
             messages.scrollTop = messages.scrollHeight;
+            refreshFiles();
         };
-        
+
         ws.onclose = function() {
             var messages = document.getElementById('messages');
             var div = document.createElement('div');
@@ -632,14 +431,12 @@ def load_model_from_file(model_name: str):
             messages.appendChild(div);
         };
 
-        function sendMessage(event) { // Changed to be called by onclick, not form onsubmit
+        function sendMessage(event) {
             event.preventDefault();
             var input = document.getElementById("messageText");
             if (!input.value) return;
             
             var messages = document.getElementById('messages');
-            document.getElementById('liveMonitor').style.display = 'none'; // Hide monitor on new task
-            document.getElementById('agentStatusDisplay').style.display = 'none'; // Hide status on new task
             messages.innerHTML = ''; // Clear previous
             
             var agentType = document.getElementById("agentType").value;
@@ -658,9 +455,6 @@ def load_model_from_file(model_name: str):
             var userDiv = document.createElement('div');
             userDiv.className = 'message user';
             userDiv.innerHTML = "<div class='step-header'>User Task</div><div>" + input.value + "</div>";
-            
-            // Update current task display in the right sidebar
-            document.getElementById('currentTaskDisplay').textContent = input.value;
             messages.appendChild(userDiv);
             
             ws.send(JSON.stringify({action: "run", task: input.value, agent_type: agentType, resume_task_id: resumeTaskId, google_docs_template_url: googleDocsTemplate, extraction_model: extractionModel, ...settings}));
@@ -675,16 +469,6 @@ def load_model_from_file(model_name: str):
             event.preventDefault();
             ws.send(JSON.stringify({action: "stop"}));
             stopBtn.disabled = true;
-        }
-
-        // New functions for confirmation dialog
-        document.getElementById('confirmYesBtn').onclick = function() { sendConfirmation('yes'); };
-        document.getElementById('confirmNoBtn').onclick = function() { sendConfirmation('no'); };
-        function showConfirmationDialog(message, intel, nextTask) {
-            document.getElementById('confirmationMessage').textContent = message;
-            document.getElementById('dialogIntel').textContent = intel;
-            document.getElementById('dialogNextTask').textContent = nextTask;
-            document.getElementById('confirmationOverlay').style.display = 'flex';
         }
 
         async function uploadFile(event) {
@@ -718,14 +502,28 @@ def load_model_from_file(model_name: str):
             }
         }
 
+        async function refreshFiles() {
+            try {
+                var response = await fetch('/files');
+                var files = await response.json();
+                var list = document.getElementById('fileList');
+                list.innerHTML = '';
+                files.forEach(file => {
+                    var li = document.createElement('li');
+                    li.innerHTML = '<a href="/' + file + '" target="_blank">' + file + '</a>';
+                    list.appendChild(li);
+                });
+            } catch(e) {
+                console.error("Failed to load files", e);
+            }
+        }
+
         function updateAgentSettings() {
             var useVision = document.getElementById('useVision').checked;
-            var maxConsecutiveFailures = document.getElementById('maxConsecutiveFailures').value;
             try {
                 var settings = JSON.parse(document.getElementById("settingsJson").value);
                 if (!settings.agent) settings.agent = {};
                 settings.agent.use_vision = useVision;
-                settings.agent.max_consecutive_failures = parseInt(maxConsecutiveFailures);
                 document.getElementById("settingsJson").value = JSON.stringify(settings, null, 2);
             } catch(e) {
                 console.error("Invalid JSON in settings", e);
@@ -741,55 +539,6 @@ def load_model_from_file(model_name: str):
                 document.head.appendChild(style);
             }
             style.textContent = checked ? ".confirmer-reasoning { display: block !important; }" : ".confirmer-reasoning { display: none !important; }";
-        }
-
-        // New functions for Center Console controls
-        function sendControl(command, value = null) {
-            // Emergency stop is handled by the existing stopAgent function
-            ws.send(JSON.stringify({action: "control", command: command, value: value}));
-        }
-
-        function updateSpeed(value) {
-            const speedLabel = document.getElementById('speedValue');
-            let speedText = '';
-            if (value == 0) speedText = 'Paused';
-            else if (value <= 3) speedText = 'Human Pace (Slow/Safe)';
-            else if (value <= 7) speedText = 'Normal';
-            else speedText = 'Turbo (Fast/High-Risk)';
-            speedLabel.textContent = speedText;
-            sendControl('set_speed', value);
-        }
-
-        function sendConfirmation(responseType, customTask = null, editedText = null) {
-            // Use currentConfirmationPayload if available for context, otherwise default
-            const payloadToSend = {
-                action: "confirmation_response",
-                response: responseType,
-                custom_task: customTask || document.getElementById('customTaskInput').value,
-                edited_text: editedText, // New field for edited draft
-                // Optionally, include original intel/next_task from currentConfirmationPayload if needed by backend
-                original_intel: currentConfirmationPayload ? currentConfirmationPayload.intel : null,
-                original_next_task: currentConfirmationPayload ? currentConfirmationPayload.next_task : null,
-            };
-            ws.send(JSON.stringify(payloadToSend));
-            document.getElementById('confirmationOverlay').style.display = 'none';
-            document.getElementById('customTaskInput').value = ''; // Clear input after sending
-            currentConfirmationPayload = null; // Clear stored payload
-        }
-
-        function showEditDraftDialog() {
-            document.getElementById('editDraftDialog').style.display = 'block';
-            document.getElementById('editDraftText').value = ''; // Clear previous
-        }
-
-        function hideEditDraftDialog() {
-            document.getElementById('editDraftDialog').style.display = 'none';
-        }
-
-        function sendEditedDraft() {
-            const editedText = document.getElementById('editDraftText').value;
-            sendConfirmation('edit', null, editedText);
-            hideEditDraftDialog();
         }
 
         function updateOllamaSettings() {
@@ -874,7 +623,6 @@ def load_model_from_file(model_name: str):
             }
             if (s.agent) {
                 document.getElementById('useVision').checked = s.agent.use_vision !== false;
-                if (s.agent.max_consecutive_failures) document.getElementById('maxConsecutiveFailures').value = s.agent.max_consecutive_failures;
             }
             updateLLMSettings(); // Set initial state
         } catch(e) {}
@@ -890,11 +638,38 @@ def load_model_from_file(model_name: str):
         });
     </script>
 </body>
-</html>""" # End of HTML content
+</html>
+"""
 
 @app.get("/")
 async def get():
+    return HTMLResponse(html)
+async def read_root():
     return FileResponse("static/index.html")
+
+
+def get_gemini_models():
+    """
+    Returns a list of available Gemini models.
+    """
+    return ["gemini-2.0-flash-exp", "gemini-flash-latest-latest", "gemini-pro-vision", "gemini-1.5-pro-latest"]  # Add other Gemini models as needed
+
+
+@app.get("/api/gemini_models")
+async def gemini_models():
+    """
+    Endpoint to return available Gemini models.
+    """
+    try:
+        models = get_gemini_models()
+        return {"models": models}
+    except Exception as e:
+        logger.error(f"Error fetching Gemini models: {e}")
+        return {"error": "Could not retrieve Gemini models"}, 500
+
+
+
+
 
 @app.get("/extraction_models")
 async def get_extraction_models():
@@ -918,6 +693,7 @@ async def get_ollama_models():
         return []
 
 @app.get("/files")
+
 async def list_files():
     files_list = []
     for root, dirs, files in os.walk("./tmp"):
@@ -1026,327 +802,7 @@ async def websocket_endpoint(websocket: WebSocket):
     browser = None
     browser_context = None
     runner_task = None
-    agent_control_queue = asyncio.Queue() # Queue for sending control commands to the running agent
-
-    confirmation_event = asyncio.Event()
-    confirmation_response_queue = asyncio.Queue()
     
-    async def run_agent_job_wrapper(task_payload):
-        # Local variables to ensure thread safety and cleanup per task
-        nonlocal browser, browser_context
-        local_task_id = None
-        
-        task = task_payload.get("task")
-        agent_type = task_payload.get("agent_type", "browser")
-        llm_settings = task_payload.get("llm", {})
-        agent_settings = task_payload.get("agent", {})
-        browser_settings = task_payload.get("browser", {})
-
-        # Get browser settings from payload, defaulting to None if not present or empty string
-        browser_binary_path = browser_settings.get("browser_binary_path") or None
-        browser_user_data_dir = browser_settings.get("browser_user_data_dir") or None
-        keep_browser_open_setting = browser_settings.get("keep_browser_open", False)
-
-        # Deep Research specific
-        resume_task_id = task_payload.get("resume_task_id")
-        mcp_config = task_payload.get("mcp_config")
-        extraction_model_name = task_payload.get("extraction_model")
-
-        try:
-            await websocket.send_json({"type": "log", "content": f"Initializing {agent_type} agent for task: {task}"})
-            
-            provider = llm_settings.get("provider", "openai")
-            if provider == "gemini":
-                try:
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-                    
-                    # Check for OAuth credentials in session
-                    creds_data = websocket.session.get("google_creds")
-                    
-                    # Check for Service Account file
-                    service_account_path = "service_account.json"
-                    
-                    if os.path.exists(service_account_path):
-                        from google.oauth2 import service_account
-                        creds = service_account.Credentials.from_service_account_file(service_account_path)
-                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with Service Account"})
-                        llm = ChatGoogleGenerativeAI(
-                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
-                            temperature=float(llm_settings.get("temperature", 0.8)),
-                            credentials=creds
-                        )
-                    elif creds_data:
-                        from google.oauth2.credentials import Credentials
-                        creds = Credentials(**creds_data)
-                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with OAuth Credentials"})
-                        llm = ChatGoogleGenerativeAI(
-                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
-                            temperature=float(llm_settings.get("temperature", 0.8)),
-                            credentials=creds
-                        )
-                    else:
-                        # Fallback to API Key
-                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with API Key"})
-                        llm = ChatGoogleGenerativeAI(
-                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
-                            temperature=float(llm_settings.get("temperature", 0.8)),
-                            google_api_key=llm_settings.get("api_key", "")
-                        )
-                except ImportError:
-                    await websocket.send_json({"type": "error", "content": "Please install langchain-google-genai to use Gemini."})
-                    return
-            else:
-                llm = llm_provider.get_llm_model(
-                    provider=provider,
-                    model_name=llm_settings.get("model_name", "gpt-4o"),
-                    temperature=float(llm_settings.get("temperature", 0.8)),
-                    base_url=llm_settings.get("base_url", ""),
-                    api_key=llm_settings.get("api_key", ""),
-                    project_id=llm_settings.get("google_project_id", "")
-                )
-
-            if agent_type == "deep_research":
-                await websocket.send_json({"type": "log", "content": "🔬 Initializing full Deep Research Agent..."})
-                
-                deep_research_agent = DeepResearchAgent(
-                    llm=llm,
-                    browser_config=browser_settings,
-                    mcp_server_config=mcp_config
-                )
-                
-                local_task_id = resume_task_id if resume_task_id else str(uuid.uuid4())
-                output_dir = os.path.join("./tmp/deep_research", local_task_id)
-                os.makedirs(output_dir, exist_ok=True)
-                
-                stop_event = threading.Event()
-                _AGENT_STOP_FLAGS[local_task_id] = stop_event
-                
-                agent_tools = await deep_research_agent._setup_tools(
-                    task_id=local_task_id,
-                    stop_event=stop_event,
-                    max_parallel_browsers=agent_settings.get("max_parallel_browsers", 1)
-                )
-
-                initial_state = {
-                    "task_id": local_task_id,
-                    "topic": task,
-                    "research_plan": [],
-                    "search_results": [],
-                    "messages": [],
-                    "llm": llm,
-                    "tools": agent_tools,
-                    "output_dir": Path(output_dir),
-                    "browser_config": browser_settings,
-                    "final_report": None,
-                    "current_category_index": 0,
-                    "current_task_index_in_category": 0,
-                    "stop_requested": False,
-                    "error_message": None,
-                    "memory_file": None, # Not supported in simple server yet
-                    "google_docs_template_url": task_payload.get("google_docs_template_url", "a new Google Doc")
-                }
-
-                if resume_task_id:
-                    state_manager = DeepResearchStateManager(output_dir)
-                    loaded_state = await asyncio.to_thread(state_manager.load_state)
-                    if loaded_state:
-                        initial_state.update(loaded_state)
-                        initial_state["topic"] = task
-
-                final_report = None
-                final_state = None
-                async for state_update in deep_research_agent.graph.astream(initial_state):
-                    node_name = list(state_update.keys())[0]
-                    node_output = state_update[node_name]
-                    final_state = node_output
-
-                    await websocket.send_json({"type": "log", "content": f"Executing node: {node_name}"})
-
-                    if node_name == "synthesize_report" and node_output.get("final_report"):
-                        final_report = node_output.get("final_report")
-
-                    if node_output.get("error_message"):
-                        await websocket.send_json({"type": "error", "content": node_output.get("error_message")})
-                        break
-
-                if final_report:
-                    await websocket.send_json({"type": "result", "content": final_report})
-                elif not (final_state and final_state.get("error_message")):
-                    await websocket.send_json({"type": "error", "content": "Deep research finished without generating a report."})
-
-            else:
-                # Define the callback for agent status updates and confirmation requests
-                async def send_agent_message_callback(message_payload):
-                    await websocket.send_json(message_payload)
-
-                # Standard Browser Agent - Use browser_factory for consistent setup
-                
-                # Initialize Planner/Confirmer if configured
-                planner_llm = llm # Assign the main LLM to the planner
-                
-                confirmer_llm = llm # Assign the main LLM to the confirmer
-                
-                # --- Heuristic Model Switching Setup ---
-                enable_smart_retry = agent_settings.get("enable_smart_retry", False)
-                enable_cost_saver = agent_settings.get("enable_cost_saver", False)
-                model_priority_list_config = agent_settings.get("model_priority_list", [])
-                model_priority_list = []
-
-                if (enable_smart_retry or enable_cost_saver) and model_priority_list_config:
-                    await websocket.send_json({"type": "log", "content": "⚙️ Initializing model priority list for heuristic switching..."})
-                    for model_conf in model_priority_list_config:
-                        try:
-                            priority = model_conf.get("priority")
-                            if priority is None:
-                                await websocket.send_json({"type": "log", "content": f"⚠️ Skipping model in priority list due to missing 'priority': {model_conf.get('model_name')}"})
-                                continue
-                            
-                            heuristic_llm = llm_provider.get_llm_model(
-                                provider=model_conf.get("provider"),
-                                model_name=model_conf.get("model_name"),
-                                temperature=float(model_conf.get("temperature", 0.1)),
-                                base_url=model_conf.get("base_url", ""),
-                                api_key=model_conf.get("api_key", "")
-                            )
-                            model_priority_list.append({"priority": int(priority), "llm": heuristic_llm})
-                        except Exception as e:
-                            await websocket.send_json({"type": "log", "content": f"⚠️ Failed to initialize heuristic model {model_conf.get('model_name')}: {e}"})
-                    
-                    model_priority_list.sort(key=lambda x: x['priority'])
-                
-                output_model = None
-                if extraction_model_name:
-                    output_model = load_model_from_file(extraction_model_name)
-                controller = CustomController(output_model=output_model, kb_dir=KB_DIR)
-                
-                async def validation_callback(think, reason, is_confirmed):
-                    await websocket.send_json({
-                        "type": "validation",
-                        "think": think,
-                        "reason": reason,
-                        "is_confirmed": is_confirmed
-                    })
-
-                # Browser and context creation
-                # Update browser_settings with user-provided paths, or None for auto-detection
-                browser_settings["browser_binary_path"] = browser_binary_path
-                browser_settings["browser_user_data_dir"] = browser_user_data_dir
-                browser_settings["use_own_browser"] = True # Always enable for custom paths or auto-detection
-
-                browser_config_instance = BrowserConfig(**browser_settings)
-                
-                # If we are not keeping the browser open, or if it's the first run, or if settings changed significantly,
-                # close existing browser/context and create new ones.
-                # For simplicity, if keep_browser_open_setting is false, always create new.
-                # If keep_browser_open_setting is true, only create if browser is None.
-                if not keep_browser_open_setting or browser is None:
-                    if browser_context:
-                        await browser_context.close()
-                        browser_context = None
-                    if browser:
-                        await browser.close()
-                        browser = None
-                    
-                    browser = create_browser(browser_config_instance.model_dump()) # Pass dict for now
-                    browser_context = await create_context(browser, browser_config_instance.new_context_config.model_dump()) # Pass dict for now
-                
-                agent = BrowserUseAgent(
-                    task=task,
-                    llm=llm,
-                    browser=browser,
-                    browser_context=browser_context,
-                    controller=controller,
-                    use_vision=agent_settings.get("use_vision", True), # Use the setting from agent_settings
-                    planner_llm=planner_llm,
-                    confirmer_llm=confirmer_llm,
-                    inhibit_close=keep_browser_open_setting, # Inhibit closing if keep_browser_open is true
-                    enable_smart_retry=enable_smart_retry,
-                    enable_cost_saver=enable_cost_saver,
-                    model_priority_list=model_priority_list,
-                    validation_callback=validation_callback,
-                    use_memory=True, # Enable custom memory manager for site knowledge
-                    enable_user_interaction_dialog=agent_settings.get("enable_user_interaction_dialog", False), # New setting
-                    tool_calling_method=agent_settings.get("tool_calling_method", "auto"),
-                    send_agent_message_callback=send_agent_message_callback,
-                    confirmation_event=confirmation_event,
-                    confirmation_response_queue=confirmation_response_queue,
-                    agent_control_queue=agent_control_queue # Pass the control queue to the agent
-                )
-                
-                await send_agent_message_callback({"type": "agent_status", "status": "Participating"})
-                async def step_callback(state, model_output, step_number):
-                    try:
-                        thought = getattr(model_output, "thought", "") if model_output else ""
-                        screenshot = state.screenshot if state.screenshot else None
-                        actions = []
-                        if model_output:
-                            output_actions = getattr(model_output, "action", None)
-                            if output_actions:
-                                if not isinstance(output_actions, list):
-                                    output_actions = [output_actions]
-                                for action in output_actions:
-                                    if hasattr(action, "model_dump"):
-                                        actions.append(action.model_dump())
-                        
-                        await websocket.send_json({
-                            "type": "step",
-                            "step": step_number,
-                            "thought": thought,
-                            "url": state.url,
-                            "screenshot": screenshot,
-                            "actions": actions
-                        })
-                    except Exception as e:
-                        logger.error(f"Error in callback: {e}")
-                
-                agent.step_callback = step_callback
-                
-                await websocket.send_json({"type": "log", "content": "Agent started..."})
-                
-                stream_task = None
-                if browser_settings.get("enable_live_view", False):
-                    async def stream_browser():
-                        while True:
-                            try:
-                                if browser_context:
-                                    page = await browser_context.get_current_page()
-                                    if page:
-                                        screenshot = await page.screenshot(type='jpeg', quality=50)
-                                        encoded = base64.b64encode(screenshot).decode('utf-8')
-                                        await websocket.send_json({"type": "stream", "image": encoded})
-                            except Exception:
-                                pass
-                            await asyncio.sleep(0.5)
-                    
-                    stream_task = asyncio.create_task(stream_browser())
-
-                try:
-                    history = await agent.run(max_steps=agent_settings.get("max_steps", 100))
-                    result = history.final_result()
-                    await websocket.send_json({"type": "result", "content": result})
-                finally:
-                    if stream_task:
-                        stream_task.cancel()
-                        try:
-                            await stream_task
-                        except asyncio.CancelledError:
-                            pass
-        except Exception as e:
-            logger.error(f"Error in agent wrapper: {e}", exc_info=True)
-            await websocket.send_json({"type": "error", "content": str(e)})
-        finally:
-            # Cleanup logic after agent run
-            if not keep_browser_open_setting:
-                if browser_context:
-                    await browser_context.close()
-                    browser_context = None
-                if browser:
-                    await browser.close()
-                    browser = None
-            
-            if local_task_id and local_task_id in _AGENT_STOP_FLAGS:
-                del _AGENT_STOP_FLAGS[local_task_id]
-
     try:
         while True:
             data = await websocket.receive_text()
@@ -1355,27 +811,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 action = payload.get("action", "run")
                 
                 if action == "stop":
-                    logger.info("Received 'stop' action. Cancelling runner task.")
                     if runner_task and not runner_task.done():
                         runner_task.cancel()
                     continue
-
-                if action == "control":
-                    command = payload.get("command")
-                    value = payload.get("value")
-                    logger.info(f"Received control command: {command} with value: {value}")
                     
-                    if runner_task and not runner_task.done():
-                        if command == "pause":
-                            await websocket.send_json({"type": "agent_status", "status": "Paused ⏸️"})
-                        elif command == "resume":
-                            await websocket.send_json({"type": "agent_status", "status": "Participating"})
-
-                    await agent_control_queue.put({"command": command, "value": value})
-                    continue
-
                 if action == "run":
-                    task = payload.get("task") # This is the main task for the agent
+                    task = payload.get("task")
                     agent_type = payload.get("agent_type", "browser")
 
                     if not task:
@@ -1384,49 +825,348 @@ async def websocket_endpoint(websocket: WebSocket):
                     if runner_task and not runner_task.done():
                         await websocket.send_json({"type": "error", "content": "Agent already running"})
                         continue
+                    
+                    # Extract settings
+                    llm_settings = payload.get("llm", {})
+                    agent_settings = payload.get("agent", {})
+                    browser_settings = payload.get("browser", {})
+                    
+                    # Deep Research specific
+                    resume_task_id = payload.get("resume_task_id")
+                    mcp_config = payload.get("mcp_config")
+                    extraction_model_name = payload.get("extraction_model")
+                    
+                    async def run_agent_job():
+                        # Local variables to ensure thread safety and cleanup per task
+                        nonlocal browser, browser_context
+                        local_task_id = None
 
-                    # Reset confirmation state for a new run
-                    confirmation_event.clear()
-                    while not confirmation_response_queue.empty(): # Clear any stale responses
-                        try: await confirmation_response_queue.get_nowait()
-                        except asyncio.QueueEmpty: pass
+                        # Streamlining: Close previous context to ensure clean slate for new task
+                        if browser_context:
+                            logger.info("♻️  Resetting browser context for new task...")
+                            await browser_context.close()
+                            browser_context = None
+                        
+                        try:
+                            await websocket.send_json({"type": "log", "content": f"Initializing {agent_type} agent for task: {task}"})
+                            
+                            provider = llm_settings.get("provider", "openai")
+                            if provider == "gemini":
+                                try:
+                                    from langchain_google_genai import ChatGoogleGenerativeAI
+                                    
+                                    # Check for OAuth credentials in session
+                                    creds_data = websocket.session.get("google_creds")
+                                    
+                                    # Check for Service Account file
+                                    service_account_path = "service_account.json"
+                                    
+                                    if os.path.exists(service_account_path):
+                                        from google.oauth2 import service_account
+                                        creds = service_account.Credentials.from_service_account_file(service_account_path)
+                                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with Service Account"})
+                                        llm = ChatGoogleGenerativeAI(
+                                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
+                                            temperature=float(llm_settings.get("temperature", 0.8)),
+                                            credentials=creds
+                                        )
+                                    elif creds_data:
+                                        from google.oauth2.credentials import Credentials
+                                        creds = Credentials(**creds_data)
+                                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with OAuth Credentials"})
+                                        llm = ChatGoogleGenerativeAI(
+                                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
+                                            temperature=float(llm_settings.get("temperature", 0.8)),
+                                            credentials=creds
+                                        )
+                                    else:
+                                        # Fallback to API Key
+                                        await websocket.send_json({"type": "log", "content": "Using Google Gemini with API Key"})
+                                        llm = ChatGoogleGenerativeAI(
+                                            model=llm_settings.get("model_name", "gemini-2.0-flash-exp"),
+                                            temperature=float(llm_settings.get("temperature", 0.8)),
+                                            google_api_key=llm_settings.get("api_key", "")
+                                        )
+                                except ImportError:
+                                    await websocket.send_json({"type": "error", "content": "Please install langchain-google-genai to use Gemini."})
+                                    return
+                            else:
+                                llm = llm_provider.get_llm_model(
+                                    provider=provider,
+                                    model_name=llm_settings.get("model_name", "gpt-4o"),
+                                    temperature=float(llm_settings.get("temperature", 0.8)),
+                                    base_url=llm_settings.get("base_url", ""),
+                                    api_key=llm_settings.get("api_key", ""),
+                                    project_id=llm_settings.get("google_project_id", "")
+                                )
+
+                            if agent_type == "deep_research":
+                                await websocket.send_json({"type": "log", "content": "🔬 Initializing full Deep Research Agent..."})
+                                
+                                deep_research_agent = DeepResearchAgent(
+                                    llm=llm,
+                                    browser_config=browser_settings,
+                                    mcp_server_config=mcp_config
+                                )
+                                
+                                local_task_id = resume_task_id if resume_task_id else str(uuid.uuid4())
+                                output_dir = os.path.join("./tmp/deep_research", local_task_id)
+                                os.makedirs(output_dir, exist_ok=True)
+                                
+                                stop_event = threading.Event()
+                                _AGENT_STOP_FLAGS[local_task_id] = stop_event
+                                
+                                agent_tools = await deep_research_agent._setup_tools(
+                                    task_id=local_task_id,
+                                    stop_event=stop_event,
+                                    max_parallel_browsers=agent_settings.get("max_parallel_browsers", 1)
+                                )
+
+                                initial_state = {
+                                    "task_id": local_task_id,
+                                    "topic": task,
+                                    "research_plan": [],
+                                    "search_results": [],
+                                    "messages": [],
+                                    "llm": llm,
+                                    "tools": agent_tools,
+                                    "output_dir": Path(output_dir),
+                                    "browser_config": browser_settings,
+                                    "final_report": None,
+                                    "current_category_index": 0,
+                                    "current_task_index_in_category": 0,
+                                    "stop_requested": False,
+                                    "error_message": None,
+                                    "memory_file": None, # Not supported in simple server yet
+                                    "google_docs_template_url": payload.get("google_docs_template_url", "a new Google Doc")
+                                }
+
+                                if resume_task_id:
+                                    state_manager = DeepResearchStateManager(output_dir)
+                                    loaded_state = await asyncio.to_thread(state_manager.load_state)
+                                    if loaded_state:
+                                        initial_state.update(loaded_state)
+                                        initial_state["topic"] = task
+
+                                final_report = None
+                                final_state = None
+                                async for state_update in deep_research_agent.graph.astream(initial_state):
+                                    node_name = list(state_update.keys())[0]
+                                    node_output = state_update[node_name]
+                                    final_state = node_output
+
+                                    await websocket.send_json({"type": "log", "content": f"Executing node: {node_name}"})
+
+                                    if node_name == "synthesize_report" and node_output.get("final_report"):
+                                        final_report = node_output.get("final_report")
+
+                                    if node_output.get("error_message"):
+                                        await websocket.send_json({"type": "error", "content": node_output.get("error_message")})
+                                        break
+
+                                if final_report:
+                                    await websocket.send_json({"type": "result", "content": final_report})
+                                elif not (final_state and final_state.get("error_message")):
+                                    await websocket.send_json({"type": "error", "content": "Deep research finished without generating a report."})
+
+                            else:
+                                # Standard Browser Agent
+                                
+                                # Check if we need to re-initialize browser due to settings change
+                                if browser_settings and browser:
+                                    await browser.close()
+                                    browser = None
+                                    browser_context = None
+
+                                if browser is None:
+                                    browser = CustomBrowser(
+                                        config=BrowserConfig(
+                                            headless=browser_settings.get("headless", False),
+                                            disable_security=browser_settings.get("disable_security", True),
+                                            wss_url=browser_settings.get("wss_url"),
+                                            cdp_url=browser_settings.get("cdp_url"),
+                                            extra_browser_args=browser_settings.get("extra_browser_args", [])
+                                        )
+                                    )
+                                
+                                if browser_context is None:
+                                    browser_context = await browser.new_context(
+                                        config=BrowserContextConfig(
+                                            window_width=browser_settings.get("window_w", 1280),
+                                            window_height=browser_settings.get("window_h", 1100),
+                                            save_recording_path=browser_settings.get("save_recording_path"),
+                                            trace_path=browser_settings.get("save_trace_path")
+                                        )
+                                    )
+
+                                # Initialize Planner/Confirmer if configured
+                                planner_llm = None
+                                if agent_settings.get("planner", {}).get("enabled", False):
+                                    p_conf = agent_settings.get("planner", {})
+                                    planner_llm = llm_provider.get_llm_model(
+                                        provider=p_conf.get("provider", llm_settings.get("provider", "openai")),
+                                        model_name=p_conf.get("model_name", llm_settings.get("model_name", "gpt-4o")),
+                                        temperature=p_conf.get("temperature", 0.8),
+                                        base_url=p_conf.get("base_url", ""),
+                                        api_key=p_conf.get("api_key", "")
+                                    )
+                                
+                                confirmer_llm = None
+                                if agent_settings.get("confirmer", {}).get("enabled", False):
+                                    c_conf = agent_settings.get("confirmer", {})
+                                    confirmer_llm = llm_provider.get_llm_model(
+                                        provider=c_conf.get("provider", llm_settings.get("provider", "openai")),
+                                        model_name=c_conf.get("model_name", llm_settings.get("model_name", "gpt-4o")),
+                                        temperature=c_conf.get("temperature", 0.8),
+                                        base_url=c_conf.get("base_url", ""),
+                                        api_key=c_conf.get("api_key", "")
+                                    )
+                                
+                                # --- Heuristic Model Switching Setup ---
+                                enable_smart_retry = agent_settings.get("enable_smart_retry", False)
+                                enable_cost_saver = agent_settings.get("enable_cost_saver", False)
+                                model_priority_list_config = agent_settings.get("model_priority_list", [])
+                                model_priority_list = []
+
+                                if (enable_smart_retry or enable_cost_saver) and model_priority_list_config:
+                                    await websocket.send_json({"type": "log", "content": "⚙️ Initializing model priority list for heuristic switching..."})
+                                    for model_conf in model_priority_list_config:
+                                        try:
+                                            priority = model_conf.get("priority")
+                                            if priority is None:
+                                                await websocket.send_json({"type": "log", "content": f"⚠️ Skipping model in priority list due to missing 'priority': {model_conf.get('model_name')}"})
+                                                continue
+                                            
+                                            heuristic_llm = llm_provider.get_llm_model(
+                                                provider=model_conf.get("provider"),
+                                                model_name=model_conf.get("model_name"),
+                                                temperature=float(model_conf.get("temperature", 0.1)),
+                                                base_url=model_conf.get("base_url", ""),
+                                                api_key=model_conf.get("api_key", "")
+                                            )
+                                            model_priority_list.append({"priority": int(priority), "llm": heuristic_llm})
+                                        except Exception as e:
+                                            await websocket.send_json({"type": "log", "content": f"⚠️ Failed to initialize heuristic model {model_conf.get('model_name')}: {e}"})
+                                    
+                                    model_priority_list.sort(key=lambda x: x['priority'])
+                                
+                                output_model = None
+                                if extraction_model_name:
+                                    output_model = load_model_from_file(extraction_model_name)
+                                controller = CustomController(output_model=output_model)
+                                
+                                async def validation_callback(think, reason, is_confirmed):
+                                    await websocket.send_json({
+                                        "type": "validation",
+                                        "think": think,
+                                        "reason": reason,
+                                        "is_confirmed": is_confirmed
+                                    })
+
+
+                                agent = BrowserUseAgent(
+                                    task=task,
+                                    llm=llm,
+                                    browser=browser,
+                                    browser_context=browser_context,
+                                    controller=controller,
+                                    use_vision=agent_settings.get("use_vision", True),
+                                    planner_llm=planner_llm,
+                                    confirmer_llm=confirmer_llm,
+                                    inhibit_close=True,
+                                    enable_smart_retry=enable_smart_retry,
+                                    enable_cost_saver=enable_cost_saver,
+                                    model_priority_list=model_priority_list,
+                                    validation_callback=validation_callback,
+                                    tool_calling_method=agent_settings.get("tool_calling_method", "auto")
+                                )
+                                
+                                async def step_callback(state, model_output, step_number):
+                                    try:
+                                        thought = getattr(model_output, "thought", "") if model_output else ""
+                                        screenshot = state.screenshot if state.screenshot else None
+                                        actions = []
+                                        if model_output:
+                                            output_actions = getattr(model_output, "action", None)
+                                            if output_actions:
+                                                if not isinstance(output_actions, list):
+                                                    output_actions = [output_actions]
+                                                for action in output_actions:
+                                                    if hasattr(action, "model_dump"):
+                                                        actions.append(action.model_dump())
+                                        
+                                        await websocket.send_json({
+                                            "type": "step",
+                                            "step": step_number,
+                                            "thought": thought,
+                                            "url": state.url,
+                                            "screenshot": screenshot,
+                                            "actions": actions
+                                        })
+                                    except Exception as e:
+                                        logger.error(f"Error in callback: {e}")
+
+                                agent.step_callback = step_callback
+                                
+                                await websocket.send_json({"type": "log", "content": "Agent started..."}) 
+                                
+                                stream_task = None
+                                if browser_settings.get("enable_live_view", False):
+                                    async def stream_browser():
+                                        while True:
+                                            try:
+                                                if browser_context:
+                                                    page = await browser_context.get_current_page()
+                                                    if page:
+                                                        screenshot = await page.screenshot(type='jpeg', quality=50)
+                                                        encoded = base64.b64encode(screenshot).decode('utf-8')
+                                                        await websocket.send_json({"type": "stream", "image": encoded})
+                                            except Exception:
+                                                pass
+                                        await asyncio.sleep(0.5)
+                                    
+                                    stream_task = asyncio.create_task(stream_browser())
+
+                                try:
+                                    history = await agent.run(max_steps=agent_settings.get("max_steps", 100))
+                                    result = history.final_result()
+                                    await websocket.send_json({"type": "result", "content": result})
+                                finally:
+                                    if stream_task:
+                                        stream_task.cancel()
+                                        try:
+                                            await stream_task
+                                        except asyncio.CancelledError:                                        
+                                            pass
+                        
+            
+                        except Exception as e:
+                            logger.error(f"Task execution error: {e}", exc_info=True)
+                            await websocket.send_json({"type": "error", "content": str(e)})
+                            if local_task_id:
+                                await stop_browsers_for_task(local_task_id)
+                    runner_task = asyncio.create_task(run_agent_job())
                 
-                    runner_task = asyncio.create_task(run_agent_job_wrapper(payload))
-                
-                elif action == "confirmation_response" and runner_task and not runner_task.done():
-                    response_data = {
-                        "response": payload.get("response"),
-                        "custom_task": payload.get("custom_task"),
-                        "edited_text": payload.get("edited_text") # Handle edited draft
-                    }
-                    # The confirmation_response_queue is used by the agent to get user input for confirmation dialogs
-                    logger.info(f"Received confirmation response: {response_data}")
-                    await confirmation_response_queue.put(response_data)
-                    continue
-                else:
-                    # If we reach here, it's an unhandled action
-                    continue
-                                 
-            except json.JSONDecodeError:
-                logger.error("Invalid JSON received")
-                await websocket.send_json({"type": "error", "content": "Invalid JSON received"})
             except Exception as e:
-                logger.error(f"Error processing message: {e}")
-                await websocket.send_json({"type": "error", "content": str(e)})
-                                 
-    except asyncio.CancelledError: # This catches cancellation of the websocket itself
-        logger.info("Client disconnected or WebSocket task cancelled.")
+                logger.error(f"WebSocket message error: {e}")
+                    
+            
     except WebSocketDisconnect:
-        logger.info("WebSocket disconnected")
-    except Exception as e:
-        logger.error(f"WebSocket connection error: {e}", exc_info=True)
-    finally: # Final cleanup to ensure no browsers are left hanging
-        if runner_task and not runner_task.done():
-            runner_task.cancel() # Ensure the agent job is cancelled too
-        if browser_context: await browser_context.close()
-        if browser: await browser.close()
-        logger.info("WebSocket connection closed and resources cleaned up.")
+        logger.info("Client disconnected")
 
+        if runner_task and not runner_task.done():
+            runner_task.cancel()
+    
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {e}")
+    finally:
+        if runner_task and not runner_task.done():
+            
+            runner_task.cancel()
+        if browser_context:
+            await browser_context.close()
+        if browser:            
+            await browser.close()
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Browser Agent Server")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="IP address to bind to")
@@ -1435,8 +1175,3 @@ if __name__ == "__main__":
 
     print(f"Starting FastAPI server at http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
-
-
-
-
-    

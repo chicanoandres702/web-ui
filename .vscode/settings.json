@@ -10,5 +10,12 @@
   },
   "python-envs.defaultEnvManager": "ms-python.python:conda",
   "python-envs.defaultPackageManager": "ms-python.python:conda",
-  "python-envs.pythonProjects": []
+  "python-envs.pythonProjects": [],
+  "geminicodeassist.chat.automaticScrolling": false,
+  "geminicodeassist.chat.changeView": "Default diff view",
+  "geminicodeassist.chat.defaultCodeBlockDisplay": "Collapsed",
+  "geminicodeassist.chat.enableStreaming": false,
+  "geminicodeassist.displayInlineContextHint": false,
+  "geminicodeassist.enableTelemetry": false,
+  "geminicodeassist.inlineSuggestions.enableAuto": true
 }

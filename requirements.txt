@@ -10,3 +10,5 @@ langgraph==0.3.34
 langchain-community
 browser-use[memory]==0.1.48
 json_repair
+google-cloud-aiplatform
+google-auth
