@@ -131,7 +131,7 @@ async def create_procedural_memory(step_data: dict, llm) -> bool:
          if not embedding:
             logger.warning(f"Procedural memory skip: Embedding creation failed. Continuing with internal QuizStateManager.")
 
-             return False
+            return False
     except Exception as e:
         logger.warning(f"Procedural memory skip: {e}. Continuing with internal QuizStateManager.")
 

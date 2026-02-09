@@ -472,6 +472,24 @@ class BrowserUseAgent(Agent):
         self.heuristics = AgentHeuristics(self)
 
     def _set_tool_calling_method(self) -> ToolCallingMethod | None:
+        tool_calling_method = self.settings.tool_calling_method
+
+        if tool_calling_method == 'auto':
+            if 'Ollama' in self.chat_model_library:
+                return 'raw'
+            elif any(m in self.model_name.lower() for m in ['qwen', 'deepseek', 'gpt', 'claude']) and 'Ollama' not in self.chat_model_library:
+                return 'function_calling'
+            elif self.chat_model_library == 'ChatGoogleGenerativeAI':
+                return None
+            elif self.chat_model_library == 'ChatOpenAI':
+                return 'function_calling'
+            elif self.chat_model_library == 'AzureChatOpenAI':
+                return 'function_calling'
+            else:
+                return None
+        else:
+            return tool_calling_method
+
     async def _setup_components(self, agent_kwargs: Dict[str, Any]) -> None:
         """
         Extracts and sets up agent components.
@@ -486,29 +504,7 @@ class BrowserUseAgent(Agent):
 
         self.planner_task = None
 
-        tool_calling_method = self.settings.tool_calling_method
         self.loop_handler = AgentLoopHandler(self, self.settings)
-
-        if tool_calling_method == 'auto':
-            if 'Ollama' in self.chat_model_library:
-                return 'raw'
-            # Optimization: Explicitly enable function calling for known capable models
-            # This prevents them from falling back to 'raw' mode which causes parsing errors with empty content
-            elif any(m in self.model_name.lower() for m in ['qwen', 'deepseek', 'gpt', 'claude']) and 'Ollama' not in self.chat_model_library:
-                return 'function_calling'
-            # elif is_model_without_tool_support(self.model_name):
-            #     return 'raw'
-            elif self.chat_model_library == 'ChatGoogleGenerativeAI':
-                return None
-            elif self.chat_model_library == 'ChatOpenAI':
-                return 'function_calling'
-            elif self.chat_model_library == 'AzureChatOpenAI':
-                return 'function_calling'
-            else:
-                return None
-        else:
-            return tool_calling_method
-            return tool_calling_method
 
     @time_execution_async("--run (agent)")
     async def run(
