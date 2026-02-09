@@ -71,7 +71,7 @@ class AgentHeuristics:
         agent = self.agent
         if not agent.model_priority_list or not (agent.enable_smart_retry or agent.enable_cost_saver):
             # Reset to main if heuristics are off or no list is provided
-            if agent.llm != agent.main_llm: agent.llm = agent.main_llm
+            if agent.llm_manager.get_current_llm() != agent.llm_manager.main_llm: agent.llm_manager.set_llm(agent.llm_manager.main_llm)
             agent.current_model_index = -1
             agent.switched_to_retry_model = False
             agent.using_cheap_model = False
@@ -119,7 +119,7 @@ class AgentHeuristics:
 
         # --- Fallback: Revert to main model on any failure ---
         if agent.state.consecutive_failures > 0 and agent.current_model_index != -1:
-            logger.warning(f"Failure on model (Priority {current_priority}). Reverting to main model.")
+            logger.warning(f"Failure on model (Priority {current_priority}). Reverting to main model: {agent.llm_manager.main_llm}.")
             agent.llm = agent.main_llm
             agent.current_model_index = -1
             agent.switched_to_retry_model = False
