@@ -142,6 +142,23 @@ class AgentLLMManager:
 
 ToolCallingMethod = str
 
+def _prepare_agent_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepares and validates the agent settings before passing them to AgentSettings.
+    """
+    prepared_settings = settings.copy()
+
+    # Convert relevant arguments to the expected type
+    for key in ['max_steps', 'confirmer_strictness']:
+        if key in prepared_settings and isinstance(prepared_settings[key], str):
+            try:
+                prepared_settings[key] = int(prepared_settings[key])
+            except ValueError:
+                logger.warning(f"Could not convert {key} to int, using default value.")
+                prepared_settings.pop(key)
+
+    return prepared_settings
+
 
 class BrowserUseAgent(Agent):
     def __init__(
@@ -174,9 +191,8 @@ class BrowserUseAgent(Agent):
         self.successful_steps_since_switch = 0
         self.switched_to_retry_model = False
         self.planner_task: Optional[asyncio.Task] = None
-        # Extract use_memory to avoid passing it to parent Agent which doesn't support it
-        agent_kwargs = kwargs.copy()
 
+        agent_kwargs = kwargs.copy()
         self.use_custom_memory = agent_kwargs.pop('use_memory', True)
         # Extract agent-specific args that should not be passed to the base Agent classs
         self.save_history_path = agent_kwargs.pop('save_history_path', None)
@@ -184,7 +200,6 @@ class BrowserUseAgent(Agent):
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
         self.cookie_path = agent_kwargs.pop('cookie_path', "./cookies")        
         self.initial_actions = agent_kwargs.pop('initial_actions', None)
-        
 
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
         if confirmer_llm:
@@ -194,7 +209,6 @@ class BrowserUseAgent(Agent):
         self.step_callback: Optional[Callable] = kwargs.get("step_callback")
 
         self.done_callback: Optional[Callable] = kwargs.get("done_callback")
-        agent_kwargs = kwargs.copy()
         self.source = agent_kwargs.pop('source', None)
         self.inhibit_close = agent_kwargs.pop('inhibit_close', False)
         self.enable_smart_retry = enable_smart_retry
@@ -202,7 +216,6 @@ class BrowserUseAgent(Agent):
         self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', True)
         self.auto_save_on_stuck = auto_save_on_stuck
         self.instruction_handler = instruction_handler
-        agent_kwargs = kwargs.copy()
 
         original_llm = agent_kwargs['llm']
         # This instructs the LLM to produce output conforming to AgentOutput
@@ -214,7 +227,7 @@ class BrowserUseAgent(Agent):
             structured_llm = original_llm
         # Patch LLM if it's a model that needs JSON fixes (e.g., Qwen/Ollama)
         self.llm_manager = AgentLLMManager(self, model_priority_list)
-        chat_model_library = getattr(original_llm, "__class__", None).__name__
+        chat_model_library = original_llm.__class__.__name__ if original_llm else ""
         model_name = getattr(original_llm, "model_name", "").lower() or getattr(original_llm, "model", "").lower()
         
         if 'Ollama' in chat_model_library or any(m in model_name for m in ['qwen', 'deepseek']):
@@ -223,6 +236,7 @@ class BrowserUseAgent(Agent):
         else:
             agent_kwargs['llm'] = structured_llm    
         self.max_consecutive_failures = kwargs.get("max_consecutive_failures", 500)
+        
 
         super().__init__(**agent_kwargs)
         self.llm_manager = AgentLLMManager(self, model_priority_list)
@@ -230,7 +244,6 @@ class BrowserUseAgent(Agent):
         self.heuristics = ComponentHeuristics(self)
         self.confirmer_llm = confirmer_llm
         self.confirmer_strictness = confirmer_strictness
-        self._initialize_components(agent_kwargs, system_prompt)
 
         if model_priority_list and model_priority_list[0].get('llm'):
             self.llm_manager.set_llm(model_priority_list[0]['llm'])
