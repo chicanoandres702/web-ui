@@ -498,6 +498,7 @@ Analyze the text for an assignment rubric, grading guide, or submission instruct
 If found, extract the requirements to achieve the HIGHEST score (e.g., "Distinguished", "Exemplary", "Full Marks").
 Focus on the specific actions, details, or justifications required for the top tier.
 
+
 Return JSON:
 {{
   "is_assignment": true/false,

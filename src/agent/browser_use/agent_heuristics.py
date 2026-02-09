@@ -18,6 +18,20 @@ from src.agent.browser_use.navigation_recovery import evaluate_site_state
 
 logger = logging.getLogger(__name__)
 
+async def _safe_evaluate(page, js_code: str) -> str:
+    """Safely evaluates JavaScript code on a page and returns the result."""
+    try:
+        return await page.evaluate(js_code)
+    except Exception as e:
+        logger.warning(f"Error evaluating JavaScript: {e}")
+        return None
+
+async def _safe_take_screenshot(page, path: str):
+     try:
+          await page.screenshot(path=path)
+     except Exception as e:
+          logger.warning(f"Failed to save screenshot: {e}")
+
 class AgentHeuristics:
     """
     Encapsulates heuristic checks and behaviors for the BrowserUseAgent.
@@ -31,32 +45,7 @@ class AgentHeuristics:
 
     async def _get_current_page(self):
         """Safely retrieves the current page from the browser context."""
-        try:
-            context = self.agent.browser_context
-            # 1. Try standard method
-            if hasattr(context, "get_current_page"):
-                return await context.get_current_page()
-            
-            # 2. Try accessing underlying playwright context directly (if wrapper)
-            if hasattr(context, "context"):
-                playwright_ctx = context.context
-                if playwright_ctx and hasattr(playwright_ctx, "pages") and playwright_ctx.pages:
-                    return playwright_ctx.pages[-1]
-            
-            # 3. Try accessing pages directly (if it IS a Playwright context)
-            if hasattr(context, "pages") and context.pages:
-                return context.pages[-1]
-        except Exception as e:
-            logger.warning(f"Failed to retrieve current page: {e}")
-        return None
-
     def inject_message(self, content: str):
-        """Injects a system message or state update into the agent's message manager."""
-        if hasattr(self.agent, "message_manager"):
-             # 1. Try adding as a HumanMessage via Agent helper
-             if hasattr(self.agent, "inject_notification"):
-                 self.agent.inject_notification(content)
-                 return
 
              # 2. Fallback: Attempt to add state message only if state is fully initialized
              has_element_tree = False
@@ -75,7 +64,7 @@ class AgentHeuristics:
                     )
                     return
                  except Exception as e:
-                     logger.warning(f"Failed to inject strategy hint via state message: {e}")
+                     logger.warning(f"Failed to inject message via state message: {e}")
     
     def manage_model_switching(self):
         """Handles Cost Saver and Smart Retry logic."""
@@ -107,7 +96,7 @@ class AgentHeuristics:
                     agent.switched_to_retry_model = True
                     agent.using_cheap_model = False
                     agent.state.consecutive_failures = 0
-                    agent.successful_steps_since_switch = 0
+                    agent.successful_steps_since_switch = 0 
                     self.inject_message("Switched to a stronger model to resolve issue.")
                     return
 
@@ -251,7 +240,7 @@ class AgentHeuristics:
                     await page.screenshot(path=full_path)
                     logger.info(f"📸 Saved screenshot of blocking element: {full_path}")
                 except Exception as e:
-                    logger.warning(f"Failed to save blocking element screenshot: {e}")
+                    logger.warning(f"Failed to save screenshot of a blocking element: {e}")
         except Exception:
             pass
 
@@ -297,8 +286,11 @@ class AgentHeuristics:
             return
 
         try:
+            if not self.agent.browser_context or not hasattr(self.agent.browser_context, "get_current_page"):
+                return  # No browser context or get_current_page method available
+
             page = await self._get_current_page()
-            content = await page.evaluate("document.body.innerText")
+            content = await _safe_evaluate(page, "document.body.innerText")
             full_context = f"{page.url}\n{content}"
             
             step = len(self.agent.state.history.history)
@@ -320,8 +312,6 @@ class AgentHeuristics:
                 if assessment["action_required"]:
                     if assessment["action_required"] == "RENAVIGATE":
                         msg += " Recommended Action: Use 'go_to_url' to try the URL again."
-                elif assessment["action_required"] == "HANDLE_MFA":
-                    msg += " Recommended Action: Since MFA is required and device access is unavailable, the task cannot be completed automatically."
 
                     msg += f" Recommended Action: {assessment['action_required']}"
                 self.inject_message(msg)
@@ -383,7 +373,7 @@ class AgentHeuristics:
     async def detect_progress(self):
         """Detects progress indicators (e.g. 'Question 3 of 10') and injects them."""
         try:
-            page = await self._get_current_page()
+
             text = await page.evaluate("document.body.innerText")
             
             matches = re.findall(r'(?:Question|Step|Page)\s*(\d+)\s*(?:of|/)\s*(\d+)', text, re.IGNORECASE)
@@ -413,7 +403,7 @@ class AgentHeuristics:
                 logger.info("💾 Auto-saving page content due to failure...")
                 try:
                     page = await self._get_current_page()
-                    content = await page.evaluate("document.body.innerText")
+                    content = await _safe_evaluate(page, "document.body.innerText")
                     title = await page.title()
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     filename = f"stuck_{timestamp}.txt"
@@ -423,4 +413,5 @@ class AgentHeuristics:
                 except Exception as e:
                     logger.error(f"Failed to auto-save stuck page: {e}")
             return True
+
         return False

@@ -12,6 +12,7 @@ from src.agent.browser_use.smart_focus import focus_on_content
 from src.agent.browser_use.dom_purification import purify_page
 from src.utils import browser_scripts as bs
 from src.utils.task_manager import Task, TaskManager
+from src.agent.deep_research.instruction_handler import create_instruction_handler, InstructionHandler
 from src.utils.utils import parse_json_safe, extract_quoted_text
 from src.utils.prompts import (
     ENHANCED_AGENT_ACTION_USER_PROMPT,
@@ -34,19 +35,23 @@ class EnhancedDeepResearchAgent:
     """
     def __init__(
         self,
-        llm: BaseChatModel, browser_context, controller: CustomController,
+        llm: BaseChatModel, 
+        browser_context, controller: CustomController,
     ):
 
         self.browser_context = browser_context
         self.controller = controller
+        self.action_handlers = ActionHandlers(self, browser_context, controller)
         self.state_manager = QuizStateManager()
         self.page_analyzer = PageAnalyzer(llm)
         self.action_decider = ActionDecider(llm)
         self.history: List[Dict[str, Any]] = []
         self.task_manager = TaskManager()  # Initialize TaskManager
+        self.instruction_handler: InstructionHandler = create_instruction_handler(self)
         self._stop_requested = False
         self.discovery_completed = False
         self.consecutive_failures = 0
+
 
 
 
@@ -107,6 +112,7 @@ class EnhancedDeepResearchAgent:
                     for task_description in subtasks:
                         self.task_manager.add_task(Task(description=task_description, task_type="subtask"))                                        
                     await self._add_subtasks_to_plan(subtasks)  # Adds tasks to the UI overlay
+
                 
                 # --- PHASE 1.6: RUBRIC ANALYSIS ---
                 # Check for assignment rubrics to guide quality
@@ -133,7 +139,7 @@ class EnhancedDeepResearchAgent:
                 current_task = self.task_manager.get_current_task()
                 if current_task:
                     self._add_history_step("Executing Task", "info", f"Executing: {current_task.description}")
-                last_result = await self._execute_decision(action_decision, goal, analyzed_url)
+                last_result = await self._execute_decision(action_decision, goal, page_content, analyzed_url)
                 
 
                 # 4. Check for finish
@@ -147,7 +153,7 @@ class EnhancedDeepResearchAgent:
         return self.history
 
     async def _analyze_page(self, page):
-        """Gathers page content and state."""
+        """Gathers page content and state."""        
         current_url = page.url
         page_content = await self._get_page_text(page)
         self.state_manager.sync_from_page(page_content)
@@ -156,6 +162,7 @@ class EnhancedDeepResearchAgent:
         nav_signal = await self._detect_navigation_controls(page)
         scroll_info = await self._check_scroll_status(page)
         pagination_info = f"{nav_signal} {scroll_info}".strip()
+        
         
         return page_content, pagination_info, current_url
 
@@ -166,16 +173,68 @@ class EnhancedDeepResearchAgent:
             await focus_on_content(page, focus_target)
             self._add_history_step("Focus", "completed", f"Focused on '{focus_target}'")
 
-    async def _execute_decision(self, decision: Dict[str, str], goal: str, expected_url: str) -> str:
+    async def _execute_decision(self, decision: Dict[str, str], goal: str, page_content:str, expected_url: str) -> str:
         """Executes the decided action and returns the result."""
-        # Safety Check: Ensure URL hasn't changed since analysis
+
         page = await self.browser_context.get_current_page()
         if page.url != expected_url:
             self._add_history_step("Safety", "skipped", f"URL changed from {expected_url} to {page.url}")
             return "Action aborted: URL changed during planning. Re-assessing page."
 
-        action = decision.get("action")
         
+        # Check if there are instructions to process
+        instructions_task = self.task_manager.get_task_by_type("instructions")
+        if instructions_task:
+            last_result = await self._handle_instructions(instructions_task, decision)
+            return last_result
+
+    async def _handle_instructions(self, task: Task, decision: Dict[str, str]) -> str:
+        """Handles the instructions and only allows assignment after completion."""
+        
+        action = decision.get("action")
+
+        # Disallow actions other than process instructions until instruction are clear
+        if "assignment" in self.goal.lower() and action != "process_instructions" :
+            msg = f"Instructions are not yet complete, please process them first."
+            self._add_history_step("Instructions", "skipped", msg)
+            return msg
+        
+        #Refactored for Modularity
+        #INSTRUCTION EXECUTION
+        if action == "process_instructions":
+            current_task = self.task_manager.get_current_task()
+            if current_task:
+                tasks = self.instruction_handler.handle_instruction(current_task.description)
+                result = await self.instruction_handler.execute_instruction_tasks(tasks)
+                
+                if "Error" not in result or "Failed" not in result:
+                    self._add_history_step("Instructions", "completed", result)
+                    self.task_manager.complete_task(task)  # Remove from queue
+                    return result
+        
+        # --- Report invalid action during instructions phase ---
+        msg = f"Invalid Action: {action}. Please process all instructions before attempting tasks."
+        self._add_history_step("Instructions", "skipped", msg)
+        return msg
+
+        # Default: Report invalid action during instructions phase
+        msg = f"Invalid Action: {action}. Please process all instructions before attempting tasks."
+        self._add_history_step("Instructions", "skipped", msg)
+        return msg
+    
+    async def _extract_rubric_constraints(self, page_content: str, goal: str) -> Dict[str, Any]:
+        """Analyzes page content to find grading rubrics and requirements."""
+        try:
+            content_sample = page_content[:8000] # Rubrics can be verbose
+            prompt = RUBRIC_EXTRACTION_PROMPT.format(goal=goal, content_sample=content_sample)
+            response = await self.llm.ainvoke([HumanMessage(content=prompt)])
+            data = parse_json_safe(response.content)
+            return data if isinstance(data, dict) and data.get("is_assignment") else None
+        except Exception as e:
+            logger.warning(f"Rubric extraction failed: {e}")
+            return None
+
+
         # Special handlers that require custom logic
         if action == "go_to_url":
             return await self._handle_go_to_url(decision, goal)
@@ -201,6 +260,7 @@ class EnhancedDeepResearchAgent:
         url = decision.get("url")
         if url and not await self.check_link(url, goal):
             self._add_history_step("Navigation", "skipped", f"Co-Coordinator blocked distraction: {url}")
+
             return "Navigation blocked by Co-Coordinator."
         res = await self._execute_action("go_to_url", {"url": url})
         self._check_failure(res)
@@ -373,7 +433,7 @@ class EnhancedDeepResearchAgent:
     async def _decide_focus(self, goal: str, page_content: str) -> str:
         """Asks the LLM what the most important element to focus on is."""
         # Smart Positioning Prompt
-        prompt = ENHANCED_AGENT_FOCUS_PROMPT.format(
+        prompt=ENHANCED_AGENT_FOCUS_PROMPT.format(
             goal=goal, 
             status_summary=self.state_manager.get_status_summary(),
             page_content=page_content[:2000]
@@ -386,7 +446,6 @@ class EnhancedDeepResearchAgent:
             return ""
 
     async def _decide_next_action(self, goal: str, page_content: str, last_result: str, pagination_info: str, current_url: str = "") -> Dict[str, str]:
-        """Asks the LLM to decide the next action to take."""
         
 
         # Inject strategy hint if multiple failures occurred

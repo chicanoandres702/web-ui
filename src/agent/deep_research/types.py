@@ -14,6 +14,9 @@ class ResearchTaskItem(TypedDict):
     queries: Optional[List[str]]
     result_summary: Optional[str]
 
+    
+Task = ResearchTaskItem
+
 class ResearchCategoryItem(TypedDict):
     category_name: str
     tasks: List[ResearchTaskItem]

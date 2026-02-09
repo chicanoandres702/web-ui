@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import asyncio
 import logging
 import os
@@ -34,6 +35,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from src.utils.utils import retry_async, parse_json_safe # Ensure parse_json_safe is imported
 from langchain_core.runnables import Runnable, RunnableLambda # Import RunnableLambda
+from langchain_core.runnables import chain
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 from src.utils.memory_utils import get_memory_manager
 from src.agent.browser_use import agent_utils  # Import the new module
@@ -46,7 +48,109 @@ from src.utils.io_manager import IOManager
 
 SKIP_LLM_API_KEY_VERIFICATION = True
 
+class InstructionHandlerInterface(abc.ABC):
+    @abc.abstractmethod
+    async def handle_instructions(self, task: Task, decision: Dict[str, str]) -> str:
+        pass
 
+
+
+class AgentLLMManager:
+    """Manages LLM-related operations for the agent, including model switching and patching."""
+
+    def __init__(self, agent, model_priority_list: Optional[List[Dict]] = None):
+        self.agent = agent
+        self.model_priority_list = model_priority_list or []
+        self.main_llm = agent.llm  # Store the primary (high-quality) LLM
+        self.current_model_index = -1  # -1 indicates main_llm
+
+    def set_llm(self, llm):
+        """Sets the current LLM for the agent."""
+        self.agent.llm = llm
+
+    def get_current_llm(self):
+        """Returns the current LLM."""
+        return self.agent.llm
+
+    def _patch_llm_with_qwen_fix(self, llm: Runnable) -> Runnable:
+        """Wraps the LLM with a RunnableLambda that applies the Qwen/Ollama JSON fix logic."""
+        llm_with_aimessage_output = llm | RunnableLambda(self._convert_agent_output_to_aimessage)
+        return llm_with_aimessage_output | RunnableLambda(self._apply_qwen_fix_logic)
+
+    def _convert_agent_output_to_aimessage(self, agent_output: AgentOutput) -> BaseMessage:
+        tool_calls = []
+        json_content = agent_output.model_dump_json()
+        if agent_output.action:
+            actions_list = agent_output.action if isinstance(agent_output.action, list) else [agent_output.action]
+            for action_model in actions_list:
+                if hasattr(action_model, "model_dump"):  # Ensure it's an ActionModel-like object
+                    action_args = action_model.model_dump(exclude_unset=True)
+                    tool_name = action_args.pop("name", None)  # Extract 'name' and remove from args
+
+                    if tool_name:
+                        tool_calls.append({
+                            "name": tool_name,
+                            "args": action_args
+                        })
+                    else:
+                        logger.warning(
+                            f"ActionModel found without a 'name' attribute: {action_model}. Skipping tool call conversion.")
+                else:
+                    logger.warning(
+                        f"Unexpected action type in AgentOutput: {type(action_model)}. Skipping tool call conversion.")
+
+        return AIMessage(content=json_content, tool_calls=tool_calls)
+
+    def _apply_qwen_fix_logic(self, response: BaseMessage) -> BaseMessage:
+        """Applies the Qwen/Ollama JSON fix logic to an LLM response (BaseMessage)."""
+        if not hasattr(response, 'content') or not isinstance(response.content, str):
+            return response
+
+        content = response.content.strip()
+        if not content:
+            return response
+
+        try:
+            logger.debug(f"QwenFixWrapper: Attempting to parse raw LLM output: '{content}'")
+            data = parse_json_safe(content)  # Use parse_json_safe from utils
+            if isinstance(data, (dict, list)):
+                # Specific fix for AgentOutput wrapped in a dict
+                if isinstance(data, dict) and data.get("name") == "AgentOutput" and "arguments" in data:
+                    logger.info("🔧 Fixed Qwen/Ollama output format by extracting 'arguments'.")
+                    response.content = json.dumps(data["arguments"])
+                else:
+                    response.content = json.dumps(data)
+        except Exception as e:
+            logger.debug(f"QwenFixWrapper: Initial json_repair failed: {e}. Attempting more aggressive repair.")
+            # Fallback to more aggressive repair or default to empty JSON
+            try:
+                if '{' in content and not content.endswith('}'):
+                    fixed_content = content + '}' * (content.count('{') - content.count('}'))
+                    data = json_repair.loads(fixed_content)
+                    response.content = json.dumps(data)
+            except Exception as inner_e:
+                logger.warning(f"QwenFixWrapper: Inner repair attempt failed: {inner_e}. Original: '{content}'")
+                response.content = "{}"
+        return response
+
+    def _set_tool_calling_method(self) -> ToolCallingMethod | None:
+        tool_calling_method = self.agent.settings.tool_calling_method
+
+        if tool_calling_method == 'auto':
+            if 'Ollama' in self.chat_model_library:
+                return 'raw'
+            elif any(m in self.agent.model_name.lower() for m in ['qwen', 'deepseek', 'gpt', 'claude']) and 'Ollama' not in self.chat_model_library:
+                return 'function_calling'
+            elif self.agent.chat_model_library == 'ChatGoogleGenerativeAI':
+                return None
+            elif self.agent.chat_model_library == 'ChatOpenAI':
+                return 'function_calling'
+            elif self.agent.chat_model_library == 'AzureChatOpenAI':
+                return 'function_calling'
+            else:
+                return None
+        else:
+            return tool_calling_method
 
 
 class ConfirmationManager:
@@ -113,7 +217,7 @@ class AgentLoopHandler:
         """Executes a single step in the agent's execution loop."""
         try:
             if await self._handle_pre_step():
-                return True
+                 return True
 
             if on_step_start is not None:
                 await on_step_start(self.agent)
@@ -129,7 +233,7 @@ class AgentLoopHandler:
 
         except Exception as e:
             raise e
-            
+
 ToolCallingMethod = str
 
 class BrowserUseAgent(Agent):
@@ -229,8 +333,7 @@ class AgentLoopHandler:
     async def run_step(self, step, on_step_start, on_step_end):
         """Executes a single step in the agent's execution loop."""
         try:
-            if await self._handle_pre_step():
-                return True
+            # return True
 
             if on_step_start is not None:
                 await on_step_start(self.agent)
@@ -246,7 +349,7 @@ class AgentLoopHandler:
 
         except Exception as e:
             raise e
-            
+
 ToolCallingMethod = str
 
 class BrowserUseAgent(Agent):
@@ -270,7 +373,7 @@ class BrowserUseAgent(Agent):
         send_agent_message_callback: Optional[Callable] = None,
         confirmation_event: Optional[asyncio.Event] = None,
         confirmation_response_queue: Optional[asyncio.Queue] = None,
-        max_consecutive_failures: int = 5, **kwargs
+        max_consecutive_failures: int = 5, instruction_handler: Optional[InstructionHandlerInterface] = None, **kwargs
 
     ):
         self.confirmer_llm = confirmer_llm
@@ -295,6 +398,7 @@ class BrowserUseAgent(Agent):
         self.send_agent_message_callback = send_agent_message_callback
         self.confirmation_event = confirmation_event
         self.confirmation_response_queue = confirmation_response_queue
+        self.instruction_handler = instruction_handler
 
         # Prepare arguments for the parent Agent class
         agent_kwargs = kwargs.copy()
@@ -307,6 +411,7 @@ class BrowserUseAgent(Agent):
         # Extract agent-specific args that should not be passed to the base Agent class
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
+        self.cookie_path = agent_kwargs.pop('cookie_path', None)
         self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', False)
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
         
@@ -326,6 +431,7 @@ class BrowserUseAgent(Agent):
         if 'llm' in agent_kwargs:
             original_llm = agent_kwargs['llm']
             
+
             # Apply structured output using AgentOutput schema
             # This instructs the LLM to produce output conforming to AgentOutput
             if isinstance(original_llm, Runnable):
@@ -336,120 +442,50 @@ class BrowserUseAgent(Agent):
                 structured_llm = original_llm
             logger.debug(f"Type of LLM after structured output: {type(structured_llm)}")
 
-            # Then apply the Qwen fix to this (potentially structured) LLM
-            # agent_kwargs['llm'] = self._patch_llm_with_qwen_fix(structured_llm)
-            agent_kwargs['llm'] = original_llm
         super().__init__(**agent_kwargs)
         
         # Apply system prompt override if provided
+
+        self.llm_manager = AgentLLMManager(self,model_priority_list)
+
+
+
+
         if system_prompt:
             if hasattr(self, "message_manager"):
                 self.message_manager.system_message = SystemMessage(content=system_prompt)
-
         # Link controller to this agent for HUD control
         if self.controller and hasattr(self.controller, "set_agent"):
             self.controller.set_agent(self)
 
-        self.main_llm = self.llm  # Store the primary (high-quality) LLM
+
+        if model_priority_list and 'llm' in model_priority_list[0]:
+            self.llm = model_priority_list[0]['llm']
+        else:
+            self.llm_manager.set_llm(agent_kwargs['llm'])
         self.last_domain = None
         self.successful_steps_since_switch = 0
 
-
+        self.llm = agent_kwargs['llm']
         self.confirmation_manager = ConfirmationManager(send_agent_message_callback, confirmation_response_queue)
         self.memory_manager = get_memory_manager() if self.use_custom_memory else None
         self.heuristics = AgentHeuristics(self)
 
-    def _convert_agent_output_to_aimessage(self, agent_output: AgentOutput) -> BaseMessage:
-        """
-        Converts an AgentOutput Pydantic model to an AIMessage.
-        The AIMessage's content will be the JSON string of the AgentOutput.
-        The AIMessage's tool_calls will be derived from AgentOutput.action.
-        """
-        # The content of the AIMessage will be the JSON string of the AgentOutput
-        # This ensures that the agent's message_manager and other parsing logic
-        # receive a JSON string, which they expect.
-        json_content = agent_output.model_dump_json()
-        
-        tool_calls = []
-        if agent_output.action:
-            actions_list = agent_output.action if isinstance(agent_output.action, list) else [agent_output.action]
-            for action_model in actions_list:
-                if hasattr(action_model, "model_dump"): # Ensure it's an ActionModel-like object
-                    # LangChain's ToolCall format: {"name": "tool_name", "args": {"arg1": "value1"}}
-                    # We need to ensure 'name' is not duplicated in 'args'
-                    action_args = action_model.model_dump(exclude_unset=True)
-                    tool_name = action_args.pop("name", None) # Extract 'name' and remove from args
-                    
-                    if tool_name:
-                        tool_calls.append({
-                            "name": tool_name,
-                            "args": action_args
-                        })
-                    else:
-                        logger.warning(f"ActionModel found without a 'name' attribute: {action_model}. Skipping tool call conversion.")
-                else:
-                    logger.warning(f"Unexpected action type in AgentOutput: {type(action_model)}. Skipping tool call conversion.")
-
-        return AIMessage(content=json_content, tool_calls=tool_calls)
-
-    def _apply_qwen_fix_logic(self, response: BaseMessage) -> BaseMessage:
-        """
-        Applies the Qwen/Ollama JSON fix logic to an LLM response (BaseMessage).
-        This function is designed to be used within a RunnableLambda.
-        """
-        # Ensure the response is mutable if we need to change its content
-        # For AIMessage, content is usually mutable, but for other BaseMessage types, it might not be.
-        # We'll assume it's an AIMessage or similar where content can be set.
-        if not hasattr(response, 'content') or not isinstance(response.content, str):
-            return response
-
-        content = response.content.strip()
-        if not content:
-            return response
-
-        try:
-            logger.debug(f"QwenFixWrapper: Attempting to parse raw LLM output: '{content}'")
-            # Attempt to parse with json_repair.loads
-            data = parse_json_safe(content) # Use parse_json_safe from utils
-            if isinstance(data, (dict, list)):
-                # Specific fix for AgentOutput wrapped in a dict
-                if isinstance(data, dict) and data.get("name") == "AgentOutput" and "arguments" in data:
-                    logger.info("🔧 Fixed Qwen/Ollama output format by extracting 'arguments'.")
-                    response.content = json.dumps(data["arguments"])
-                else:
-                    response.content = json.dumps(data)
-        except Exception as e:
-            logger.debug(f"QwenFixWrapper: Initial json_repair failed: {e}. Attempting more aggressive repair.")
-            # Fallback to more aggressive repair or default to empty JSON
-            try:
-                if '{' in content and not content.endswith('}'):
-                     # Attempt to close unclosed JSON object
-                     fixed_content = content + '}' * (content.count('{') - content.count('}'))
-                     data = json_repair.loads(fixed_content)
-                     response.content = json.dumps(data)
-                # If all repair attempts fail, the outer exception will catch it,
-                # or the content will remain as is if no repair was possible.
-                # We don't want to default to "{}" here unless absolutely necessary,
-                # as it might mask the actual problematic output.
-            except Exception as inner_e:
-                logger.warning(f"QwenFixWrapper: Inner repair attempt failed: {inner_e}. Original: '{content}'")
-                response.content = "{}"
-        return response
-
-    def _patch_llm_with_qwen_fix(self, llm: Runnable) -> Runnable:
-        """
-        Wraps the LLM with a RunnableLambda that applies the Qwen/Ollama JSON fix logic.
-        This avoids direct patching of ainvoke and allows chaining.
-        """
-        # First, ensure the output is converted to an AIMessage with JSON content
-        # if it's an AgentOutput Pydantic model.
-        # This RunnableLambda will be applied *after* the structured_llm produces AgentOutput.
-        llm_with_aimessage_output = llm | RunnableLambda(self._convert_agent_output_to_aimessage)
-
-        # Then, apply the Qwen fix logic to this AIMessage (which now has JSON string content)
-        # The _apply_qwen_fix_logic expects a BaseMessage and will process its string content.
-        return llm_with_aimessage_output | RunnableLambda(self._apply_qwen_fix_logic)
     def _set_tool_calling_method(self) -> ToolCallingMethod | None:
+    async def _setup_components(self, agent_kwargs: Dict[str, Any]) -> None:
+        """
+        Extracts and sets up agent components.
+        """
+
+        self.use_custom_memory = agent_kwargs.pop('use_memory', False)
+        self.planner_llm = agent_kwargs.pop('planner_llm', None)
+        self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
+        self.cookie_path = agent_kwargs.pop('cookie_path', None)
+        self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', False)
+        self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
+
+        self.planner_task = None
+
         tool_calling_method = self.settings.tool_calling_method
         self.loop_handler = AgentLoopHandler(self, self.settings)
 
@@ -471,6 +507,7 @@ class BrowserUseAgent(Agent):
             else:
                 return None
         else:
+            return tool_calling_method
             return tool_calling_method
 
     @time_execution_async("--run (agent)")
@@ -526,6 +563,10 @@ class BrowserUseAgent(Agent):
                     if await self._handle_post_step(step, max_steps):
                         break
 
+                    if step == 41:
+                        logger.warning("Agent is hanging at step 42. Investigate potential issues.")
+                        self.heuristics.inject_message("SYSTEM: Agent is potentially hanging at step 42. Please investigate.")
+
                     # If a custom task was provided, the agent.task would have been updated.
                     # We should continue the loop to process the new task.
 
@@ -534,6 +575,7 @@ class BrowserUseAgent(Agent):
                         logger.warning(f"⚠️ Step {step + 1} timed out: {e}. Attempting to recover by reloading page.")
                         self.state.consecutive_failures += 1
                         try:
+                            logger.info("Attempting to reload the page to recover...")
                             page = await self.heuristics._get_current_page()
                             if page and not page.is_closed():
                                 await page.reload(wait_until="domcontentloaded", timeout=15000)
@@ -541,6 +583,8 @@ class BrowserUseAgent(Agent):
                         except Exception as reload_e:
                             logger.error(f"Failed to reload page after timeout: {reload_e}")
                         continue
+                    logger.error(f"An unexpected error occurred during step {step + 1}: {e}")
+                    self.heuristics.inject_message(f"SYSTEM: An error occurred during step {step + 1}: {e}")
                     raise e
             else:
                 self._handle_max_steps_reached()
@@ -878,6 +922,9 @@ class BrowserUseAgent(Agent):
     async def _handle_pre_step(self) -> bool:
         """
         Handles pre-step checks: pause, stop, model switching, failures.
+
+        Also manages cookie persistence across sessions
+
         Returns True if the agent should stop/break the loop.
         """
         # Process control queue
@@ -894,25 +941,34 @@ class BrowserUseAgent(Agent):
 
         # Custom Memory Injection
         if self.use_custom_memory and self.memory_manager:
-            await self._inject_site_knowledge()
+            await self._inject_site_knowledge(self.state, self.memory_manager, self.last_domain, self.heuristics)
+
 
         # Check if we should stop due to too many failures
         # Note: self.heuristics is a direct attribute of BrowserUseAgent
         if await self.heuristics.check_max_failures():
-            return True
+           return True
 
         # Check if MFA is required and wait for approval
         if self.heuristics.is_waiting_for_mfa:
             logger.info("MFA required, waiting for approval from another device...")
             if self.send_agent_message_callback:
                 await self.send_agent_message_callback({
+
                     "type": "mfa_required",
                     "message": "MFA Required: Approve from your other device to continue."
-                })
+           })
             while self.heuristics.is_waiting_for_mfa and not self.state.stopped:
                 await asyncio.sleep(1)  # Check every second
             logger.info("MFA approved or agent stopped.")
             self.heuristics.is_waiting_for_mfa = False  # Reset flag
+
+            # Verify there is still a valid page and browser context
+            if not self.browser_context or not hasattr(self.browser_context, "get_current_page"):
+                logger.warning("Browser context is no longer valid after MFA, stopping agent.")
+                self.state.stopped = True
+                return True
+
             return True
 
         # Check control flags before each step
@@ -924,8 +980,17 @@ class BrowserUseAgent(Agent):
             await asyncio.sleep(0.2)  # Small delay to prevent CPU spinning
             if self.state.stopped:  # Allow stopping while paused
                 return True
-        
+        # Load cookies at the beginning of each session
+        if self.cookie_path and os.path.exists(self.cookie_path):
+            cookies = await self._load_cookies(self.cookie_path)
+            await self.browser_context.add_cookies(cookies)
+            logger.info(f"Loaded cookies from {self.cookie_path}")
+
         return False
+
+    async def _inject_site_knowledge(self, state, memory_manager, last_domain, heuristics):
+        """Checks if we have entered a new domain and injects relevant knowledge."""
+        return await self.inject_site_knowledge(state, memory_manager, last_domain, heuristics)
 
     async def _manage_tabs(self):
         """Closes extraneous tabs to keep the agent focused."""

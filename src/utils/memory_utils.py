@@ -2,9 +2,40 @@ import os
 import logging
 import shutil
 from urllib.parse import urlparse
+from typing import Optional
+from typing import Callable, Coroutine, Any
+import asyncio
 from src.utils.utils import save_text_to_file, read_file_safe, sanitize_filename
 
 logger = logging.getLogger(__name__)
+
+async def _create_embedding(text: str):
+    """
+    Abstracts the process of creating an embedding for a given text.
+
+    Handles model selection and potential API errors.
+    using the provided llm if available, otherwise, a default.
+    """
+
+    try:
+        if llm:
+            # Use the provided llm to generate embeddings
+            if hasattr(llm, "embed_query") and callable(llm.embed_query):
+                return await asyncio.to_thread(llm.embed_query, text)
+            elif hasattr(llm, "aembed_query") and callable(llm.aembed_query):
+                return await llm.aembed_query(text)
+        # For now, return a dummy embedding (list of floats)
+        return [0.0] * 1536  # Assuming 1536 is the dimensionality of your embeddings
+
+    except Exception as e:
+        logger.error(f"Error creating embedding: {e}")
+        return None
+
+
+
+
+
+
 
 class SimpleMemoryManager:
     """
@@ -70,6 +101,12 @@ def get_memory_manager(memory_dir: str = "./tmp/memory"):
     return _memory_manager
 
 def configure_mem0():
+        if not _memory_manager:
+            logger.info("Creating default SimpleMemoryManager as backup.")
+            _memory_manager = SimpleMemoryManager()
+
+
+def configure_mem0():
     """Deprecated: No-op to prevent mem0 errors."""
     pass
 
@@ -77,22 +114,36 @@ def reset_mem0():
     """Deprecated: No-op."""
     pass
 
-def create_procedural_memory(step_data: dict):
+async def create_procedural_memory(step_data: dict, llm) -> bool:
     """
     Attempts to save procedural memory. 
     Enhanced with a fail-safe to prevent agent stalling on memory errors.
     """
     try:
-        logger.info(f"Attempting to create procedural memory for step: {step_data.get('step', 'unknown')}")
-        # Placeholder for actual logic or integration with SimpleMemoryManager
-        pass 
+         logger.info(f"Attempting to create procedural memory for step: {step_data.get('step', 'unknown')}")
+
+
+         # 1. Create Knowledge Entry
+         knowledge = f"Procedural memory for step: {step_data.get('step', 'unknown')}\n{step_data}"
+
+         # 2. Generate Embedding (Abstracted)
+         embedding = await _create_embedding(knowledge, llm=llm)
+         if not embedding:
+            logger.warning(f"Procedural memory skip: Embedding creation failed. Continuing with internal QuizStateManager.")
+
+             return False
     except Exception as e:
         logger.warning(f"Procedural memory skip: {e}. Continuing with internal QuizStateManager.")
-        return False
+
+
     return True
 
-def get_relevant_memory(context_query: str):
-    """Returns memory if available, or an empty list if the system is down."""
+
+llm = None
+    
+
+def get_relevant_memory(context_query: str, llm=None):
+    """Returns memory if available, or an empty list if the system is down. Uses the provided llm for retrieval."""
     try:
         return []
     except:

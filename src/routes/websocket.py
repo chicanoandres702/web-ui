@@ -24,9 +24,10 @@ from src.agent.deep_research.state_manager import DeepResearchStateManager
 from src.routes.models import load_model_from_file
 from src.config import RATE_LIMIT_SECONDS, MAX_REQUESTS_PER_MINUTE
 
+from src.utils.instruction_handler import InstructionHandler, create_instruction_handler
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
+COOKIE_PATH = "./tmp/cookies.json"
 
 async def run_browser_agent(payload, websocket, browser, browser_context):
     task = payload.get("task")
@@ -189,10 +190,12 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
         confirmer_llm=confirmer_llm,
         inhibit_close=True,
         enable_cost_saver=enable_cost_saver,
+       cookie_path=COOKIE_PATH,
         model_priority_list=model_priority_list,
         validation_callback=validation_callback,        
         tool_calling_method=agent_settings.get("tool_calling_method", "auto")
     )
+    instruction_handler = create_instruction_handler(agent)
     
     async def step_callback(state, model_output, step_number):
         try:
@@ -317,6 +320,7 @@ async def run_deep_research_agent(payload, websocket):
         browser_config=browser_settings,
         mcp_server_config=mcp_config
     )
+    instruction_handler = create_instruction_handler(deep_research_agent)
     
     local_task_id = resume_task_id if resume_task_id else str(uuid.uuid4())
     output_dir = os.path.join("./tmp/deep_research", local_task_id)
@@ -377,6 +381,7 @@ async def run_deep_research_agent(payload, websocket):
         await websocket.send_json({"type": "result", "content": final_report})
     elif not (final_state and final_state.get("error_message")):
         await websocket.send_json({"type": "error", "content": "Deep research finished without generating a report."})
+
 
 
 @router.websocket("/ws")
@@ -452,4 +457,6 @@ async def websocket_endpoint(websocket: WebSocket):
             await browser_context.close()
         if browser:
             # Clear rate limit on disconnect
+
+
             await browser.close()
