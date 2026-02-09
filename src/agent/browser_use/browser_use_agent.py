@@ -255,7 +255,7 @@ class BrowserUseAgent(Agent):
         auto_save_on_stuck=False,
         source=None,
         history: AgentHistoryList | None = None,
-        save_history_path: str = "",
+        save_history_path: Optional[str] = None,
         system_prompt: str = None,
         inhibit_close: bool = False,
         current_step_index: Optional[int] = None,
@@ -276,7 +276,7 @@ class BrowserUseAgent(Agent):
         self.enable_smart_retry = enable_smart_retry
         self.auto_save_on_stuck = auto_save_on_stuck
         self.source = source
-        self.save_history_path = save_history_path
+        self.save_history_path = save_history_path or ""
         self.inhibit_close = inhibit_close
         self.is_validating = False
         self.switched_to_retry_model = False
@@ -834,8 +834,11 @@ class BrowserUseAgent(Agent):
                     self.stop()
                 elif command == "add_task":
                     if hasattr(self, "message_manager"):
-                         self.message_manager.add_user_message(value)
-                         self.heuristics.inject_message(f"SYSTEM: User added new task to queue: '{value}'. Update your plan.")
+                        # Use add_message with HumanMessage as MessageManager doesn't have add_user_message
+                        add_msg_func = getattr(self.message_manager, "add_message", None)
+                        if callable(add_msg_func):
+                            add_msg_func(HumanMessage(content=value))
+                        self.heuristics.inject_message(f"SYSTEM: User added new task to queue: '{value}'. Update your plan.")
                 
             except asyncio.QueueEmpty:
                 break
@@ -903,9 +906,14 @@ class BrowserUseAgent(Agent):
                 return True
         # Load cookies at the beginning of each session
         if self.cookie_path and os.path.exists(self.cookie_path):
-            cookies = await self._load_cookies(self.cookie_path)
-            await self.browser_context.add_cookies(cookies)
-            logger.info(f"Loaded cookies from {self.cookie_path}")
+            if self.browser_context:
+                try:
+                    with open(self.cookie_path, 'r') as f:
+                        cookies = json.load(f)
+                    await self.browser_context.add_cookies(cookies)
+                    logger.info(f"Loaded cookies from {self.cookie_path}")
+                except Exception as e:
+                    logger.error(f"Failed to load cookies: {e}")
 
         return False
 
@@ -962,7 +970,7 @@ class BrowserUseAgent(Agent):
             return True # Stop requested
 
         if self.state.history.is_done():
-            if self.settings.validate_output and step < max_steps - 1:
+            if getattr(self.settings, 'validate_output', False) and step < max_steps - 1:
                 if not await self._validate_output():
                     return False # Validation failed, continue loop
 

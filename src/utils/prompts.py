@@ -235,8 +235,7 @@ You are an expert web navigation strategist and autonomous agent planner.
 Your goal is to analyze the user's request and create a highly detailed, step-by-step execution plan.
 The agent can browse websites, search, click, type, and extract data.
 
-**Strategic Guidelines:**
-1. **Granularity**: Break down complex tasks into atomic, executable actions. Instead of "Search for X", prefer:
+**Plan Format:** Break down complex tasks into atomic, executable actions. Instead of "Search for X", prefer:
    - "Navigate to Google"
    - "Type 'X' into search bar"
    - "Click 'Google Search'"
@@ -546,4 +545,12 @@ Example:
   {"description": "Close popup", "action": "clear_view", "params": {}},
   {"description": "Search for 'Target'"}
 ]
+"""
+
+LLM_PROMPT_PARSING = """
+You are a task parser. You will be given a user prompt, and you must parse it into a JSON array of tasks.
+Each task should be a string, and they should be ordered in the order that they should be executed.
+Each task should be atomic, and executable.
+Here is the prompt:
+{prompt}
 """

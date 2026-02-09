@@ -1,3 +1,4 @@
+
 import logging
 import re
 import os
@@ -18,10 +19,11 @@ from src.agent.browser_use.navigation_recovery import evaluate_site_state
 
 logger = logging.getLogger(__name__)
 
-async def _safe_evaluate(page, js_code: str) -> str:
+async def _safe_evaluate(page, js_code: str) -> str | None:
     """Safely evaluates JavaScript code on a page and returns the result."""
     try:
-        return await page.evaluate(js_code)
+        result = await page.evaluate(js_code)
+        return str(result) if result is not None else None
     except Exception as e:
         logger.warning(f"Error evaluating JavaScript: {e}")
         return None
@@ -45,6 +47,11 @@ class AgentHeuristics:
 
     async def _get_current_page(self):
         """Safely retrieves the current page from the browser context."""
+        try:
+            return await self.agent.browser_context.get_current_page()
+        except Exception:
+            return None
+
     def inject_message(self, content: str):
 
              # 2. Fallback: Attempt to add state message only if state is fully initialized
@@ -152,6 +159,8 @@ class AgentHeuristics:
                 return
 
             page = await self._get_current_page()
+            if not page:
+                return
             content = await page.evaluate("document.body.innerText")
             content_lower = content.lower()
 
@@ -201,6 +210,8 @@ class AgentHeuristics:
         """Checks for blocking elements (ads/popups) and injects a warning."""
         try:
             page = await self._get_current_page()
+            if not page:
+                return
             
             # 1. Check for CAPTCHA (Priority)
             content = await page.evaluate("document.body.innerText.toLowerCase()")
@@ -211,6 +222,8 @@ class AgentHeuristics:
             # 2. Check for Chrome Promotion (Auto-Dismiss)
             if "make google chrome your default browser" in content or "switch to chrome" in content or "get google chrome" in content:
                 try:
+                    if page is None:
+                        return
                     for btn_text in ["No thanks", "Not now", "No, thanks", "Later", "Dismiss"]:
                         # XPath for case-insensitive text match on buttons or links
                         xpath = f"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')] | //a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')]"
@@ -244,12 +257,13 @@ class AgentHeuristics:
         except Exception:
             pass
 
-    async def _detect_login_status(self, page) -> str:
+    async def _detect_login_status(self, page) -> str | None:
         """
         Detects login status using JavaScript and returns a status message.
         """
         try:
-            return await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
+            result = await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
+            return str(result) if result is not None else None
         except Exception as e:
             logger.warning(f"Error detecting login status: {e}")
             return None
@@ -268,6 +282,8 @@ class AgentHeuristics:
         """Checks if the user is logged in and injects a notification."""
         try:
             page = await self._get_current_page()
+            if not page:
+                return
             status_msg = await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
             
             # if "User appears to be Logged In" in status_msg:
@@ -290,6 +306,8 @@ class AgentHeuristics:
                 return  # No browser context or get_current_page method available
 
             page = await self._get_current_page()
+            if not page:
+                return
             content = await _safe_evaluate(page, "document.body.innerText")
             full_context = f"{page.url}\n{content}"
             
@@ -332,6 +350,8 @@ class AgentHeuristics:
 
         try:
             page = await self._get_current_page()
+            if not page:
+                return
             url = page.url
             
             if url in self.processed_urls_for_subtasks:
@@ -373,7 +393,9 @@ class AgentHeuristics:
     async def detect_progress(self):
         """Detects progress indicators (e.g. 'Question 3 of 10') and injects them."""
         try:
-
+            page = await self._get_current_page()
+            if not page:
+                return
             text = await page.evaluate("document.body.innerText")
             
             matches = re.findall(r'(?:Question|Step|Page)\s*(\d+)\s*(?:of|/)\s*(\d+)', text, re.IGNORECASE)
@@ -403,12 +425,15 @@ class AgentHeuristics:
                 logger.info("💾 Auto-saving page content due to failure...")
                 try:
                     page = await self._get_current_page()
+                    if not page:
+                        return True
                     content = await _safe_evaluate(page, "document.body.innerText")
                     title = await page.title()
+                    url = page.url
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     filename = f"stuck_{timestamp}.txt"
                     path = os.path.join("./tmp/agent_history", self.agent.state.agent_id, filename)
-                    save_text_to_file(path, f"URL: {page.url}\nTitle: {title}\n\n{content}")
+                    save_text_to_file(path, f"URL: {url}\nTitle: {title}\n\n{content}")
                     logger.info(f"Saved stuck page content to {path}")
                 except Exception as e:
                     logger.error(f"Failed to auto-save stuck page: {e}")

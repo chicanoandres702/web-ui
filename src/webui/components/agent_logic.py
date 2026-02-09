@@ -1,9 +1,11 @@
 import os
 import logging
+from typing import List, Dict, Any
 from src.utils.browser_factory import create_browser, create_context
 from src.controller.custom_controller import CustomController
 from src.agent.browser_use.browser_use_agent import BrowserUseAgent
 from src.utils.utils import ensure_default_extraction_models
+from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
 

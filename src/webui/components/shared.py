@@ -39,7 +39,7 @@ def update_model_dropdown(llm_provider):
 def create_llm_settings_ui(
     prefix: str,
     label: str,
-    default_provider: str = None,
+    default_provider: str = "openai",
     default_base_url: str = "http://137.131.201.189:11434",
     include_vision: bool = False,
     default_vision: bool = False,
@@ -203,6 +203,7 @@ def get_agent_settings_values(webui_manager, components: Dict[Component, Any]) -
     settings["planner_system_prompt"] = get_setting("planner_system_prompt") or None
     settings["enable_auto_pause"] = get_setting("enable_auto_pause", False)
     settings["enable_kb_auto_save"] = get_setting("enable_kb_auto_save", False)
+    settings["use_llm_parsing"] = get_setting("use_llm_parsing", False)
     settings["enable_auto_streamline"] = get_setting("enable_auto_streamline", False)
 
     # Confirmer
@@ -637,7 +638,10 @@ async def generate_knowledge_suggestion(history: AgentHistoryList, llm: BaseChat
     
     try:
         response = await llm.ainvoke(messages)
-        return response.content
+        content = response.content
+        if isinstance(content, list):
+            return "\n".join([str(item) for item in content])
+        return str(content)
     except Exception as e:
         logger.error(f"Error generating knowledge: {e}")
         return ""

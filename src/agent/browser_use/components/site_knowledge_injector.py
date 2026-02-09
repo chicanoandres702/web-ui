@@ -24,10 +24,13 @@ class SiteKnowledgeInjector:
         """
         Retrieves and<ctrl63> injects relevant site knowledge into the agent's memory.
         """
-        if not self.agent.config.use_custom_memory or not self.agent.memory_manager:
+        if not getattr(self.agent, 'use_custom_memory', False) or not self.agent.memory_manager:
             return
 
         try:
+            if not self.agent.browser_context:
+                return
+
             page = await self.agent.browser_context.get_current_page()
             url = page.url
             domain = url.split('/')[2] if '/' in url else url
