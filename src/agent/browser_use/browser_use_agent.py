@@ -7,9 +7,10 @@ import os
 import json
 import re
 import sys
+import inspect
 from pathlib import Path
 import json_repair
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Sequence
 from datetime import datetime
 from typing import Callable, Union
 # Ensure project root is in sys.path so 'src' imports work
@@ -40,6 +41,7 @@ from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 from src.utils.memory_utils import get_memory_manager
 from src.agent.browser_use import agent_utils  # Import the new module
 from src.agent.browser_use.agent_heuristics import AgentHeuristics
+from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -50,7 +52,7 @@ SKIP_LLM_API_KEY_VERIFICATION = True
 
 class InstructionHandlerInterface(abc.ABC):
     @abc.abstractmethod
-    async def handle_instructions(self, task: Task, decision: Dict[str, str]) -> str:
+    async def handle_instructions(self, task: Any, decision: Dict[str, str]) -> str:
         pass
 
 
@@ -133,19 +135,21 @@ class AgentLLMManager:
                 response.content = "{}"
         return response
 
-    def _set_tool_calling_method(self) -> ToolCallingMethod | None:
+    def _set_tool_calling_method(self) -> str | None:
         tool_calling_method = self.agent.settings.tool_calling_method
+        chat_model_library = self.agent.chat_model_library
+        model_name = self.agent.model_name.lower()
 
         if tool_calling_method == 'auto':
-            if 'Ollama' in self.chat_model_library:
+            if 'Ollama' in chat_model_library:
                 return 'raw'
-            elif any(m in self.agent.model_name.lower() for m in ['qwen', 'deepseek', 'gpt', 'claude']) and 'Ollama' not in self.chat_model_library:
+            elif any(m in model_name for m in ['qwen', 'deepseek', 'gpt', 'claude']) and 'Ollama' not in chat_model_library:
                 return 'function_calling'
-            elif self.agent.chat_model_library == 'ChatGoogleGenerativeAI':
+            elif chat_model_library == 'ChatGoogleGenerativeAI':
                 return None
-            elif self.agent.chat_model_library == 'ChatOpenAI':
+            elif chat_model_library == 'ChatOpenAI':
                 return 'function_calling'
-            elif self.agent.chat_model_library == 'AzureChatOpenAI':
+            elif chat_model_library == 'AzureChatOpenAI':
                 return 'function_calling'
             else:
                 return None
@@ -213,139 +217,26 @@ class AgentLoopHandler:
         self.agent = agent
         self.settings = settings
 
-    async def run_step(self, step, on_step_start, on_step_end):
+    async def run_step(self, step, on_step_start, on_step_end) -> bool:
         """Executes a single step in the agent's execution loop."""
         try:
-            if await self._handle_pre_step():
-                 return True
+            if await self.agent._handle_pre_step():
+                return True
 
             if on_step_start is not None:
                 await on_step_start(self.agent)
 
-            step_info = AgentStepInfo(step_number=step, max_steps=self.settings.max_steps)
+            max_steps = getattr(self.settings, 'max_steps', 100)
+            step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
             await self.agent.step(step_info)
 
             if on_step_end is not None:
                 await on_step_end(self.agent)
 
-            if await self._handle_post_step(step, self.settings.max_steps):
+            if await self.agent._handle_post_step(step, max_steps):
                 return True
-
-        except Exception as e:
-            raise e
-
-ToolCallingMethod = str
-
-class BrowserUseAgent(Agent):
-    async def execute_initial_actions(self, initial_actions) -> List[str]:
-        """
-        Executes initial actions directly using the controller.
-        This bypasses the standard agent loop for forced plan steps.
-        Returns a list of result strings.
-        """
-        if not initial_actions:
-            return []
-
-        results = []
-        for action_data in initial_actions:
-            # Handle Pydantic models (ActionModel) if browser_use converted them
-            if hasattr(action_data, "model_dump"):
-                action_data = action_data.model_dump(exclude_none=True)
-            elif hasattr(action_data, "dict"):
-                action_data = action_data.dict(exclude_none=True)
-
-            for action_name, params in action_data.items():
-                try:
-                    logger.info(f"🚀 Executing initial action: {action_name} with params: {params}")
-                    if self.controller and hasattr(self.controller, "execute_action_by_name"):
-                        result = await self.controller.execute_action_by_name(action_name, params, self.browser_context)
-                        results.append(f"Action '{action_name}' executed. Result: {result}")
-                        logger.info(f"✅ Result: {result}")
-                    else:
-                        results.append(f"Action '{action_name}' skipped (Controller missing).")
-                except Exception as e:
-                    logger.error(f"❌ Error executing initial action {action_name}: {e}")
-                    results.append(f"Action '{action_name}' failed: {e}")
-        return results
-
-    async def manage_tabs(self):
-        """Closes extraneous tabs to keep the agent focused."""
-        if self.controller and hasattr(self.controller, "nav_controller"):
-            await self.controller.nav_controller.manage_tabs(self.browser_context)
-
-    async def inject_site_knowledge(self, state, memory_manager, last_domain, heuristics):
-        """Checks if we have entered a new domain and injects relevant knowledge."""
-        try:
-            if not state.history.history:
-                return
-                
-            current_url = state.history.history[-1].state.url
-            if not current_url:
-                return
-
-            from urllib.parse import urlparse
-            domain = urlparse(current_url).netloc.replace("www.", "")
             
-            if domain != last_domain:
-                last_domain = domain
-                knowledge = memory_manager.get_site_knowledge(current_url)
-                if knowledge:
-                    msg = f"🧠 Memory Retrieval: I have previous knowledge about {domain}:\n{knowledge}"
-                    heuristics.inject_message(msg)
-                    logger.info(f"Injected site knowledge for {domain}")
-        except Exception as e:
-            logger.warning(f"Failed to inject site knowledge: {e}")
-        return last_domain
-
-    async def check_navigation_recovery(self):
-        """Checks if navigation recovery is needed using specialized assessment logic."""
-        await self.heuristics.check_navigation_recovery()
-
-    async def check_and_add_subtasks(self):
-        """
-        Checks if the current page contains a list of subtasks relevant to the goal.
-        If found, automatically adds them to the plan via the controller.
-        """
-        await self.heuristics.check_and_add_subtasks()
-
-    async def check_blocking_elements(self):
-        """Checks for blocking elements (ads/popups) and injects a warning."""
-        await self.heuristics.check_blocking_elements()
-
-    async def check_completion_heuristics(self):
-        """Checks for common completion signals in the page content."""
-        await self.heuristics.check_completion_heuristics()
-
-    async def check_login_status(self):
-        """Checks if the user is logged in and injects a notification."""
-        await self.heuristics.check_login_status()
-
-
-class AgentLoopHandler:
-    """
-    Handles the main execution loop of the agent, decoupling it from the agent's core.
-    """
-
-    def __init__(self, agent, settings):
-        self.agent = agent
-        self.settings = settings
-
-    async def run_step(self, step, on_step_start, on_step_end):
-        """Executes a single step in the agent's execution loop."""
-        try:
-            # return True
-
-            if on_step_start is not None:
-                await on_step_start(self.agent)
-
-            step_info = AgentStepInfo(step_number=step, max_steps=self.settings.max_steps)
-            await self.agent.step(step_info)
-
-            if on_step_end is not None:
-                await on_step_end(self.agent)
-
-            if await self._handle_post_step(step, self.settings.max_steps):
-                return True
+            return False
 
         except Exception as e:
             raise e
@@ -363,11 +254,11 @@ class BrowserUseAgent(Agent):
         enable_smart_retry=False,
         auto_save_on_stuck=False,
         source=None,
-        history: AgentHistoryList = None,
-        save_history_path: str = None,
+        history: AgentHistoryList | None = None,
+        save_history_path: str = "",
         system_prompt: str = None,
         inhibit_close: bool = False,
-        current_step_index: int = None,
+        current_step_index: Optional[int] = None,
         validation_callback=None,
         browser_context = None,
         send_agent_message_callback: Optional[Callable] = None,
@@ -399,6 +290,8 @@ class BrowserUseAgent(Agent):
         self.confirmation_event = confirmation_event
         self.confirmation_response_queue = confirmation_response_queue
         self.instruction_handler = instruction_handler
+        self.step_callback: Optional[Callable] = kwargs.get("step_callback")
+        self.done_callback: Optional[Callable] = kwargs.get("done_callback")
 
         # Prepare arguments for the parent Agent class
         agent_kwargs = kwargs.copy()
@@ -415,7 +308,7 @@ class BrowserUseAgent(Agent):
         self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', False)
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
         
-        self.planner_task = None
+        self.planner_task: Optional[asyncio.Task] = None
         
         # Note: We do NOT pass 'use_memory' to super().__init__ to avoid TypeError if the parent class doesn't support it.
 
@@ -424,7 +317,7 @@ class BrowserUseAgent(Agent):
             
 
         if history:
-            agent_kwargs['history'] = history
+            agent_kwargs['history'] = history or AgentHistoryList(history=[])
 
         # Patch LLM to fix Qwen/Ollama JSON format issues BEFORE passing to parent
         # We patch the instance directly to satisfy Pydantic validation checks for BaseChatModel
@@ -434,11 +327,11 @@ class BrowserUseAgent(Agent):
 
             # Apply structured output using AgentOutput schema
             # This instructs the LLM to produce output conforming to AgentOutput
-            if isinstance(original_llm, Runnable):
+            if hasattr(original_llm, "with_structured_output"):
                 structured_llm = original_llm.with_structured_output(AgentOutput)
                 logger.info("Applied AgentOutput schema to LLM using with_structured_output.")
             else:
-                logger.warning("LLM is not a Runnable, cannot apply with_structured_output. Proceeding without structured output enforcement.")
+                logger.warning("LLM does not support with_structured_output. Proceeding without structured output enforcement.")
                 structured_llm = original_llm
             logger.debug(f"Type of LLM after structured output: {type(structured_llm)}")
 
@@ -453,10 +346,21 @@ class BrowserUseAgent(Agent):
 
         if system_prompt:
             if hasattr(self, "message_manager"):
-                self.message_manager.system_message = SystemMessage(content=system_prompt)
+                try:
+                    # Use the public API to add system message if available
+                    # We avoid direct attribute access to 'messages' to prevent type errors
+                    # and maintain compatibility with different message manager versions. 
+                    # Using getattr to avoid static analysis errors for unknown attributes.
+                    add_msg_func = getattr(self.message_manager, "add_message", None)
+                    if callable(add_msg_func):
+                        add_msg_func(SystemMessage(content=system_prompt))
+                    else: 
+                        logger.warning("Could not set system prompt: message_manager does not support known methods.")
+                except Exception:
+                    logger.warning("An error occurred while attempting to set the system prompt.")
         # Link controller to this agent for HUD control
-        if self.controller and hasattr(self.controller, "set_agent"):
-            self.controller.set_agent(self)
+        if self.controller and hasattr(self.controller, "set_agent") and callable(getattr(self.controller, "set_agent", None)):
+            getattr(self.controller, "set_agent")(self)
 
 
         if model_priority_list and 'llm' in model_priority_list[0]:
@@ -470,9 +374,10 @@ class BrowserUseAgent(Agent):
         self.confirmation_manager = ConfirmationManager(send_agent_message_callback, confirmation_response_queue)
         self.memory_manager = get_memory_manager() if self.use_custom_memory else None
         self.heuristics = AgentHeuristics(self)
+        self.site_knowledge_injector = SiteKnowledgeInjector(self)
 
-    def _set_tool_calling_method(self) -> ToolCallingMethod | None:
-        tool_calling_method = self.settings.tool_calling_method
+    def _set_tool_calling_method(self) -> str | None:
+        tool_calling_method = getattr(self.settings, 'tool_calling_method', 'auto')
 
         if tool_calling_method == 'auto':
             if 'Ollama' in self.chat_model_library:
@@ -534,11 +439,11 @@ class BrowserUseAgent(Agent):
                     # Inject into message history so the agent knows what happened
                     summary = "\n".join(results)
                     msg = f"SYSTEM NOTE: The following actions were already executed for this step:\n{summary}\n\nCheck the current state. If the goal is achieved, output {{'finish': ...}}. Do NOT repeat the above actions."
-                    if hasattr(self, "message_manager"):
-                        if hasattr(self.message_manager, "add_user_message"):
-                            self.message_manager.add_user_message(msg)
-                        elif hasattr(self.message_manager, "add_message"):
-                            self.message_manager.add_message(HumanMessage(content=msg))
+                    if hasattr(self, "message_manager") and self.message_manager:
+                        # MessageManager in browser-use uses add_message for HumanMessages
+                        add_msg_func = getattr(self.message_manager, "add_message", None)
+                        if callable(add_msg_func):
+                            add_msg_func(HumanMessage(content=msg))
                     # Also set last_result for good measure if the parent class uses it
                     self.state.last_result = [ActionResult(extracted_content=summary, include_in_memory=True)]
 
@@ -572,7 +477,7 @@ class BrowserUseAgent(Agent):
                         self.state.consecutive_failures += 1
                         try:
                             logger.info("Attempting to reload the page to recover...")
-                            page = await self.heuristics._get_current_page()
+                            page = await self.browser_context.get_current_page() if self.browser_context else None
                             if page and not page.is_closed():
                                 await page.reload(wait_until="domcontentloaded", timeout=15000)
                                 self.heuristics.inject_message("SYSTEM: A timeout occurred. I have reloaded the page to recover. Please re-assess the current state.")
@@ -613,22 +518,33 @@ class BrowserUseAgent(Agent):
                     continue
 
                 # Check dependencies
-                if not self.controller or not hasattr(self.controller, "webui_manager"):
+                if not self.controller or not hasattr(self.controller, "webui_manager"): # type: ignore
                     continue
                 
-                manager = self.controller.webui_manager
+                manager = getattr(self.controller, "webui_manager", None)
                 if not manager or not hasattr(manager, "bu_plan") or not manager.bu_plan:
                     continue
 
                 # --- 1. Gather Context for Planner ---
                 last_step = self.state.history.history[-1]
                 plan_str = json.dumps(manager.bu_plan, indent=2)
-                page_summary = (last_step.state.element_tree or "")[:4000]
+                
+                # BrowserStateHistory doesn't have element_tree directly, 
+                # it's usually in the state object of the history item
+                page_summary = ""
+                # BrowserStateHistory stores the state in a way that might require 
+                # checking for element_tree in the underlying state object if available
+                if hasattr(last_step, 'state') and hasattr(last_step.state, 'element_tree'):
+                    page_summary = (getattr(last_step.state, 'element_tree', "") or "")[:4000]
+                
                 last_thought = getattr(last_step.model_output, "thought", "N/A") if last_step.model_output else "N/A"
 
                 # --- 2. Construct Prompt ---
-                # NOTE: This requires PLANNER_PROMPT to be defined in src/utils/prompts.py
-                from src.utils.prompts import PLANNER_PROMPT
+                try:
+                    from src.utils.prompts import PLANNER_PROMPT
+                except ImportError:
+                    PLANNER_PROMPT = "Goal: {goal}\nPlan: {plan}\nLast Thought: {last_thought}\nPage Summary: {page_summary}\nUpdate the plan."
+                
                 prompt = PLANNER_PROMPT.format(
                     goal=self.task,
                     plan=plan_str,
@@ -683,18 +599,23 @@ class BrowserUseAgent(Agent):
             elif hasattr(action_data, "dict"):
                 action_data = action_data.dict(exclude_none=True)
 
-            for action_name, params in action_data.items():
-                try:
-                    logger.info(f"🚀 Executing initial action: {action_name} with params: {params}")
-                    if self.controller and hasattr(self.controller, "execute_action_by_name"):
-                        result = await self.controller.execute_action_by_name(action_name, params, self.browser_context)
-                        results.append(f"Action '{action_name}' executed. Result: {result}")
-                        logger.info(f"✅ Result: {result}")
-                    else:
-                        results.append(f"Action '{action_name}' skipped (Controller missing).")
-                except Exception as e:
-                    logger.error(f"❌ Error executing initial action {action_name}: {e}")
-                    results.append(f"Action '{action_name}' failed: {e}")
+            if isinstance(action_data, dict):
+                for action_name, params in action_data.items():
+                    try:
+                        logger.info(f"🚀 Executing initial action: {action_name} with params: {params}")
+                        execute_func = getattr(self.controller, "execute_action_by_name", None)
+                        if self.controller and callable(execute_func):
+                            result = execute_func(action_name, params, self.browser_context)
+                            if asyncio.iscoroutine(result) or inspect.isawaitable(result):
+                                result = await result
+                                
+                            results.append(f"Action '{action_name}' executed. Result: {result}")
+                            logger.info(f"✅ Result: {result}")
+                        else:
+                            results.append(f"Action '{action_name}' skipped (Controller missing).")
+                    except Exception as e:
+                        logger.error(f"❌ Error executing initial action {action_name}: {e}")
+                        results.append(f"Action '{action_name}' failed: {e}")
         return results
 
     async def _validate_output(self) -> bool:
@@ -712,6 +633,8 @@ class BrowserUseAgent(Agent):
             messages = self._build_confirmer_messages(system_prompt)
 
             async def _call_llm():
+                if self.confirmer_llm is None:
+                    raise ValueError("Confirmer LLM is not initialized.")
                 return await self.confirmer_llm.ainvoke(messages)
 
             response = await retry_async(
@@ -751,8 +674,8 @@ class BrowserUseAgent(Agent):
                     logger.error(f"Validation callback failed: {e}")
 
             # Update plan status immediately and handle dynamic plan changes
-            if self.current_step_index is not None and self.controller and hasattr(self.controller, "webui_manager"):
-                    manager = self.controller.webui_manager
+            if self.current_step_index is not None and self.controller:
+                    manager = getattr(self.controller, "webui_manager", None)
                     if manager and hasattr(manager, "update_plan_step_status"):
                         
                         # 1. Check for Critical Blockers to update Plan (Dynamic Planning)
@@ -799,12 +722,12 @@ class BrowserUseAgent(Agent):
             return CONFIRMER_PROMPT_FAST.format(task=self.task)
         return CONFIRMER_PROMPT_STANDARD.format(task=self.task, strictness=self.confirmer_strictness or 5)
 
-    def _build_confirmer_messages(self, system_prompt: str) -> list[BaseMessage]:
+    def _build_confirmer_messages(self, system_prompt: str) -> List[BaseMessage]:
         """Constructs the message history for the confirmer LLM."""
         history = self.state.history
         last_item = history.history[-1] if history.history else None
         
-        content = [{"type": "text", "text": f"User Task: {self.task}"}]
+        content: Sequence[Any] = [{"type": "text", "text": f"User Task: {self.task}"}]
 
         if last_item:
             state_desc = f"Current URL: {last_item.state.url}\nPage Title: {last_item.state.title}\n"
@@ -813,7 +736,7 @@ class BrowserUseAgent(Agent):
                 if thought:
                     state_desc += f"Agent Thought: {thought}\n"
             
-            content.append({"type": "text", "text": state_desc})
+            content = list(content) + [{"type": "text", "text": state_desc}]
 
             if last_item.state.screenshot and self.use_vision_for_confirmer:
                 image_url = f"data:image/jpeg;base64,{last_item.state.screenshot}"
@@ -842,12 +765,14 @@ class BrowserUseAgent(Agent):
         msg = HumanMessage(content=f"System Notification: {content}")
 
         try:
-            if hasattr(self.message_manager, "add_message"):
-                self.message_manager.add_message(msg)
-            elif hasattr(self.message_manager, "add_new_task"):
-                self.message_manager.add_new_task(msg.content)
-            elif hasattr(self.message_manager, "messages") and isinstance(self.message_manager.messages, list):
-                self.message_manager.messages.append(msg)
+            # Use getattr to avoid static analysis errors for unknown attributes on MessageManager
+            add_msg_func = getattr(self.message_manager, "add_message", None)
+            if callable(add_msg_func):
+                add_msg_func(msg)
+            else:
+                add_new_task_func = getattr(self.message_manager, "add_new_task", None)
+                if callable(add_new_task_func):
+                    add_new_task_func(msg.content)
         except Exception as e:
             logger.warning(f"Failed to inject notification: {e}")
 
@@ -861,12 +786,12 @@ class BrowserUseAgent(Agent):
 
     async def _execute_step_callbacks(self, step: int):
         """Executes registered step callbacks."""
-        if hasattr(self, "step_callback"):
+        if getattr(self, "step_callback", None):
             try:
                 if self.state.history.history:
                     last_state = self.state.history.history[-1].state
                     last_output = self.state.history.history[-1].model_output
-                    if asyncio.iscoroutinefunction(self.step_callback):
+                    if inspect.iscoroutinefunction(self.step_callback):
                         await self.step_callback(last_state, last_output, step + 1)
                     else:
                         self.step_callback(last_state, last_output, step + 1)
@@ -875,9 +800,9 @@ class BrowserUseAgent(Agent):
 
     async def _execute_done_callback(self):
         """Executes registered done callbacks."""
-        if hasattr(self, "done_callback"):
+        if getattr(self, "done_callback", None):
             try:
-                if asyncio.iscoroutinefunction(self.done_callback):
+                if inspect.iscoroutinefunction(self.done_callback):
                     await self.done_callback(self.state.history)
                 else:
                     self.done_callback(self.state.history)
@@ -937,7 +862,7 @@ class BrowserUseAgent(Agent):
 
         # Custom Memory Injection
         if self.use_custom_memory and self.memory_manager:
-            await self._inject_site_knowledge(self.state, self.memory_manager, self.last_domain, self.heuristics)
+            await self.site_knowledge_injector.inject_site_knowledge()
 
 
         # Check if we should stop due to too many failures
@@ -984,37 +909,15 @@ class BrowserUseAgent(Agent):
 
         return False
 
-    async def _inject_site_knowledge(self, state, memory_manager, last_domain, heuristics):
-        """Checks if we have entered a new domain and injects relevant knowledge."""
-        return await self.inject_site_knowledge(state, memory_manager, last_domain, heuristics)
-
     async def _manage_tabs(self):
         """Closes extraneous tabs to keep the agent focused."""
-        if self.controller and hasattr(self.controller, "nav_controller"):
-            await self.controller.nav_controller.manage_tabs(self.browser_context)
+        nav_controller = getattr(self.controller, "nav_controller", None)
+        if nav_controller:
+            await nav_controller.manage_tabs(self.browser_context)
 
     async def _inject_site_knowledge(self):
         """Checks if we have entered a new domain and injects relevant knowledge."""
-        try:
-            if not self.state.history.history:
-                return
-                
-            current_url = self.state.history.history[-1].state.url
-            if not current_url:
-                return
-
-            from urllib.parse import urlparse
-            domain = urlparse(current_url).netloc.replace("www.", "")
-            
-            if domain != self.last_domain:
-                self.last_domain = domain
-                knowledge = self.memory_manager.get_site_knowledge(current_url)
-                if knowledge:
-                    msg = f"🧠 Memory Retrieval: I have previous knowledge about {domain}:\n{knowledge}"
-                    self.heuristics.inject_message(msg)
-                    logger.info(f"Injected site knowledge for {domain}")
-        except Exception as e:
-            logger.warning(f"Failed to inject site knowledge: {e}")
+        await self.site_knowledge_injector.inject_site_knowledge()
 
     async def _handle_post_step(self, step: int, max_steps: int) -> bool:
         """
@@ -1079,16 +982,22 @@ class BrowserUseAgent(Agent):
         last_step_info = self.state.history.history[-1] if self.state.history.history else None
         
         intel = "No specific new information from this step."
-        if last_step_info and last_step_info.model_output and last_step_info.model_output.thought:
-            intel = last_step_info.model_output.thought
+        if last_step_info and last_step_info.model_output:
+            # Use getattr to safely access 'thought' as it might not be in the schema 
+            # or might be in a nested structure depending on the specific AgentOutput implementation
+            thought = getattr(last_step_info.model_output, "thought", None)
+            if thought:
+                intel = thought
         
         next_action_desc = "Agent is considering its next move."
         if last_step_info and last_step_info.model_output and last_step_info.model_output.action:
             actions_list = last_step_info.model_output.action if isinstance(last_step_info.model_output.action, list) else [last_step_info.model_output.action]
             action_strings = []
             for action_model in actions_list:
-                if hasattr(action_model, "name") and hasattr(action_model, "args"):
-                    action_strings.append(f"{action_model.name}({json.dumps(action_model.args)})")
+                # ActionModel uses model_dump to access fields like name and arguments
+                if hasattr(action_model, "model_dump"):
+                    action_dict = action_model.model_dump()
+                    action_strings.append(f"{action_dict.get('name', 'unknown')}({json.dumps(action_dict.get('args', {}))})")
                 else:
                     action_strings.append(str(action_model)) # Fallback for non-standard actions
             next_action_desc = ", ".join(action_strings)
@@ -1198,7 +1107,7 @@ class BrowserUseAgent(Agent):
             except asyncio.CancelledError:
                 pass
 
-        if self.inhibit_close:
+        if getattr(self, 'inhibit_close', False):
             logger.info("🚫 Cleanup inhibited: Browser will remain open.")
         else:
             try:
@@ -1207,7 +1116,7 @@ class BrowserUseAgent(Agent):
                 # Log as debug to avoid noise during forced shutdowns/interrupts
                 logger.debug(f"Error during agent cleanup (likely benign): {e}")
 
-        if self.settings.generate_gif:
+        if self.settings and getattr(self.settings, 'generate_gif', False):
             output_path: str = 'agent_history.gif'
             if isinstance(self.settings.generate_gif, str):
                 output_path = self.settings.generate_gif
