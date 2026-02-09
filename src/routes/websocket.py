@@ -43,6 +43,7 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
 
     if browser is None:
         browser = CustomBrowser(
+            
             config=BrowserConfig(
                 headless=browser_settings.get("headless", False),
                 disable_security=browser_settings.get("disable_security", True),
@@ -187,10 +188,9 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
         planner_llm=planner_llm,
         confirmer_llm=confirmer_llm,
         inhibit_close=True,
-        enable_smart_retry=enable_smart_retry,
         enable_cost_saver=enable_cost_saver,
         model_priority_list=model_priority_list,
-        validation_callback=validation_callback,
+        validation_callback=validation_callback,        
         tool_calling_method=agent_settings.get("tool_calling_method", "auto")
     )
     
@@ -379,7 +379,7 @@ async def run_deep_research_agent(payload, websocket):
         await websocket.send_json({"type": "error", "content": "Deep research finished without generating a report."})
 
 
-@router.websocket("/ws?token={token}")
+@router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     browser = None
@@ -397,20 +397,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 payload = json.loads(data)
                 action = payload.get("action", "run")
 
-                # Rate limiting check
-                if request_counts[client_ip] >= MAX_REQUESTS_PER_MINUTE:
-                    await websocket.send_json({"type": "error", "content": "Rate limit exceeded. Please wait."})
-                    await asyncio.sleep(5)  # give some time before disconnect
-                    continue
-
-                request_counts[client_ip] += 1
-
-                
                 if action == "stop":
                     if runner_task and not runner_task.done():
                         runner_task.cancel()
                     continue
-                    
+
                 if action == "run":
                     task = payload.get("task")
                     agent_type = payload.get("agent_type", "browser")
@@ -418,10 +409,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     if not task:
                         continue
                         
+
                     if runner_task and not runner_task.done():
                         await websocket.send_json({"type": "error", "content": "Agent already running"})
                         continue
-                    
+
                     async def run_agent_job():
                         nonlocal browser, browser_context
                         try:
@@ -435,13 +427,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         except Exception as e:
                             logger.error(f"Task execution error: {e}", exc_info=True)
                             await websocket.send_json({"type": "error", "content": str(e)})
-                    
+
                     runner_task = asyncio.create_task(run_agent_job())
                 
             except Exception as e:
                 logger.error(f"WebSocket message error: {e}")
                 await websocket.send_json({"type": "error", "content": f"Error processing message: {e}"})
-                    
+
     except WebSocketDisconnect:
         logger.info("Client disconnected")
 
@@ -458,9 +450,6 @@ async def websocket_endpoint(websocket: WebSocket):
             runner_task.cancel()
         if browser_context:
             await browser_context.close()
-        if browser:            
+        if browser:
             # Clear rate limit on disconnect
-            if client_ip in request_counts:
-                del request_counts[client_ip]
-
             await browser.close()

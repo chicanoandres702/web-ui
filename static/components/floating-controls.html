@@ -1,0 +1,57 @@
+<div class="floating-controls" id="floatingControls">
+    <div class="floating-header">
+        <div class="floating-title">🎮 CONTROL PANEL</div>
+        <div class="floating-actions">
+            <button class="btn btn-icon btn-xs" onclick="toggleFloatingPanel()">
+                <span id="floatingToggleIcon">−</span>
+            </button>
+        </div>
+    </div>
+    
+    <div class="control-content">
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <button onclick="sendControl('force_review')" class="btn btn-sm">👁️ Review</button>
+            <button onclick="sendControl('force_participate')" class="btn btn-sm">✍️ Participate</button>
+            <button onclick="stopAgent(event)" class="btn btn-sm btn-error">🛑 Stop</button>
+            <button onclick="sendControl('skip_step')" class="btn btn-sm btn-secondary">⏭️ Skip</button>
+        </div>
+
+        <!-- Pause Control -->
+        <div class="pause-control">
+            <div class="toggle-group" style="margin: 0;">
+                <div id="pauseNextToggle" class="toggle" onclick="togglePauseNext()"></div>
+                <label class="toggle-label" onclick="togglePauseNext()">Pause next</label>
+            </div>
+            <div style="width: 1px; height: 16px; background: var(--border); margin: 0 6px;"></div>
+            <div class="message-box" id="pauseMessageBox">
+                💡 Review before next action
+            </div>
+        </div>
+
+        <!-- Ticker -->
+        <div class="ticker-container" id="messageTicker">
+            <span class="ticker-icon">🤖</span>
+            <span class="ticker-text">Ready for tasks</span>
+        </div>
+
+        <!-- Speed Control -->
+        <div class="control-row">
+            <div style="flex: 1;">
+                <label style="margin-bottom: 4px; font-size: 9px;">Speed: <span id="speedValue">Human Pace</span></label>
+                <input type="range" id="speedSlider" min="0" max="10" value="5" oninput="updateSpeed(this.value)">
+            </div>
+        </div>
+
+        <!-- Main Input -->
+        <form onsubmit="sendMessage(event)" class="input-group">
+            <input type="text" id="messageText" autocomplete="off" placeholder="Enter task (Ctrl+Enter to run)..." style="flex: 1;" />
+            <button id="sendBtn" type="submit" class="btn" style="width: 90px;">
+                ▶️ Run
+            </button>
+            <button id="stopBtn" onclick="stopAgent(event)" type="button" class="btn btn-error" style="width: 80px;" disabled>
+                ⏹️ Stop
+            </button>
+        </form>
+    </div>
+</div>

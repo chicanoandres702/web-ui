@@ -1,0 +1,99 @@
+<aside class="sidebar right task-queue" id="rightSidebar">
+    <div class="sidebar-toggle" onclick="toggleSidebar('right')">▶</div>
+    
+    <div class="sidebar-header">
+        <h1>
+            <span>📋</span>
+            Task Queue
+        </h1>
+        <p>Workflow Manager</p>
+    </div>
+
+    <div class="sidebar-content">
+        <!-- Current Task -->
+        <div class="task-current">
+            <h4>Current Task</h4>
+            <div id="currentTaskDisplay" class="task-current-text">
+                No active task
+            </div>
+            <div class="task-progress-bar">
+                <div id="taskProgressFill" class="task-progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Academic Templates -->
+        <div style="margin-bottom: 10px;">
+            <h4 style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">🎓 Academic Templates</h4>
+            <div class="template-grid">
+                <div class="template-btn" onclick="loadTemplate('quiz')">
+                    <div class="template-title">📝 Quiz</div>
+                    <div class="template-desc">Complete quiz</div>
+                </div>
+                <div class="template-btn" onclick="loadTemplate('reading')">
+                    <div class="template-title">📖 Reading</div>
+                    <div class="template-desc">Reading assignment</div>
+                </div>
+                <div class="template-btn" onclick="loadTemplate('paper')">
+                    <div class="template-title">📄 Paper</div>
+                    <div class="template-desc">Research paper</div>
+                </div>
+                <div class="template-btn" onclick="loadTemplate('yellowdig')">
+                    <div class="template-title">💬 Yellowdig</div>
+                    <div class="template-desc">Social post</div>
+                </div>
+                <div class="template-btn" onclick="loadTemplate('homework')">
+                    <div class="template-title">✏️ Homework</div>
+                    <div class="template-desc">General homework</div>
+                </div>
+                <div class="template-btn" onclick="loadTemplate('project')">
+                    <div class="template-title">🔬 Project</div>
+                    <div class="template-desc">Project workflow</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Groups -->
+        <div class="task-groups-section">
+            <div class="task-groups-header">
+                <h4>📁 Saved Groups</h4>
+                <button onclick="showSaveGroupDialog()" class="btn btn-xs">💾</button>
+            </div>
+            <div id="taskGroupsList" style="max-height: 120px; overflow-y: auto;"></div>
+        </div>
+
+        <!-- Search and Filter -->
+        <div class="search-filter-container">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="taskSearch" placeholder="Search tasks (Ctrl+K)..." oninput="filterTasks()" />
+            </div>
+            <div class="filter-buttons">
+                <div class="filter-btn active" onclick="setFilter('all')">All</div>
+                <div class="filter-btn" onclick="setFilter('pending')">Pending</div>
+                <div class="filter-btn" onclick="setFilter('active')">Active</div>
+                <div class="filter-btn" onclick="setFilter('done')">Done</div>
+            </div>
+        </div>
+
+        <!-- Task List -->
+        <div style="margin-bottom: 8px;">
+            <div class="task-list-header">
+                <h4>Queue (<span id="taskCount">0</span>)</h4>
+                <div class="task-list-actions">
+                    <button onclick="selectAllTasks()" class="btn btn-xs tooltip" data-tooltip="Select All (Ctrl+A)">☑️</button>
+                    <button onclick="sortTasks()" class="btn btn-xs tooltip" data-tooltip="Sort">🔄</button>
+                    <button onclick="clearAllTasks()" class="btn btn-xs btn-error tooltip" data-tooltip="Clear">🗑️</button>
+                </div>
+            </div>
+            <p style="font-size: 9px; color: var(--text-muted);">Drag to reorder • Click to select</p>
+        </div>
+
+        <div class="task-list" id="taskList"></div>
+
+        <!-- Add Task -->
+        <div class="input-group" style="margin-top: 8px;">
+            <input type="text" id="newTaskInput" placeholder="Add task (Ctrl+N)..." style="flex: 1;" />
+            <button onclick="addNewTask()" class="btn btn-sm">➕</button>
+        </div>
+    </div>
+</aside>

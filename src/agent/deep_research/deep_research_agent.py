@@ -12,7 +12,6 @@ from langchain_community.tools.file_management import (
     ReadFileTool,
     WriteFileTool,
 )
-
 # Langchain imports
 from langchain_core.messages import (
     AIMessage,
@@ -21,13 +20,12 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import StructuredTool, Tool
-
 # Langgraph imports
 from langgraph.graph import StateGraph
 
-from src.utils.browser_factory import create_browser, create_context
 from src.browser.custom_browser import CustomBrowser
 from src.agent.browser_use.browser_use_agent import BrowserUseAgent
 from src.controller.custom_controller import CustomController
@@ -52,13 +50,18 @@ from src.agent.deep_research.search_tool import (
     SEARCH_TOOL_NAMES,
     stop_browsers_for_task,
     run_single_browser_task,
+
     _AGENT_STOP_FLAGS
 )
 from src.utils.prompts import DEEP_RESEARCH_PLANNING_PROMPT, DEEP_RESEARCH_SYNTHESIS_SYSTEM_PROMPT
+from src.utils.browser_factory import create_browser
 from src.agent.deep_research.tool_executor import execute_tools
 from src.agent.deep_research.assessment import assess_task_completion
 
 logger = logging.getLogger(__name__)
+
+
+
 
 
 # --- Langgraph Nodes ---
@@ -83,7 +86,7 @@ async def planning_node(state: DeepResearchState) -> Dict[str, Any]:
         return {"research_plan": existing_plan}
 
     logger.info(f"Generating new research plan for topic: {topic}")
-
+    
     prompt_text = DEEP_RESEARCH_PLANNING_PROMPT.format(topic=topic)
     messages = [
         SystemMessage(content="You are a research planning assistant outputting JSON."),
@@ -120,6 +123,8 @@ async def planning_node(state: DeepResearchState) -> Dict[str, Any]:
 
 async def research_execution_node(state: DeepResearchState) -> Dict[str, Any]:
     logger.info("--- Entering Research Execution Node ---")
+
+
     if state.get("stop_requested"):
         logger.info("Stop requested, skipping research execution.")
         return {
@@ -149,7 +154,7 @@ async def research_execution_node(state: DeepResearchState) -> Dict[str, Any]:
     if task_idx >= len(current_category["tasks"]):
         logger.info(f"All tasks in category '{current_category['category_name']}' completed. Moving to next category.")
         # This logic is now effectively handled by should_continue and the index updates below
-        # The next iteration will be caught by should_continue or this node with updated indices
+        # The next iteration will be caught by should_continue or this node with update
         return {
             "current_category_index": cat_idx + 1,
             "current_task_index_in_category": 0,

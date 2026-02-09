@@ -1,0 +1,35 @@
+[project]
+name = "web-ui-1"
+version = "0.1.0"
+description = "A web UI for various agents."
+requires-python = ">=3.11"
+dependencies = [
+    "browser-use",
+    "pyperclip",
+    "gradio",
+    "json-repair",
+    "langchain-mistralai",
+    "MainContentExtractor",
+    "langchain-ibm",
+    "langchain_mcp_adapters",
+    "langgraph",
+    "langchain-community",
+    "google-cloud-aiplatform",
+    "google-auth",
+    "prometheus-client",
+    "uvicorn",
+    "fastapi",
+    "python-dotenv",
+    "starlette",
+    "langchain-core",
+    "google-auth-oauthlib",
+    "langchain_google_genai",
+    "langchain-openai",
+    "langchain-ollama",
+    "pydantic<2",
+    "numpy",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

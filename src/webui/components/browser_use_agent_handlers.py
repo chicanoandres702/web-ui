@@ -20,6 +20,7 @@ from src.webui.components.agent_logic import initialize_browser_infrastructure, 
 from src.webui.components.shared import get_agent_settings_values, get_browser_settings_values, initialize_agent_llms, read_text_file, save_text_file, format_agent_output, render_plan_markdown, process_knowledge_generation
 from src.utils.utils import get_progress_bar_html, parse_agent_thought, clean_json_string, parse_json_safe
 from src.webui.components.knowledge_base_logic import list_kb_files, load_kb_content
+import markdown
 from src.utils.io_manager import IOManager
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,11 @@ async def _handle_new_step(
     
     if hasattr(webui_manager, "bu_controller") and webui_manager.bu_controller and getattr(webui_manager.bu_controller, "fast_mode", False):
          status_text += "⚡ **FAST MODE ACTIVE**\n"
+         
+    plan = webui_manager.bu_execution_plan
+    if plan:
+        formatted_plan = markdown.markdown(plan)
+        status_text += f"**Execution Plan:** {formatted_plan}"
          
     if getattr(webui_manager.bu_agent, "switched_to_retry_model", False):
          status_text += "<span class='retry-badge'>🧠 Smart Retry Active</span>\n"
@@ -265,6 +271,9 @@ async def run_agent_task(
     # --- 1. Get Task and Initial UI Update ---
     task = components.get(user_input_comp, "").strip()
     if not task:
+        if webui_manager.bu_execution_plan:
+            task = webui_manager.bu_execution_plan
+
         gr.Warning("Please enter a task.")
         yield {run_button_comp: gr.update(interactive=True)}
         return
@@ -272,7 +281,10 @@ async def run_agent_task(
     webui_manager.bu_last_task_prompt = task
     webui_manager.current_goal = task
     webui_manager.bu_chat_history.append({"role": "user", "content": task})
-    webui_manager.bu_agent_status = "### Agent Status\nRunning..."
+    # plan
+
+    # setting status
+    webui_manager.bu_agent_status = "### Agent Status ###\nRunning..."
     
     webui_manager.stop_requested = False
     webui_manager.is_paused = False
@@ -544,7 +556,7 @@ async def run_agent_task(
                     if browser_settings["headless"] and webui_manager.bu_browser_context:
                         try:
                             webui_manager.bu_latest_screenshot = await webui_manager.bu_browser_context.take_screenshot()
-                        except Exception: pass
+                                         except Exception as e: print (f"take screenshot exception {e}")
                     sleep_time = 0.5
                     if webui_manager.bu_agent and webui_manager.bu_agent.state.paused:
                         sleep_time = 1.0
@@ -798,6 +810,7 @@ async def handle_submit(webui_manager: "WebuiManager", components: Dict[gr.compo
             if webui_manager.bu_plan:
                  # If plan exists, maybe they want to add a step?
                  # We can't easily get the text here if it's empty.
+
                  pass
             yield {}
     else:

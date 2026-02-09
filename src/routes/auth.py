@@ -15,19 +15,9 @@ def get_websocket_token():
     """
     return WEBSOCKET_TOKEN
 
-
-def verify_websocket_token(token: str = Depends(get_websocket_token)):
-    """
-    Dependency to verify the WebSocket token.
-    """
-    async def inner(websocket: WebSocket):
-        query_params = websocket.query_params
-        client_token = query_params.get("token")
-        if not client_token or client_token != token:
-            raise HTTPException(
-                status_code=401, detail="Invalid WebSocket token"
-            )
-    return inner
+"""
+Here is where the dependency to verify the websocket token was removed.
+"""
 
 
 @router.get("/auth/login")

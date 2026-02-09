@@ -242,12 +242,14 @@ The agent can browse websites, search, click, type, and extract data.
    - "Click 'Google Search'"
 2. **Action Assignment**: For EVERY step, you MUST assign a specific tool action if possible.
    - `go_to_url(url)`: For navigation.
-   - `type_into_element_by_text(text, value)`: For typing.
+   - `type_into_element_by_text(text, value)`: For typing. Be specific, targetting labels near fields.
    - `click_element_by_text(text)`: For clicking.
    - `scroll_down()`: For visibility.
    - `extract_page_links()`: For finding paths.
    - `google_search(query)`: If available, or use navigation + typing.
 3. **Verification**: Include steps to verify success (e.g., "Verify search results appear").
+4. **Granularity**: Break tasks into smallest possible steps.  Favor more steps for increased flexibility.
+5. **Adaptability**: The plan should be easily reformattable based on new instructions.
 4. **Efficiency**: Group data extraction tasks.
 5. **Context Awareness**: If provided with current browser state (URL, Title), use it!
 

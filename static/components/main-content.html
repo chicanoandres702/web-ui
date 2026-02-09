@@ -1,0 +1,62 @@
+<main class="main-content">
+    <header class="main-header">
+        <div class="status-indicator">
+            <div class="status-dot"></div>
+            <span>Agent Ready</span>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+            <div class="session-timer">
+                <span>⏱️</span>
+                <span class="timer-display" id="sessionTimer">00:00:00</span>
+            </div>
+            <button class="btn btn-icon btn-secondary tooltip" data-tooltip="Shortcuts (Ctrl+/)" onclick="showShortcuts()">⌨️</button>
+            <button class="btn btn-icon btn-secondary tooltip" data-tooltip="Export/Import" onclick="showExportImport()">📦</button>
+            <button class="btn btn-icon btn-secondary tooltip" data-tooltip="Quick Notes" onclick="toggleQuickNotes()">📝</button>
+            <span class="badge badge-info">v4.0</span>
+            <span id="stepCounter" class="badge badge-success">0 Steps</span>
+        </div>
+    </header>
+
+    <!-- Live Monitor - MAXIMIZED -->
+    <div id="liveMonitor" class="live-monitor">
+        <div class="fullscreen-toggle" onclick="toggleFullscreen()">
+            <span id="fullscreenIcon">⛶ Fullscreen</span>
+        </div>
+        
+        <div class="monitor-header">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="color: var(--error); font-size: 10px;">●</span>
+                <span style="font-size: 10px; font-weight: 600;">LIVE VIEW</span>
+            </div>
+            <span style="font-size: 10px; color: var(--text-muted);">Real-time Agent Vision</span>
+        </div>
+        
+        <div class="monitor-stats">
+            <div class="stat-item">
+                <div class="stat-label">State</div>
+                <div id="monitorState" class="stat-value">IDLE</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Goal</div>
+                <div id="monitorGoal" class="stat-value">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Data</div>
+                <div id="monitorData" class="stat-value">-</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Progress</div>
+                <div id="monitorProgress" class="stat-value">0%</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Tasks</div>
+                <div id="monitorTasks" class="stat-value">0/0</div>
+            </div>
+        </div>
+        
+        <div class="monitor-viewport">
+            <img id="liveImg" alt="Agent viewport" />
+            <div id="agentStatusDisplay" class="agent-status-overlay"></div>
+        </div>
+    </div>
+</main>

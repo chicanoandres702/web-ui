@@ -52,6 +52,9 @@ def evaluate_site_state(page_content: str, current_step_index: int, total_steps:
         assessment["status"] = "blocked"
         assessment["action_required"] = "CLOSE_OVERLAY"
         assessment["reason"] = "Detected Google Vignette or overlay."
+    elif "authenticator.pingone.com" in content_lower:
+        assessment["status"] = "mfa_required"
+        assessment["action_required"] = "HANDLE_MFA"
     elif not has_quiz_marker and not is_logged_in:
         # Only consider it 'lost' if it's not the very beginning of the task
         if current_step_index > 3: # Heuristic: after initial navigation and clearing

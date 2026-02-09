@@ -1,0 +1,120 @@
+<aside class="sidebar" id="leftSidebar">
+    <div class="sidebar-toggle" onclick="toggleSidebar('left')">◀</div>
+    
+    <div class="sidebar-header">
+        <h1>
+            <span>🤖</span>
+            Agent Control
+        </h1>
+        <p>Academic Edition</p>
+    </div>
+
+    <div class="sidebar-content">
+        <!-- Quick Settings -->
+        <div class="collapsible-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h3><span>⚡</span> Quick Settings</h3>
+                <span class="section-toggle">▼</span>
+            </div>
+            <div class="section-content">
+                <div class="card">
+                    <div class="toggle-group">
+                        <div id="visionToggle" class="toggle active" onclick="toggleVision()"></div>
+                        <label class="toggle-label" onclick="toggleVision()">Use Vision</label>
+                    </div>
+                    <div class="toggle-group">
+                        <div id="confirmerToggle" class="toggle" onclick="toggleConfirmer()"></div>
+                        <label class="toggle-label" onclick="toggleConfirmer()">Show Confirmer</label>
+                    </div>
+                    <div class="toggle-group">
+                        <div id="autoSaveToggle" class="toggle active" onclick="toggleAutoSave()"></div>
+                        <label class="toggle-label" onclick="toggleAutoSave()">Auto-save</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Agent Setup -->
+        <div class="collapsible-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h3><span>⚙️</span> Agent Setup</h3>
+                <span class="section-toggle">▼</span>
+            </div>
+            <div class="section-content">
+                <div class="card">
+                    <div class="form-group">
+                        <label>Agent Type</label>
+                        <select id="agentType">
+                            <option value="browser">🌐 Browser</option>
+                            <option value="deep_research">🔍 Research</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Extraction Model</label>
+                        <select id="extractionModel">
+                            <option value="">None</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LLM Provider -->
+        <div class="collapsible-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h3><span>🧠</span> LLM Provider</h3>
+                <span class="section-toggle collapsed">▼</span>
+            </div>
+            <div class="section-content collapsed">
+                <div class="card">
+                    <div class="form-group">
+                        <label>Provider</label>
+                        <select id="llmProvider" onchange="updateLLMSettings()">
+                            <option value="openai">OpenAI</option>
+                            <option value="gemini">Gemini</option>
+                            <option value="vertex">Vertex AI</option>
+                            <option value="ollama">Ollama</option>
+                            <option value="anthropic">Anthropic</option>
+                        </select>
+                    </div>
+                    <div id="apiKeyField" class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="apiKey" placeholder="sk-..." />
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <input type="text" id="modelName" placeholder="gemini-flash-latest" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced JSON -->
+        <div class="collapsible-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h3><span>🔧</span> Advanced</h3>
+                <span class="section-toggle collapsed">▼</span>
+            </div>
+            <div class="section-content collapsed">
+                <div class="card">
+                    <textarea id="settingsJson">{
+"llm": {
+"provider": "gemini",
+"model_name": "gemini-flash-latest",
+"temperature": 0.0
+},
+"agent": {
+"max_steps": 500,
+"use_vision": true
+},
+"browser": {
+"headless": false,
+"window_w": 1280,
+"window_h": 1100
+}
+}</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+</aside>

@@ -20,6 +20,7 @@ from browser_use.agent.gif import create_history_gif
 from browser_use.agent.service import Agent, AgentHookFunc # AIMessage is from langchain_core.messages
 from browser_use.agent.views import (
     ActionResult,
+    AgentSettings,
     AgentHistory,
     AgentOutput,
     AgentHistoryList,
@@ -35,6 +36,7 @@ from src.utils.utils import retry_async, parse_json_safe # Ensure parse_json_saf
 from langchain_core.runnables import Runnable, RunnableLambda # Import RunnableLambda
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 from src.utils.memory_utils import get_memory_manager
+from src.agent.browser_use import agent_utils  # Import the new module
 from src.agent.browser_use.agent_heuristics import AgentHeuristics
 
 load_dotenv()
@@ -42,11 +44,209 @@ logger = logging.getLogger(__name__)
 
 from src.utils.io_manager import IOManager
 
-SKIP_LLM_API_KEY_VERIFICATION = (
-        os.environ.get("SKIP_LLM_API_KEY_VERIFICATION", "false").lower()[0] in "ty1"
-)
+SKIP_LLM_API_KEY_VERIFICATION = True
 
-# Define ToolCallingMethod locally as it might be missing in newer browser_use versions
+
+
+
+class ConfirmationManager:
+    """
+    Manages confirmation requests and responses, allowing indefinite waiting
+    for external approval.
+    """
+
+    def __init__(self, send_agent_message_callback, confirmation_response_queue):
+        self.send_agent_message_callback = send_agent_message_callback
+        self.confirmation_response_queue = confirmation_response_queue
+
+    async def request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]:
+        """
+        Requests confirmation/input from the user via WebSocket, allowing indefinite waiting.
+        """
+        if not self.send_agent_message_callback or not self.confirmation_response_queue:
+            return True
+
+        await self.send_agent_message_callback({
+            "type": "request_confirmation",
+            "message": "Agent is pausing for your review. Awaiting external device approval.",
+            "intel": intel,
+            "next_task": next_task
+        })
+
+        response_data = await self.confirmation_response_queue.get()
+        response = response_data.get("response")
+        custom_task = response_data.get("custom_task")
+
+        if response == "yes":
+            return True
+        elif response == "no":
+            return False
+        elif custom_task:
+            return custom_task
+        else:
+            return False
+
+
+
+
+
+class BrowserActionHandler:
+    """
+    Handles browser-specific actions and logic, decoupling it from the agent's core.
+    """
+    def __init__(self, browser_context, controller, heuristics):
+        self.browser_context = browser_context
+        self.controller = controller
+        self.heuristics = heuristics
+
+
+class AgentLoopHandler:
+    """
+    Handles the main execution loop of the agent, decoupling it from the agent's core.
+    """
+
+    def __init__(self, agent, settings):
+        self.agent = agent
+        self.settings = settings
+
+    async def run_step(self, step, on_step_start, on_step_end):
+        """Executes a single step in the agent's execution loop."""
+        try:
+            if await self._handle_pre_step():
+                return True
+
+            if on_step_start is not None:
+                await on_step_start(self.agent)
+
+            step_info = AgentStepInfo(step_number=step, max_steps=self.settings.max_steps)
+            await self.agent.step(step_info)
+
+            if on_step_end is not None:
+                await on_step_end(self.agent)
+
+            if await self._handle_post_step(step, self.settings.max_steps):
+                return True
+
+        except Exception as e:
+            raise e
+            
+ToolCallingMethod = str
+
+class BrowserUseAgent(Agent):
+    async def execute_initial_actions(self, initial_actions) -> List[str]:
+        """
+        Executes initial actions directly using the controller.
+        This bypasses the standard agent loop for forced plan steps.
+        Returns a list of result strings.
+        """
+        if not initial_actions:
+            return []
+
+        results = []
+        for action_data in initial_actions:
+            # Handle Pydantic models (ActionModel) if browser_use converted them
+            if hasattr(action_data, "model_dump"):
+                action_data = action_data.model_dump(exclude_none=True)
+            elif hasattr(action_data, "dict"):
+                action_data = action_data.dict(exclude_none=True)
+
+            for action_name, params in action_data.items():
+                try:
+                    logger.info(f"🚀 Executing initial action: {action_name} with params: {params}")
+                    if self.controller and hasattr(self.controller, "execute_action_by_name"):
+                        result = await self.controller.execute_action_by_name(action_name, params, self.browser_context)
+                        results.append(f"Action '{action_name}' executed. Result: {result}")
+                        logger.info(f"✅ Result: {result}")
+                    else:
+                        results.append(f"Action '{action_name}' skipped (Controller missing).")
+                except Exception as e:
+                    logger.error(f"❌ Error executing initial action {action_name}: {e}")
+                    results.append(f"Action '{action_name}' failed: {e}")
+        return results
+
+    async def manage_tabs(self):
+        """Closes extraneous tabs to keep the agent focused."""
+        if self.controller and hasattr(self.controller, "nav_controller"):
+            await self.controller.nav_controller.manage_tabs(self.browser_context)
+
+    async def inject_site_knowledge(self, state, memory_manager, last_domain, heuristics):
+        """Checks if we have entered a new domain and injects relevant knowledge."""
+        try:
+            if not state.history.history:
+                return
+                
+            current_url = state.history.history[-1].state.url
+            if not current_url:
+                return
+
+            from urllib.parse import urlparse
+            domain = urlparse(current_url).netloc.replace("www.", "")
+            
+            if domain != last_domain:
+                last_domain = domain
+                knowledge = memory_manager.get_site_knowledge(current_url)
+                if knowledge:
+                    msg = f"🧠 Memory Retrieval: I have previous knowledge about {domain}:\n{knowledge}"
+                    heuristics.inject_message(msg)
+                    logger.info(f"Injected site knowledge for {domain}")
+        except Exception as e:
+            logger.warning(f"Failed to inject site knowledge: {e}")
+        return last_domain
+
+    async def check_navigation_recovery(self):
+        """Checks if navigation recovery is needed using specialized assessment logic."""
+        await self.heuristics.check_navigation_recovery()
+
+    async def check_and_add_subtasks(self):
+        """
+        Checks if the current page contains a list of subtasks relevant to the goal.
+        If found, automatically adds them to the plan via the controller.
+        """
+        await self.heuristics.check_and_add_subtasks()
+
+    async def check_blocking_elements(self):
+        """Checks for blocking elements (ads/popups) and injects a warning."""
+        await self.heuristics.check_blocking_elements()
+
+    async def check_completion_heuristics(self):
+        """Checks for common completion signals in the page content."""
+        await self.heuristics.check_completion_heuristics()
+
+    async def check_login_status(self):
+        """Checks if the user is logged in and injects a notification."""
+        await self.heuristics.check_login_status()
+
+
+class AgentLoopHandler:
+    """
+    Handles the main execution loop of the agent, decoupling it from the agent's core.
+    """
+
+    def __init__(self, agent, settings):
+        self.agent = agent
+        self.settings = settings
+
+    async def run_step(self, step, on_step_start, on_step_end):
+        """Executes a single step in the agent's execution loop."""
+        try:
+            if await self._handle_pre_step():
+                return True
+
+            if on_step_start is not None:
+                await on_step_start(self.agent)
+
+            step_info = AgentStepInfo(step_number=step, max_steps=self.settings.max_steps)
+            await self.agent.step(step_info)
+
+            if on_step_end is not None:
+                await on_step_end(self.agent)
+
+            if await self._handle_post_step(step, self.settings.max_steps):
+                return True
+
+        except Exception as e:
+            raise e
+            
 ToolCallingMethod = str
 
 class BrowserUseAgent(Agent):
@@ -66,14 +266,16 @@ class BrowserUseAgent(Agent):
         inhibit_close: bool = False,
         current_step_index: int = None,
         validation_callback=None,
+        browser_context = None,
         send_agent_message_callback: Optional[Callable] = None,
         confirmation_event: Optional[asyncio.Event] = None,
         confirmation_response_queue: Optional[asyncio.Queue] = None,
-        max_consecutive_failures: int = 5,
-        **kwargs
+        max_consecutive_failures: int = 5, **kwargs
+
     ):
         self.confirmer_llm = confirmer_llm
         self.confirmer_strictness = confirmer_strictness
+        self.browser_context = browser_context
         self.use_vision_for_confirmer = use_vision_for_confirmer
         self.model_priority_list = model_priority_list or []
         self.enable_cost_saver = enable_cost_saver
@@ -85,6 +287,7 @@ class BrowserUseAgent(Agent):
         self.is_validating = False
         self.switched_to_retry_model = False
         self.using_cheap_model = False
+        self.settings = kwargs.get("settings")
         self.current_model_index = -1 # -1 indicates main_llm
         self.current_step_index = current_step_index
         self.validation_callback = validation_callback
@@ -95,6 +298,7 @@ class BrowserUseAgent(Agent):
 
         # Prepare arguments for the parent Agent class
         agent_kwargs = kwargs.copy()
+
         
         # Extract use_memory to avoid passing it to parent Agent which doesn't support it
         # We intercept 'use_memory' to use our own SimpleMemoryManager instead of mem0
@@ -113,6 +317,7 @@ class BrowserUseAgent(Agent):
         if confirmer_llm:
             agent_kwargs['validate_output'] = True
             
+
         if history:
             agent_kwargs['history'] = history
 
@@ -134,7 +339,6 @@ class BrowserUseAgent(Agent):
             # Then apply the Qwen fix to this (potentially structured) LLM
             # agent_kwargs['llm'] = self._patch_llm_with_qwen_fix(structured_llm)
             agent_kwargs['llm'] = original_llm
-
         super().__init__(**agent_kwargs)
         
         # Apply system prompt override if provided
@@ -149,6 +353,9 @@ class BrowserUseAgent(Agent):
         self.main_llm = self.llm  # Store the primary (high-quality) LLM
         self.last_domain = None
         self.successful_steps_since_switch = 0
+
+
+        self.confirmation_manager = ConfirmationManager(send_agent_message_callback, confirmation_response_queue)
         self.memory_manager = get_memory_manager() if self.use_custom_memory else None
         self.heuristics = AgentHeuristics(self)
 
@@ -244,6 +451,8 @@ class BrowserUseAgent(Agent):
         return llm_with_aimessage_output | RunnableLambda(self._apply_qwen_fix_logic)
     def _set_tool_calling_method(self) -> ToolCallingMethod | None:
         tool_calling_method = self.settings.tool_calling_method
+        self.loop_handler = AgentLoopHandler(self, self.settings)
+
         if tool_calling_method == 'auto':
             if 'Ollama' in self.chat_model_library:
                 return 'raw'
@@ -692,6 +901,20 @@ class BrowserUseAgent(Agent):
         if await self.heuristics.check_max_failures():
             return True
 
+        # Check if MFA is required and wait for approval
+        if self.heuristics.is_waiting_for_mfa:
+            logger.info("MFA required, waiting for approval from another device...")
+            if self.send_agent_message_callback:
+                await self.send_agent_message_callback({
+                    "type": "mfa_required",
+                    "message": "MFA Required: Approve from your other device to continue."
+                })
+            while self.heuristics.is_waiting_for_mfa and not self.state.stopped:
+                await asyncio.sleep(1)  # Check every second
+            logger.info("MFA approved or agent stopped.")
+            self.heuristics.is_waiting_for_mfa = False  # Reset flag
+            return True
+
         # Check control flags before each step
         if self.state.stopped:
             logger.info('Agent stopped')
@@ -761,6 +984,8 @@ class BrowserUseAgent(Agent):
 
         # Check navigation recovery
         await self.heuristics.check_navigation_recovery()
+        
+        await agent_utils.after_navigation_checks(self)
 
         # Check for complex page structure and add subtasks
         await self.heuristics.check_and_add_subtasks()

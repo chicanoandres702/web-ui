@@ -26,6 +26,7 @@ class AgentHeuristics:
     def __init__(self, agent):
         self.agent = agent
         self.cheap_model_probation = 0  # Steps to wait before retrying cheap model after failure
+        self.is_waiting_for_mfa = False # Flag to track if the agent is waiting for MFA approval
         self.processed_urls_for_subtasks = set()
 
     async def _get_current_page(self):
@@ -254,18 +255,40 @@ class AgentHeuristics:
         except Exception:
             pass
 
+    async def _detect_login_status(self, page) -> str:
+        """
+        Detects login status using JavaScript and returns a status message.
+        """
+        try:
+            return await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
+        except Exception as e:
+            logger.warning(f"Error detecting login status: {e}")
+            return None
+
+    def _inject_login_status_message(self, status_msg: str):
+        """
+        Injects a formatted login status message into the agent's notifications.
+        """
+        if "User appears to be Logged In" in status_msg:
+            self.inject_message(f"System Notification: {status_msg} STOP attempting to log in. Proceed to the dashboard or next task.")
+        elif "Auth Detected" in status_msg and self.agent.state.consecutive_failures >= 2:
+            self.inject_message("System Notification: You seem stuck on a login page. If you believe you are logged in, try navigating to the target URL directly.")
+
+
     async def check_login_status(self):
         """Checks if the user is logged in and injects a notification."""
         try:
             page = await self._get_current_page()
             status_msg = await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
             
-            if "User appears to be Logged In" in status_msg:
-                 self.inject_message(f"System Notification: {status_msg} STOP attempting to log in. Proceed to the dashboard or next task.")
-            elif "Auth Detected" in status_msg and self.agent.state.consecutive_failures >= 2:
-                 self.inject_message("System Notification: You seem stuck on a login page. If you believe you are logged in, try navigating to the target URL directly.")
+            # if "User appears to be Logged In" in status_msg:
+            #     self._inject_login_status_message(status_msg)
+            # elif "Auth Detected" in status_msg and self.agent.state.consecutive_failures >= 2:
+            #     self._inject_login_status_message(status_msg)
+
         except Exception:
-            pass
+             pass
+
 
     async def check_navigation_recovery(self):
         """Checks if navigation recovery is needed using specialized assessment logic."""
@@ -297,6 +320,9 @@ class AgentHeuristics:
                 if assessment["action_required"]:
                     if assessment["action_required"] == "RENAVIGATE":
                         msg += " Recommended Action: Use 'go_to_url' to try the URL again."
+                elif assessment["action_required"] == "HANDLE_MFA":
+                    msg += " Recommended Action: Since MFA is required and device access is unavailable, the task cannot be completed automatically."
+
                     msg += f" Recommended Action: {assessment['action_required']}"
                 self.inject_message(msg)
         except Exception as e:

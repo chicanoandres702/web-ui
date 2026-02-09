@@ -1,0 +1,158 @@
+<!-- Modals -->
+<div id="confirmationOverlay" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>🤖 Action Confirmation</h2>
+            <p>Review the agent's next planned action</p>
+        </div>
+        <div class="modal-content">
+            <div class="form-group">
+                <label>Intelligence Gathered</label>
+                <textarea id="dialogIntel" readonly style="min-height: 60px;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Next Action</label>
+                <textarea id="dialogNextTask" readonly style="min-height: 60px;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Custom Task Override (Optional)</label>
+                <input type="text" id="customTaskInput" placeholder="Enter custom instruction..." />
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="confirmYesBtn" class="btn btn-success btn-block">✓ Approve</button>
+            <button id="confirmNoBtn" class="btn btn-error btn-block">✗ Reject</button>
+        </div>
+    </div>
+</div>
+
+<div id="saveGroupOverlay" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>💾 Save Task Group</h2>
+            <p>Save current tasks as a reusable group</p>
+        </div>
+        <div class="modal-content">
+            <div class="form-group">
+                <label>Group Name</label>
+                <input type="text" id="groupNameInput" placeholder="e.g., Weekly Homework, Research Project..." />
+            </div>
+            <div class="form-group">
+                <label>Description (Optional)</label>
+                <textarea id="groupDescInput" style="min-height: 50px;" placeholder="Brief description..."></textarea>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="saveGroupBtn" class="btn btn-success btn-block">💾 Save Group</button>
+            <button id="cancelGroupBtn" class="btn btn-secondary btn-block">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="editTaskOverlay" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>✏️ Edit Task</h2>
+            <p>Modify task details</p>
+        </div>
+        <div class="modal-content">
+            <div class="form-group">
+                <label>Task Description</label>
+                <textarea id="editTaskText" style="min-height: 70px;"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Priority</label>
+                <select id="editTaskPriority">
+                    <option value="low">🟢 Low</option>
+                    <option value="medium">🟡 Medium</option>
+                    <option value="high">🔴 High</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Time Estimate (minutes)</label>
+                <input type="number" id="editTaskTime" placeholder="15" />
+            </div>
+            <div class="form-group">
+                <label>Due Date (Optional)</label>
+                <input type="datetime-local" id="editTaskDueDate" />
+            </div>
+            <div class="form-group">
+                <label>Tags (comma-separated)</label>
+                <input type="text" id="editTaskTags" placeholder="homework, math, urgent" />
+            </div>
+            <div class="form-group">
+                <label>Notes (Optional)</label>
+                <textarea id="editTaskNotes" style="min-height: 50px;" placeholder="Additional context..."></textarea>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button id="saveTaskBtn" class="btn btn-success btn-block">💾 Save</button>
+            <button id="cancelTaskBtn" class="btn btn-secondary btn-block">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="shortcutsOverlay" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>⌨️ Keyboard Shortcuts</h2>
+            <p>Quick commands for power users</p>
+        </div>
+        <div class="modal-content" style="display: grid; grid-template-columns: 120px 1fr; gap: 8px; font-size: 11px;">
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Ctrl + Enter</div>
+            <div style="display: flex; align-items: center;">Run current task</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Ctrl + S</div>
+            <div style="display: flex; align-items: center;">Save task group</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Ctrl + N</div>
+            <div style="display: flex; align-items: center;">New task</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Ctrl + P</div>
+            <div style="display: flex; align-items: center;">Toggle pause</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Ctrl + K</div>
+            <div style="display: flex; align-items: center;">Search tasks</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Ctrl + /</div>
+            <div style="display: flex; align-items: center;">Show shortcuts</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Ctrl + A</div>
+            <div style="display: flex; align-items: center;">Select all tasks</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Ctrl + D</div>
+            <div style="display: flex; align-items: center;">Deselect all</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">F11</div>
+            <div style="display: flex; align-items: center;">Toggle fullscreen</div>
+            
+            <div style="background: var(--bg-tertiary); padding: 4px 8px; border-radius: 4px; font-family: monospace; text-align: center;">Esc</div>
+            <div style="display: flex; align-items: center;">Stop agent / Close modal</div>
+        </div>
+        <div class="modal-actions">
+            <button id="closeShortcutsBtn" class="btn btn-block">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="exportImportOverlay" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-header">
+            <h2>📦 Export / Import</h2>
+            <p>Backup or restore your tasks and settings</p>
+        </div>
+        <div class="modal-content">
+            <div style="margin-bottom: 12px;">
+                <button onclick="exportData()" class="btn btn-block">📤 Export All Data</button>
+            </div>
+            <div class="form-group">
+                <label>Import Data (JSON)</label>
+                <textarea id="importDataText" style="min-height: 100px;" placeholder='Paste exported JSON here...'></textarea>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button onclick="importData()" class="btn btn-success btn-block">📥 Import</button>
+            <button id="closeExportImportBtn" class="btn btn-secondary btn-block">Cancel</button>
+        </div>
+    </div>
+</div>

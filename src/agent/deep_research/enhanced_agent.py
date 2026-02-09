@@ -6,19 +6,21 @@ from typing import List, Dict, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from browser_use.browser.context import BrowserContext
 from src.controller.custom_controller import CustomController
 from src.agent.browser_use.quiz_state import QuizStateManager
 from src.agent.browser_use.smart_focus import focus_on_content
 from src.agent.browser_use.dom_purification import purify_page
 from src.utils import browser_scripts as bs
+from src.utils.task_manager import Task, TaskManager
 from src.utils.utils import parse_json_safe, extract_quoted_text
 from src.utils.prompts import (
-    ENHANCED_AGENT_FOCUS_PROMPT,
-    ENHANCED_AGENT_ACTION_SYSTEM_PROMPT,
     ENHANCED_AGENT_ACTION_USER_PROMPT,
     ENHANCED_AGENT_DISCOVERY_PROMPT,
     ENHANCED_AGENT_CHECK_LINK_PROMPT,
+    ENHANCED_AGENT_DISCOVERY_PROMPT,
+    ENHANCED_AGENT_CHECK_LINK_PROMPT,
+    SUBTASK_EXTRACTION_PROMPT,
+    RUBRIC_EXTRACTION_PROMPT,
     SUBTASK_EXTRACTION_PROMPT,
     RUBRIC_EXTRACTION_PROMPT
 )
@@ -30,16 +32,23 @@ class EnhancedDeepResearchAgent:
     An agent that uses an LLM to make smart decisions about navigation, 
     focus, and interaction to achieve a goal on a webpage.
     """
-    def __init__(self, llm: BaseChatModel, browser_context: BrowserContext, controller: CustomController):
-        self.llm = llm
+    def __init__(
+        self,
+        llm: BaseChatModel, browser_context, controller: CustomController,
+    ):
+
         self.browser_context = browser_context
         self.controller = controller
         self.state_manager = QuizStateManager()
+        self.page_analyzer = PageAnalyzer(llm)
+        self.action_decider = ActionDecider(llm)
         self.history: List[Dict[str, Any]] = []
+        self.task_manager = TaskManager()  # Initialize TaskManager
         self._stop_requested = False
         self.discovery_completed = False
         self.consecutive_failures = 0
-        self.rubric_constraints = None
+
+
 
     async def stop(self):
         """Signals the agent to stop its execution loop."""
@@ -60,6 +69,7 @@ class EnhancedDeepResearchAgent:
         """
         self._stop_requested = False
         self.history = []
+        self.task_manager.clear_tasks()  # Ensure TaskManager is clear at start
         self.consecutive_failures = 0
         self.rubric_constraints = None
 
@@ -73,10 +83,13 @@ class EnhancedDeepResearchAgent:
             # --- PHASE 1: DISCOVERY & PREREQUISITES ---
             if not self.discovery_completed:
                 logger.info("Phase 1: Discovering prerequisite tasks...")
-                pre_tasks = await self.discover_tasks(page, goal)
+                pre_tasks = await self.discover_tasks(page, goal)  # Discover pre-tasks
                 
                 if pre_tasks:
                     self._add_history_step("Discovery", "info", f"Found {len(pre_tasks)} setup tasks: {pre_tasks}")
+
+                    for task_description in pre_tasks:
+                        self.task_manager.add_task(Task(description=task_description, task_type="prerequisite"))
                     for task in pre_tasks:
                         logger.info(f"Handling prerequisite: {task}")
                         await self._handle_prerequisite(page, task)
@@ -90,7 +103,10 @@ class EnhancedDeepResearchAgent:
                 subtasks = await self._extract_subtasks_from_page(page_content, goal)
                 if subtasks:
                     self._add_history_step("Planning", "info", f"Extracted {len(subtasks)} subtasks from page: {subtasks}")
-                    await self._add_subtasks_to_plan(subtasks)
+                    # Now using the TaskManager to manage tasks
+                    for task_description in subtasks:
+                        self.task_manager.add_task(Task(description=task_description, task_type="subtask"))                                        
+                    await self._add_subtasks_to_plan(subtasks)  # Adds tasks to the UI overlay
                 
                 # --- PHASE 1.6: RUBRIC ANALYSIS ---
                 # Check for assignment rubrics to guide quality
@@ -100,7 +116,7 @@ class EnhancedDeepResearchAgent:
                     self._add_history_step("Rubric Analysis", "info", f"Extracted rubric: {len(rubric_data.get('scoring_criteria', []))} criteria found.")
 
             for step in range(max_steps):
-                if self._stop_requested:
+                if self._stop_requested or self.task_manager.is_queue_empty():
                     logger.info("Agent run stopped.")
                     self._add_history_step("Stop", "completed", "Agent stopped by user.")
                     break
@@ -109,13 +125,17 @@ class EnhancedDeepResearchAgent:
                 page_content, pagination_info, analyzed_url = await self._analyze_page(page)
                 if step % 3 == 0:
                     await self._handle_focus(goal, page_content, page)
-
+                
                 # 2. Decide
                 action_decision = await self._decide_next_action(goal, page_content, last_result, pagination_info, analyzed_url)
                 
                 # 3. Execute
+                current_task = self.task_manager.get_current_task()
+                if current_task:
+                    self._add_history_step("Executing Task", "info", f"Executing: {current_task.description}")
                 last_result = await self._execute_decision(action_decision, goal, analyzed_url)
                 
+
                 # 4. Check for finish
                 if action_decision.get("action") == "finish":
                     break
@@ -132,7 +152,7 @@ class EnhancedDeepResearchAgent:
         page_content = await self._get_page_text(page)
         self.state_manager.sync_from_page(page_content)
         
-        # Combine navigation detection with scroll info for wizards/infinite scroll
+        # Navigation with scroll info
         nav_signal = await self._detect_navigation_controls(page)
         scroll_info = await self._check_scroll_status(page)
         pagination_info = f"{nav_signal} {scroll_info}".strip()
@@ -302,7 +322,7 @@ class EnhancedDeepResearchAgent:
     async def _add_subtasks_to_plan(self, subtasks: List[str]):
         """Adds extracted subtasks to the webui manager's plan."""
         if not subtasks: return
-        for task in subtasks:
+
             # Use the controller action to add it properly to the UI and overlay
             await self._execute_action("add_plan_step", {"step_description": task})
 
@@ -368,8 +388,8 @@ class EnhancedDeepResearchAgent:
     async def _decide_next_action(self, goal: str, page_content: str, last_result: str, pagination_info: str, current_url: str = "") -> Dict[str, str]:
         """Asks the LLM to decide the next action to take."""
         
+
         # Inject strategy hint if multiple failures occurred
-        strategy_hint = ""
         
         # Context-specific hints for academic/social flows
         if "yellowdig" in current_url.lower():
