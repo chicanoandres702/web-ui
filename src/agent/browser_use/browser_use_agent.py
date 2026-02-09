@@ -194,7 +194,7 @@ class BrowserUseAgent(Agent):
         self.step_callback: Optional[Callable] = kwargs.get("step_callback")
 
         self.done_callback: Optional[Callable] = kwargs.get("done_callback")
-
+        agent_kwargs = kwargs.copy()
         self.source = agent_kwargs.pop('source', None)
         self.inhibit_close = agent_kwargs.pop('inhibit_close', False)
         self.enable_smart_retry = enable_smart_retry
@@ -202,17 +202,26 @@ class BrowserUseAgent(Agent):
         self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', True)
         self.auto_save_on_stuck = auto_save_on_stuck
         self.instruction_handler = instruction_handler
-        if 'llm' in agent_kwargs:
-            agent_kwargs = kwargs.copy()
+        agent_kwargs = kwargs.copy()
 
-            original_llm = agent_kwargs['llm']
-            # This instructs the LLM to produce output conforming to AgentOutput
-            if hasattr(original_llm, "with_structured_output"):
-                structured_llm = original_llm.with_structured_output(AgentOutput)
-                logger.info("Applied AgentOutput schema to LLM using with_structured_output.")
-            else:
-                logger.warning("LLM does not support with_structured_output. Proceeding without structured output enforcement.")
-                structured_llm = original_llm
+        original_llm = agent_kwargs['llm']
+        # This instructs the LLM to produce output conforming to AgentOutput
+        if hasattr(original_llm, "with_structured_output"):
+            structured_llm = original_llm.with_structured_output(AgentOutput)
+            logger.info("Applied AgentOutput schema to LLM using with_structured_output.")
+        else:
+            logger.warning("LLM does not support with_structured_output. Proceeding without structured output enforcement.")
+            structured_llm = original_llm
+        # Patch LLM if it's a model that needs JSON fixes (e.g., Qwen/Ollama)
+        self.llm_manager = AgentLLMManager(self, model_priority_list)
+        chat_model_library = getattr(original_llm, "__class__", None).__name__
+        model_name = getattr(original_llm, "model_name", "").lower() or getattr(original_llm, "model", "").lower()
+        
+        if 'Ollama' in chat_model_library or any(m in model_name for m in ['qwen', 'deepseek']):
+            agent_kwargs['llm'] = self.llm_manager._patch_llm_with_qwen_fix(structured_llm)
+            logger.info(f"Applied Qwen/Ollama JSON fix patch to LLM: {model_name}")
+        else:
+            agent_kwargs['llm'] = structured_llm    
         self.max_consecutive_failures = kwargs.get("max_consecutive_failures", 500)
 
         super().__init__(**agent_kwargs)
