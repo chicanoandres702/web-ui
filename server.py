@@ -102,13 +102,14 @@ async def initialize_services(app: FastAPI):
         if hasattr(app.state.cookie_manager, 'load_cookies'):
             try:
                 sig = inspect.signature(app.state.cookie_manager.load_cookies)
-                if len(sig.parameters) == 0:
-                    await app.state.cookie_manager.load_cookies()
-                elif 'browser_context' in sig.parameters:
-                    # Pass None or a default context if the signature requires it but none is active
-                    await app.state.cookie_manager.load_cookies(browser_context=None)
+                # Check if browser_context is a required parameter (no default value)
+                params = sig.parameters
+                if 'browser_context' in params and params['browser_context'].default is inspect.Parameter.empty:
+                    # If required but we are at global startup (no browser yet), we skip or pass None
+                    logger.info("CookieManager.load_cookies requires an active browser_context; skipping global load.")
                 else:
-                    logger.info("CookieManager.load_cookies signature unknown; skipping global load.")
+                    # Call with no args if signature allows, or if browser_context is optional
+                    await app.state.cookie_manager.load_cookies(None)
             except Exception as e:
                 logger.error(f"Failed to initialize cookies: {e}")
     await startup_check_ollama()

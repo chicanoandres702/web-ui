@@ -309,6 +309,7 @@ async def run_agent_task(
 
     # --- Retrieve Settings ---
     agent_settings = get_agent_settings_values(webui_manager, components)
+    max_consecutive_failures = agent_settings["max_consecutive_failures"]
     browser_settings = get_browser_settings_values(webui_manager, components)
     max_steps = agent_settings["max_steps"]
     webui_manager.bu_max_steps = max_steps
@@ -682,7 +683,7 @@ async def run_agent_task(
                 webui_manager.update_plan_step_status(current_step_idx, "failed")
                 if agent_settings.get("enable_auto_pause", False):
                     webui_manager.is_paused = True
-                    gr.Warning(f"Step {current_step_idx + 1} failed. Pausing queue.")
+                    gr.Warning(f"Step {current_step_idx + 1} failed. {webui_manager.bu_agent.state.consecutive_failures}/{max_consecutive_failures} consecutive failures. Pausing queue.")
             
             # Force HUD refresh to show completion
             if webui_manager.bu_controller and webui_manager.bu_browser_context:
@@ -901,6 +902,7 @@ async def handle_save_chat(webui_manager: "WebuiManager"):
     if await IOManager.write_file(full_path, content):
         return {webui_manager.get_component_by_id("browser_use_agent.chat_log_file"): gr.File(value=full_path, visible=True)}
     else:
+
         return {}
 
 async def handle_clear(webui_manager: "WebuiManager"):
@@ -1454,5 +1456,4 @@ async def handle_export_plan(webui_manager: "WebuiManager"):
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     
     if await IOManager.write_file(filepath, json.dumps(webui_manager.bu_plan, indent=2)):
-        return {webui_manager.get_component_by_id("browser_use_agent.plan_export_file"): gr.File(value=filepath, visible=True)}
-    return {}
+        return {webui_man

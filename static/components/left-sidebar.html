@@ -4,12 +4,18 @@
     <div class="sidebar-header">
         <h1>
             <span>🤖</span>
-            Agent Control
+                Agent Control
         </h1>
         <p>Academic Edition</p>
     </div>
+    <div id="auth-buttons-container">
+    </div>
 
     <div class="sidebar-content">
+
+        <!-- Authentication Buttons -->
+        <div id="auth-buttons-container"></div>
+
         <!-- Quick Settings -->
         <div class="collapsible-section">
             <div class="section-header" onclick="toggleSection(this)">
@@ -17,6 +23,7 @@
                 <span class="section-toggle">▼</span>
             </div>
             <div class="section-content">
+
                 <div class="card">
                     <div class="toggle-group">
                         <div id="visionToggle" class="toggle active" onclick="toggleVision()"></div>

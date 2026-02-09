@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import abc
 import asyncio
 import logging
@@ -207,6 +206,26 @@ class BrowserActionHandler:
         self.controller = controller
         self.heuristics = heuristics
 
+    async def save_cookies(self, cookie_path: str) -> None:
+        """Saves cookies from the browser context to a file."""
+        if self.browser_context and cookie_path:
+            try:
+                cookies = await self.browser_context.get_cookies()
+                # Serialize the cookies to a JSON string before writing to the file
+                cookies_json = json.dumps(cookies, indent=2)  # Pretty print the JSON
+
+                # Write the JSON string to the file
+                with open(cookie_path, 'w') as f:
+                    f.write(cookies_json)
+                logger.info(f"Saved cookies to {cookie_path}")
+            except Exception as e:
+                logger.error(f"Failed to save cookies: {e}")
+
+
+class AgentHeuristicsHandler:
+    def __init__(self, heuristics):
+        self.heuristics = heuristics
+
 
 class AgentLoopHandler:
     """
@@ -226,7 +245,7 @@ class AgentLoopHandler:
             if on_step_start is not None:
                 await on_step_start(self.agent)
 
-            max_steps = getattr(self.settings, 'max_steps', 100)
+            max_steps = getattr(self.settings, 'max_steps', 10000)
             step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
             await self.agent.step(step_info)
 
@@ -247,16 +266,16 @@ class BrowserUseAgent(Agent):
     def __init__(
         self,
         confirmer_llm=None,
-        confirmer_strictness=None,
+        confirmer_strictness=7,
         use_vision_for_confirmer=True,
         model_priority_list: Optional[List[Dict]] = None,
         enable_cost_saver=False,
         enable_smart_retry=False,
-        auto_save_on_stuck=False,
+        auto_save_on_stuck=True,
         source=None,
-        history: AgentHistoryList | None = None,
+        history: Optional[AgentHistoryList] = None,
         save_history_path: Optional[str] = None,
-        system_prompt: str = None,
+        system_prompt: Optional[str] = None,
         inhibit_close: bool = False,
         current_step_index: Optional[int] = None,
         validation_callback=None,
@@ -264,11 +283,9 @@ class BrowserUseAgent(Agent):
         send_agent_message_callback: Optional[Callable] = None,
         confirmation_event: Optional[asyncio.Event] = None,
         confirmation_response_queue: Optional[asyncio.Queue] = None,
-        max_consecutive_failures: int = 5, instruction_handler: Optional[InstructionHandlerInterface] = None, **kwargs
+        instruction_handler: Optional[InstructionHandlerInterface] = None, **kwargs
 
     ):
-        self.confirmer_llm = confirmer_llm
-        self.confirmer_strictness = confirmer_strictness
         self.browser_context = browser_context
         self.use_vision_for_confirmer = use_vision_for_confirmer
         self.model_priority_list = model_priority_list or []
@@ -276,22 +293,26 @@ class BrowserUseAgent(Agent):
         self.enable_smart_retry = enable_smart_retry
         self.auto_save_on_stuck = auto_save_on_stuck
         self.source = source
-        self.save_history_path = save_history_path or ""
+        self.save_history_path = save_history_path
         self.inhibit_close = inhibit_close
         self.is_validating = False
-        self.switched_to_retry_model = False
         self.using_cheap_model = False
         self.settings = kwargs.get("settings")
-        self.current_model_index = -1 # -1 indicates main_llm
-        self.current_step_index = current_step_index
         self.validation_callback = validation_callback
-        self.max_consecutive_failures = max_consecutive_failures
+        self.current_model_index = -1  # -1 indicates main_llm
+        self.current_step_index = current_step_index
+        self.max_consecutive_failures = kwargs.get("max_consecutive_failures", 500)
         self.send_agent_message_callback = send_agent_message_callback
         self.confirmation_event = confirmation_event
-        self.confirmation_response_queue = confirmation_response_queue
         self.instruction_handler = instruction_handler
         self.step_callback: Optional[Callable] = kwargs.get("step_callback")
         self.done_callback: Optional[Callable] = kwargs.get("done_callback")
+        self.last_domain = None
+        self.successful_steps_since_switch = 0
+        self.switched_to_retry_model = False
+        self.planner_task: Optional[asyncio.Task] = None
+        self.use_custom_memory = True
+
 
         # Prepare arguments for the parent Agent class
         agent_kwargs = kwargs.copy()
@@ -299,19 +320,16 @@ class BrowserUseAgent(Agent):
         
         # Extract use_memory to avoid passing it to parent Agent which doesn't support it
         # We intercept 'use_memory' to use our own SimpleMemoryManager instead of mem0
-        self.use_custom_memory = agent_kwargs.pop('use_memory', False)
+        self.use_custom_memory = agent_kwargs.pop('use_memory', True)
         
         # Extract agent-specific args that should not be passed to the base Agent class
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
-        self.cookie_path = agent_kwargs.pop('cookie_path', None)
-        self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', False)
-        self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
-        
-        self.planner_task: Optional[asyncio.Task] = None
+        self.cookie_path = agent_kwargs.pop('cookie_path', "./cookies")
+        self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', True)
+        self.agent_control_queue = agent_kwargs.pop('agent_control_queue', True)
         
         # Note: We do NOT pass 'use_memory' to super().__init__ to avoid TypeError if the parent class doesn't support it.
-
         if confirmer_llm:
             agent_kwargs['validate_output'] = True
             
@@ -335,48 +353,44 @@ class BrowserUseAgent(Agent):
                 structured_llm = original_llm
             logger.debug(f"Type of LLM after structured output: {type(structured_llm)}")
 
+
         super().__init__(**agent_kwargs)
-        
-        # Apply system prompt override if provided
 
-        self.llm_manager = AgentLLMManager(self,model_priority_list)
+        self.llm_manager = AgentLLMManager(self, model_priority_list)
+        self.heuristics = AgentHeuristics(self)
+        self.confirmer_llm = confirmer_llm
+        self.confirmer_strictness = confirmer_strictness
+        self._initialize_components(agent_kwargs, system_prompt)
 
-
-
-
-        if system_prompt:
-            if hasattr(self, "message_manager"):
-                try:
-                    # Use the public API to add system message if available
-                    # We avoid direct attribute access to 'messages' to prevent type errors
-                    # and maintain compatibility with different message manager versions. 
-                    # Using getattr to avoid static analysis errors for unknown attributes.
-                    add_msg_func = getattr(self.message_manager, "add_message", None)
-                    if callable(add_msg_func):
-                        add_msg_func(SystemMessage(content=system_prompt))
-                    else: 
-                        logger.warning("Could not set system prompt: message_manager does not support known methods.")
-                except Exception:
-                    logger.warning("An error occurred while attempting to set the system prompt.")
         # Link controller to this agent for HUD control
         if self.controller and hasattr(self.controller, "set_agent") and callable(getattr(self.controller, "set_agent", None)):
             getattr(self.controller, "set_agent")(self)
 
-
-        if model_priority_list and 'llm' in model_priority_list[0]:
-            self.llm = model_priority_list[0]['llm']
+        if model_priority_list and model_priority_list[0].get('llm'):
+            self.llm_manager.set_llm(model_priority_list[0]['llm'])
         else:
             self.llm_manager.set_llm(agent_kwargs['llm'])
-        self.last_domain = None
-        self.successful_steps_since_switch = 0
 
-        self.llm = agent_kwargs['llm']
-        self.confirmation_manager = ConfirmationManager(send_agent_message_callback, confirmation_response_queue)
-        self.memory_manager = get_memory_manager() if self.use_custom_memory else None
-        self.heuristics = AgentHeuristics(self)
-        self.site_knowledge_injector = SiteKnowledgeInjector(self)
+        self.confirmation_manager = ConfirmationManager(self.send_agent_message_callback, self.confirmation_response_queue)
+        self.action_handler = BrowserActionHandler(self.browser_context, self.controller, self.heuristics)  # type: ignore
+        self._initialize_action_handler()
+        self._set_tool_calling_method()
 
+
+
+    def _initialize_action_handler(self):
+        """
+        Initializes the BrowserActionHandler.
+        """
+        self.confirmation_manager = ConfirmationManager(self.send_agent_message_callback, self.confirmation_response_queue)
+        self.action_handler = BrowserActionHandler(self.browser_context, self.controller, self.heuristics)  # type: ignore
     def _set_tool_calling_method(self) -> str | None:
+        """
+        Initializes the BrowserActionHandler and determines the tool calling method.
+        This is now called after AgentHeuristics is initialized.
+        """
+
+
         tool_calling_method = getattr(self.settings, 'tool_calling_method', 'auto')
 
         if tool_calling_method == 'auto':
@@ -395,21 +409,41 @@ class BrowserUseAgent(Agent):
         else:
             return tool_calling_method
 
-    async def _setup_components(self, agent_kwargs: Dict[str, Any]) -> None:
+
+
+
+
+    def _initialize_components(self, agent_kwargs: Dict[str, Any], system_prompt: Optional[str] = None) -> None:
         """
-        Extracts and sets up agent components.
+        Initializes agent components and applies system prompt override.
         """
 
+        # 1. Extract Component-Specific Arguments
         self.use_custom_memory = agent_kwargs.pop('use_memory', False)
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
-        self.cookie_path = agent_kwargs.pop('cookie_path', None)
+        self.cookie_path = agent_kwargs.pop('cookie_path', "./cookies")
         self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', False)
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
 
+        # 2. Initialize SiteKnowledgeInjector
+        self.site_knowledge_injector = SiteKnowledgeInjector(self)
+        # 3. Initialize AgentLoopHandler
         self.planner_task = None
-
         self.loop_handler = AgentLoopHandler(self, self.settings)
+
+        # 4. Apply system prompt override if provided
+        if system_prompt:
+            if hasattr(self, "message_manager"):
+                try:
+                    add_msg_func = getattr(self.message_manager, "add_message", None)
+                    if callable(add_msg_func):
+                        add_msg_func(SystemMessage(content=system_prompt))
+                    else:
+                        logger.warning("Could not set system prompt: message_manager does not support known methods.")
+                except Exception:
+                    logger.warning("An error occurred while attempting to set the system prompt.")
+
 
     @time_execution_async("--run (agent)")
     async def run(
@@ -429,7 +463,7 @@ class BrowserUseAgent(Agent):
 
             # Start Planner Loop if enabled
             if self.planner_llm:
-                self.planner_task = asyncio.create_task(self._planner_loop())
+                  self.planner_task = asyncio.create_task(self._planner_loop())
 
             # Execute initial actions if provided
             if self.initial_actions:
@@ -540,11 +574,11 @@ class BrowserUseAgent(Agent):
                 last_thought = getattr(last_step.model_output, "thought", "N/A") if last_step.model_output else "N/A"
 
                 # --- 2. Construct Prompt ---
-                try:
-                    from src.utils.prompts import PLANNER_PROMPT
-                except ImportError:
-                    PLANNER_PROMPT = "Goal: {goal}\nPlan: {plan}\nLast Thought: {last_thought}\nPage Summary: {page_summary}\nUpdate the plan."
-                
+                # Fallback prompt if PLANNER_PROMPT is not found in src.utils.prompts
+                DEFAULT_PLANNER_PROMPT = "Goal: {goal}\nPlan: {plan}\nLast Thought: {last_thought}\nPage Summary: {page_summary}\nUpdate the plan."
+                from src.utils import prompts
+                PLANNER_PROMPT = getattr(prompts, 'PLANNER_PROMPT', DEFAULT_PLANNER_PROMPT)
+
                 prompt = PLANNER_PROMPT.format(
                     goal=self.task,
                     plan=plan_str,
@@ -786,25 +820,25 @@ class BrowserUseAgent(Agent):
 
     async def _execute_step_callbacks(self, step: int):
         """Executes registered step callbacks."""
-        if getattr(self, "step_callback", None):
+        if self.step_callback and callable(self.step_callback):
             try:
                 if self.state.history.history:
                     last_state = self.state.history.history[-1].state
                     last_output = self.state.history.history[-1].model_output
                     if inspect.iscoroutinefunction(self.step_callback):
                         await self.step_callback(last_state, last_output, step + 1)
-                    else:
+                    elif callable(self.step_callback):
                         self.step_callback(last_state, last_output, step + 1)
             except Exception as e:
                 logger.error(f"Error in step_callback: {e}")
 
     async def _execute_done_callback(self):
         """Executes registered done callbacks."""
-        if getattr(self, "done_callback", None):
+        if self.done_callback and callable(self.done_callback):
             try:
                 if inspect.iscoroutinefunction(self.done_callback):
                     await self.done_callback(self.state.history)
-                else:
+                elif callable(self.done_callback):
                     self.done_callback(self.state.history)
             except Exception as e:
                 logger.error(f"Error in done_callback: {e}")
@@ -852,6 +886,7 @@ class BrowserUseAgent(Agent):
         Returns True if the agent should stop/break the loop.
         """
         # Process control queue
+        
         await self._process_control_queue()
 
         # Manage Model Switching (Cost Saver / Smart Retry)
@@ -864,18 +899,18 @@ class BrowserUseAgent(Agent):
         await self._manage_tabs()
 
         # Custom Memory Injection
-        if self.use_custom_memory and self.memory_manager:
-            await self.site_knowledge_injector.inject_site_knowledge()
+        # if self.use_custom_memory and self.memory_manager:
+        await self.site_knowledge_injector.inject_site_knowledge()
 
 
         # Check if we should stop due to too many failures
         # Note: self.heuristics is a direct attribute of BrowserUseAgent
-        if await self.heuristics.check_max_failures():
-           return True
+        # if await self.heuristics.check_max_failures():
+        #    return True
 
         # Check if MFA is required and wait for approval
         if self.heuristics.is_waiting_for_mfa:
-            logger.info("MFA required, waiting for approval from another device...")
+            logger.info("MFA required, waiting for approval from another device, after setting pre step...")
             if self.send_agent_message_callback:
                 await self.send_agent_message_callback({
 
@@ -908,12 +943,14 @@ class BrowserUseAgent(Agent):
         if self.cookie_path and os.path.exists(self.cookie_path):
             if self.browser_context:
                 try:
-                    with open(self.cookie_path, 'r') as f:
+                    with open(self.cookie_path, 'r', encoding='utf-8') as f:
                         cookies = json.load(f)
                     await self.browser_context.add_cookies(cookies)
                     logger.info(f"Loaded cookies from {self.cookie_path}")
                 except Exception as e:
                     logger.error(f"Failed to load cookies: {e}")
+
+
 
         return False
 
@@ -964,6 +1001,9 @@ class BrowserUseAgent(Agent):
 
         # Check login status (New)
         await self.heuristics.check_login_status()
+
+        if self.cookie_path:
+            await self.action_handler.save_cookies(self.cookie_path)
 
         # --- User Interaction Dialog ---
         if await self._handle_user_interaction():
@@ -1111,7 +1151,7 @@ class BrowserUseAgent(Agent):
         if self.planner_task and not self.planner_task.done():
             self.planner_task.cancel()
             try:
-                await self.planner_task
+                await self.planner_task #can be asyncio cancelled error
             except asyncio.CancelledError:
                 pass
 

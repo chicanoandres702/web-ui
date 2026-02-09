@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function loadComponents() {
-    const components = {
+    const components = {        
         'modals-container': 'components/modals.html',
         'left-sidebar-container': 'components/left-sidebar.html',
         'main-content-container': 'components/main-content.html',
@@ -11,7 +11,8 @@ function loadComponents() {
         'floating-controls-container': 'components/floating-controls.html',
         'quick-notes-container': 'components/quick-notes.html',
         'batch-operations-container': 'components/batch-operations.html'
-    };
+        , 'auth-buttons-container': 'components/auth-buttons.html'        
+};
 
     for (const [containerId, componentUrl] of Object.entries(components)) {
         const container = document.getElementById(containerId);
@@ -119,11 +120,43 @@ function startSessionTimer() {
     }, 1000);
 }
 
+fetch('/auth/status')
+        .then(response => response.json())
+        .then(data => {
+            const isLoggedIn = data.is_logged_in;
+            const loginLink = document.getElementById('loginLink');
+            const logoutLink = document.getElementById('logoutLink');
+
+            if (loginLink && logoutLink) {
+                if (isLoggedIn) {
+                    loginLink.style.display = 'none';
+                    logoutLink.style.display = 'inline-block';
+                } else {
+                    loginLink.style.display = 'inline-block';
+                    logoutLink.style.display = 'none';
+                }
+            } else {
+                console.error("Login/Logout links not found in auth-buttons.html");
+            }
+        })
+        .catch(error => {
+            console.error("Error fetching auth status:", error);
+            const loginLink = document.getElementById('loginLink');
+            const logoutLink = document.getElementById('logoutLink');
+
+            if (loginLink && logoutLink) {
+                loginLink.style.display = 'inline-block';
+                logoutLink.style.display = 'none';
+            }
+        });
+        
 // ===== WebSocket Handlers =====
 ws.onopen = function() {
     console.log("🔌 Connected");
     loadModels();
     loadSavedData();
+
+        
     startSessionTimer();
     showNotification("Connected to agent server", "success");
 };
