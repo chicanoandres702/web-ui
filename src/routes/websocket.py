@@ -23,7 +23,7 @@ from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS
 from src.agent.deep_research.state_manager import DeepResearchStateManager
 from src.routes.models import load_model_from_file
 from src.config import RATE_LIMIT_SECONDS, MAX_REQUESTS_PER_MINUTE
-
+from src.agent.browser_use.components.cookie_manager import CookieManager
 from src.utils.instruction_handler import InstructionHandler, create_instruction_handler
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -458,5 +458,9 @@ async def websocket_endpoint(websocket: WebSocket):
         if browser:
             # Clear rate limit on disconnect
 
+            CookieManagerClass = get_cookie_manager()
+            if CookieManagerClass and browser_context:
+                cookie_manager = CookieManagerClass()
+                await cookie_manager.save_cookies(browser_context)
 
             await browser.close()

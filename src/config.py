@@ -1,12 +1,9 @@
 import os
-import secrets
 
-# Allow OAuth over HTTP for localhost
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 
-# Generate a secure token
-WEBSOCKET_TOKEN = os.getenv("WEBSOCKET_TOKEN", secrets.token_urlsafe(32))
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
+SECRET_KEY = os.environ.get("SECRET_KEY", "your_default_secret_key") # Replace with a strong secret key in production
 
-RATE_LIMIT_SECONDS = 60  # seconds
-MAX_REQUESTS_PER_MINUTE = 5
+RATE_LIMIT_SECONDS = int(os.environ.get("RATE_LIMIT_SECONDS", 60))
+MAX_REQUESTS_PER_MINUTE = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", 20))
