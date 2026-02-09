@@ -35,6 +35,7 @@ def create_kb_file(dir_path: str, filename: str) -> Tuple[bool, str, str]:
         
     if save_text_file(filepath, "# " + filename):
         return True, f"✅ Created '{filename}'.", filename
+    logger.error(f"Error creating file at path: {filepath}")
     return False, "Error creating file.", ""
 
 def delete_kb_file(dir_path: str, filename: str) -> Tuple[bool, str]:
