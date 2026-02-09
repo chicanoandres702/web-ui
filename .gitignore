@@ -11,3 +11,4 @@ client_secret.json
 tmp/
 storage/
 browser_session/*
+/service_account.json
