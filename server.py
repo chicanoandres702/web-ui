@@ -87,7 +87,7 @@ def create_app():
     app.include_router(websocket.router)
     # app.include_router(create_knowledge_base_router())
 
-    @app.post("/knowledge/import")
+
     async def import_knowledge(filepath: str, knowledge_base: KnowledgeBase):
         #= Depends(lambda: app.state.knowledge_base)):
         """Imports the knowledge base from a JSON file."""
