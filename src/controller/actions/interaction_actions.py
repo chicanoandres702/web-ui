@@ -13,7 +13,19 @@ from src.utils.browser_scripts import (
 logger = logging.getLogger(__name__)
 
 class InteractionActionsMixin:
+    def __init__(self, *args, **kwargs):
+        # This mixin expects to be mixed into a class that has a registry attribute
+        # We define it here to satisfy type checkers and ensure modularity
+        if not hasattr(self, 'registry'):
+            self.registry = None
+        if not hasattr(self, 'clipboard_content'):
+            self.clipboard_content = ""
+
     def _register_interaction_actions(self):
+        if not self.registry:
+            logger.warning("InteractionActionsMixin: No registry found, actions not registered.")
+            return
+
         @self.registry.action("Simulate hovering over an element")
         async def hover_element(browser: BrowserContext, selector: str):
             page = await browser.get_current_page()
@@ -55,7 +67,7 @@ class InteractionActionsMixin:
                 return f"File not found: {filename}"
 
             try:
-                # Try to find the input element associated with the text (Label)
+                #  Try to find the input element associated with the text (Label)
                 await page.get_by_label(text).set_input_files(filepath)
                 return f"Uploaded {filename} to field labeled '{text}'"
             except Exception as e:
@@ -190,7 +202,7 @@ class InteractionActionsMixin:
                 return f"Error setting color: {e}"
 
         @self.registry.action("Handle the next browser dialog (alert/confirm/prompt)")
-        async def handle_next_dialog(browser: BrowserContext, action: str = "accept", prompt_text: str = None):
+        async def handle_next_dialog(browser: BrowserContext, action: str = "accept", prompt_text: str = ""):
             page = await browser.get_current_page()
             
             async def handle_dialog(dialog):
