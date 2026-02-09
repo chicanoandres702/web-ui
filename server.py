@@ -21,8 +21,8 @@ def get_cookie_manager():
         from src.browser.cookie_manager import CookieManager
         return CookieManager
     except ImportError:
-        from src.utils.cookie_manager import CookieManager # If browser fails, fall back to utils
-        return CookieManager
+        # Fallback to a dummy or local implementation if the specific utility is missing
+        return None
 
 from src.config import SECRET_KEY
 from src.routes import main, auth, files, models, websocket
@@ -69,7 +69,7 @@ def create_app():
     """
     Creates and configures the FastAPI application.
     """
-    app = FastAPI()
+    app: FastAPI = FastAPI()
     configure_middleware(app)
 
     # Initialize KnowledgeBase as a dependency
@@ -85,39 +85,18 @@ def create_app():
     app.include_router(files.router)
     app.include_router(models.router)
     app.include_router(websocket.router)
-    # app.include_router(create_knowledge_base_router())
-
-
-    async def import_knowledge(filepath: str, knowledge_base: KnowledgeBase):
-        #= Depends(lambda: app.state.knowledge_base)):
-        """Imports the knowledge base from a JSON file."""
-        if await run_in_threadpool(knowledge_base.import_knowledge, filepath):
-            return {"message": f"Knowledge base successfully imported from '{filepath}'."}
-        else:
-            raise HTTPException(status_code=500, detail=f"Failed to import knowledge base from '{filepath}'.")
-
-    @app.post("/knowledge/export")    
-    async def export_knowledge(filepath: str, knowledge_base: KnowledgeBase): 
-        #= Depends(lambda: app.state.knowledge_base)):
-        """Exports the knowledge base to a JSON file."""
-        if await run_in_threadpool(knowledge_base.export_knowledge, filepath):
-            return {"message": f"Knowledge base successfully exported to '{filepath}'."}
-        else:
-            raise HTTPException(status_code=500, detail=f"Failed to export knowledge base to '{filepath}'.")
-
-    @app.get("/knowledge")    
-    async def get_all_knowledge(knowledge_base: KnowledgeBase): #= Depends(lambda: app.state.knowledge_base)):
-         """Retrieves all knowledge from the knowledge base."""
-         return knowledge_base.storage
+    app.include_router(create_knowledge_base_router())
     return app
+
 
 app: FastAPI = create_app()
 
 async def initialize_services(app: FastAPI):
     """Initializes external services and managers."""
     CookieManagerClass = get_cookie_manager()
-    app.state.cookie_manager = CookieManagerClass(None)  # Pass None for agent initially
-    await app.state.cookie_manager.load_cookies()
+    if CookieManagerClass:
+        app.state.cookie_manager = CookieManagerClass(None)  # Pass None for agent initially
+        await app.state.cookie_manager.load_cookies()
     await startup_check_ollama()
 
 @app.on_event("startup")

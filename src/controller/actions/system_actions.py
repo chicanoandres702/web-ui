@@ -27,7 +27,11 @@ class SystemActionsMixin:
         async def update_hud(browser: BrowserContext, data_json: str):
             try:
                 data = json.loads(data_json)
-                return await self._update_hud_impl(browser, data)
+                if hasattr(self, "_update_hud_impl"):
+                    return await self._update_hud_impl(browser, data)
+                elif hasattr(self, "refresh_hud"):
+                    return await self.refresh_hud(browser, **data)
+                return "HUD implementation not found in controller."
             except Exception as e:
                 return f"Error parsing HUD data: {e}"
 
