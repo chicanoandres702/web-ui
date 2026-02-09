@@ -19,6 +19,146 @@ from src.agent.browser_use.navigation_recovery import evaluate_site_state
 
 logger = logging.getLogger(__name__)
 
+class BlockingElementChecker:
+    """Checks for blocking elements (ads/popups) and injects a warning."""
+
+    def __init__(self, agent):
+        self.agent = agent
+
+    async def check_blocking_elements(self):
+        """Checks for blocking elements (ads/popups) and injects a warning."""
+        try:
+            page = await self._get_current_page()
+            if not page:
+                return
+
+            # 1. Check for CAPTCHA (Priority)
+            content = await page.evaluate("document.body.innerText.toLowerCase()")
+            if "captcha" in content or "verify you are human" in content or "security check" in content:
+                self.agent.inject_message(
+                    "SYSTEM ALERT: CAPTCHA detected. You MUST use the `solve_captcha` tool immediately. Do NOT use `clear_view` or `close_difficult_popup` as they will fail.")
+                return
+
+            # 2. Check for Chrome Promotion (Auto-Dismiss)
+            if "make google chrome your default browser" in content or "switch to chrome" in content or "get google chrome" in content:
+                try:
+                    if page is None:
+                        return
+                    for btn_text in ["No thanks", "Not now", "No, thanks", "Later", "Dismiss"]:
+                        # XPath for case-insensitive text match on buttons or links
+                        xpath = f"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')] | //a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')]"
+                        element = page.locator(xpath).first
+                        if await element.is_visible():
+                            await element.click()
+                            logger.info(f"🛡️ Heuristics: Auto-dismissed Chrome promotion via '{btn_text}'")
+                            self.agent.inject_message(
+                                f"System Notification: I automatically dismissed a Chrome promotion popup by clicking '{btn_text}'.")
+                            await page.wait_for_timeout(500)
+                            return
+                except Exception as e:
+                    logger.warning(f"Failed to auto-dismiss Chrome popup: {e}")
+
+            is_blocked = await page.evaluate(JS_DETECT_BLOCKING_ELEMENTS)
+            if is_blocked:
+                msg = "SYSTEM ALERT: A large overlay, ad, or popup seems to be blocking the screen. This may prevent you from interacting with the page. Try using `clear_view` or `close_difficult_popup` to remove it."
+                self.agent.inject_message(msg)
+
+                # Auto-save screenshot of the blocking element
+                try:
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    agent_id = getattr(self.agent.state, "agent_id", "unknown_agent")
+                    filename = f"blocked_{timestamp}.png"
+                    save_path = os.path.join("./tmp/agent_history", agent_id, "debug_screenshots")
+                    os.makedirs(save_path, exist_ok=True)
+                    full_path = os.path.join(save_path, filename)
+                    await page.screenshot(path=full_path)
+                    logger.info(f"📸 Saved screenshot of blocking element: {full_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to save screenshot of a blocking element: {e}")
+        except Exception:
+            pass
+
+    async def _get_current_page(self):
+        """Safely retrieves the current page from the browser context."""
+        try:
+            return await self.agent.browser_context.get_current_page()
+        except Exception:
+            return None
+
+class CompletionHeuristicsChecker:
+    """Checks for common completion signals in the page content."""
+
+    def __init__(self, agent):
+        self.agent = agent
+
+    async def check_completion_heuristics(self):
+        """Checks for common completion signals in the page content."""
+        try:
+            if self.agent.state.history.is_done():
+                return
+
+            page = await self._get_current_page()
+            if not page:
+                return
+            content = await page.evaluate("document.body.innerText")
+            content_lower = content.lower()
+
+            # 1. Quiz/Test/Course Completion
+            if any(kw in self.agent.task.lower() for kw in ["quiz", "test", "exam", "course", "module"]):
+                indicators = ["quiz complete", "your score", "results:", "you scored", "thank you for playing",
+                              "100%", "completed", "congratulations", "certificate"]
+                if any(ind in content_lower for ind in indicators):
+                    self.agent.inject_message(
+                        "System Notification: The page indicates the task/quiz is complete. If you have the results, please mark the task as Done.")
+                    return
+
+            # 2. General Success/Submission
+            success_indicators = ["thank you for your order", "order confirmed", "submission received",
+                                 "successfully", "message sent", "you are now logged in", "payment successful",
+                                 "setup complete"]
+            if any(ind in content_lower for ind in success_indicators):
+                self.agent.inject_message(
+                    "System Notification: I detected a success message on the page. If the task was to submit or order, it appears complete. Verify and finish.")
+                return
+
+        except Exception:
+            pass
+
+    async def _get_current_page(self):
+        """Safely retrieves the current page from the browser context."""
+        try:
+            return await self.agent.browser_context.get_current_page()
+        except Exception:
+            return None
+
+class LoginStatusChecker:
+    """Checks the login status of the user."""
+
+    def __init__(self, agent):
+        self.agent = agent
+
+    async def check_login_status(self):
+        """Checks if the user is logged in and injects a notification."""
+        try:
+            page = await self._get_current_page()
+            if not page:
+                return
+            status_msg = await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
+
+            # if "User appears to be Logged In" in status_msg:
+            #     self._inject_login_status_message(status_msg)
+            # elif "Auth Detected" in status_msg and self.agent.state.consecutive_failures >= 2:
+            #     self._inject_login_status_message(status_msg)
+
+        except Exception:
+            pass
+
+    async def _get_current_page(self):
+        """Safely retrieves the current page from the browser context."""
+        try:
+            return await self.agent.browser_context.get_current_page()
+        except Exception:
+            return None
 async def _safe_evaluate(page, js_code: str) -> str | None:
     """Safely evaluates JavaScript code on a page and returns the result."""
     try:
@@ -41,7 +181,6 @@ class AgentHeuristics:
     """
     def __init__(self, agent):
         self.agent = agent
-        self.cheap_model_probation = 0  # Steps to wait before retrying cheap model after failure
         self.is_waiting_for_mfa = False # Flag to track if the agent is waiting for MFA approval
         self.processed_urls_for_subtasks = set()
 
@@ -151,146 +290,19 @@ class AgentHeuristics:
         elif self.agent.state.consecutive_failures > 1:
              msg = f"⚠️ Action failed {self.agent.state.consecutive_failures} times. STOP repeating the same action. You MUST try a different strategy (e.g. search instead of click, go back, or use a different tool)."
              self.inject_message(msg)
+             
+        self.completion_checker = CompletionHeuristicsChecker(self.agent)
+        self.blocking_element_checker = BlockingElementChecker(self.agent)
+        self.login_status_checker = LoginStatusChecker(self.agent)
 
     async def check_completion_heuristics(self):
         """Checks for common completion signals in the page content."""
-        try:
-            if self.agent.state.history.is_done():
-                return
-
-            page = await self._get_current_page()
-            if not page:
-                return
-            content = await page.evaluate("document.body.innerText")
-            content_lower = content.lower()
-
-            # 1. Quiz/Test/Course Completion
-            if any(kw in self.agent.task.lower() for kw in ["quiz", "test", "exam", "course", "module"]):
-                indicators = ["quiz complete", "your score", "results:", "you scored", "thank you for playing", "100%", "completed", "congratulations", "certificate"]
-                if any(ind in content_lower for ind in indicators):
-                     self.inject_message("System Notification: The page indicates the task/quiz is complete. If you have the results, please mark the task as Done.")
-                     return
-
-            # 2. General Success/Submission
-            success_indicators = ["thank you for your order", "order confirmed", "submission received", "successfully", "message sent", "you are now logged in", "payment successful", "setup complete"]
-            if any(ind in content_lower for ind in success_indicators):
-                self.inject_message("System Notification: I detected a success message on the page. If the task was to submit or order, it appears complete. Verify and finish.")
-                return
-
-        except Exception:
-            pass
+        await self.completion_checker.check_completion_heuristics()
 
     def detect_loop(self):
         """Detects if the agent is performing repetitive actions without state change."""
-        try:
-            history = self.agent.state.history.history
-            if len(history) < 2:
-                return
 
-            last_step = history[-1]
-            prev_step = history[-2]
-
-            # Check if URL is the same and actions are identical
-            if last_step.state.url == prev_step.state.url:
-                last_actions = getattr(last_step.model_output, "action", [])
-                prev_actions = getattr(prev_step.model_output, "action", [])
-                
-                if last_actions and prev_actions and str(last_actions) == str(prev_actions):
-                    # Ignore scrolling actions as they are often repeated validly
-                    action_str = str(last_actions).lower()
-                    if "scroll_down" in action_str or "scroll_up" in action_str or "wait" in action_str or "sleep" in action_str:
-                        return
-
-                    logger.warning("🔄 Loop detected: Identical action on same URL.")
-                    self.inject_message("SYSTEM ALERT: You are repeating the exact same action on the same page. This suggests the previous action did not have the desired effect. DO NOT repeat it. Try scrolling, using a different element, or refreshing.")
-        except Exception as e:
-            logger.warning(f"Error in loop detection: {e}")
-
-    async def check_blocking_elements(self):
-        """Checks for blocking elements (ads/popups) and injects a warning."""
-        try:
-            page = await self._get_current_page()
             if not page:
-                return
-            
-            # 1. Check for CAPTCHA (Priority)
-            content = await page.evaluate("document.body.innerText.toLowerCase()")
-            if "captcha" in content or "verify you are human" in content or "security check" in content:
-                 self.inject_message("SYSTEM ALERT: CAPTCHA detected. You MUST use the `solve_captcha` tool immediately. Do NOT use `clear_view` or `close_difficult_popup` as they will fail.")
-                 return
-
-            # 2. Check for Chrome Promotion (Auto-Dismiss)
-            if "make google chrome your default browser" in content or "switch to chrome" in content or "get google chrome" in content:
-                try:
-                    if page is None:
-                        return
-                    for btn_text in ["No thanks", "Not now", "No, thanks", "Later", "Dismiss"]:
-                        # XPath for case-insensitive text match on buttons or links
-                        xpath = f"//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')] | //a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{btn_text.lower()}')]"
-                        element = page.locator(xpath).first
-                        if await element.is_visible():
-                            await element.click()
-                            logger.info(f"🛡️ Heuristics: Auto-dismissed Chrome promotion via '{btn_text}'")
-                            self.inject_message(f"System Notification: I automatically dismissed a Chrome promotion popup by clicking '{btn_text}'.")
-                            await page.wait_for_timeout(500)
-                            return
-                except Exception as e:
-                    logger.warning(f"Failed to auto-dismiss Chrome popup: {e}")
-
-            is_blocked = await page.evaluate(JS_DETECT_BLOCKING_ELEMENTS)
-            if is_blocked:
-                msg = "SYSTEM ALERT: A large overlay, ad, or popup seems to be blocking the screen. This may prevent you from interacting with the page. Try using `clear_view` or `close_difficult_popup` to remove it."
-                self.inject_message(msg)
-                
-                # Auto-save screenshot of the blocking element
-                try:
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    agent_id = getattr(self.agent.state, "agent_id", "unknown_agent")
-                    filename = f"blocked_{timestamp}.png"
-                    save_path = os.path.join("./tmp/agent_history", agent_id, "debug_screenshots")
-                    os.makedirs(save_path, exist_ok=True)
-                    full_path = os.path.join(save_path, filename)
-                    await page.screenshot(path=full_path)
-                    logger.info(f"📸 Saved screenshot of blocking element: {full_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to save screenshot of a blocking element: {e}")
-        except Exception:
-            pass
-
-    async def _detect_login_status(self, page) -> str | None:
-        """
-        Detects login status using JavaScript and returns a status message.
-        """
-        try:
-            result = await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
-            return str(result) if result is not None else None
-        except Exception as e:
-            logger.warning(f"Error detecting login status: {e}")
-            return None
-
-    def _inject_login_status_message(self, status_msg: str):
-        """
-        Injects a formatted login status message into the agent's notifications.
-        """
-        if "User appears to be Logged In" in status_msg:
-            self.inject_message(f"System Notification: {status_msg} STOP attempting to log in. Proceed to the dashboard or next task.")
-        elif "Auth Detected" in status_msg and self.agent.state.consecutive_failures >= 2:
-            self.inject_message("System Notification: You seem stuck on a login page. If you believe you are logged in, try navigating to the target URL directly.")
-
-
-    async def check_login_status(self):
-        """Checks if the user is logged in and injects a notification."""
-        try:
-            page = await self._get_current_page()
-            if not page:
-                return
-            status_msg = await page.evaluate(JS_DETECT_NAVIGATION_CONTROLS)
-            
-            # if "User appears to be Logged In" in status_msg:
-            #     self._inject_login_status_message(status_msg)
-            # elif "Auth Detected" in status_msg and self.agent.state.consecutive_failures >= 2:
-            #     self._inject_login_status_message(status_msg)
-
         except Exception:
              pass
 

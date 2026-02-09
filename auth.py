@@ -1,11 +1,13 @@
 import httpx
 import os
+
 from urllib.parse import quote_plus, urlencode
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 
 router = APIRouter()
+
 @router.get("/login")
 async def login(request: Request):
     authorization_url = "https://accounts.google.com/o/oauth2/v2/auth"

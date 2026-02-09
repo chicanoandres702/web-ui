@@ -180,10 +180,13 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
 
 
     agent = BrowserUseAgent(
+        state=None,
+        settings=agent_settings,
         task=task,
         llm=llm,
         browser=browser,
         browser_context=browser_context,
+        message_manager=None,
         controller=controller,
         use_vision=agent_settings.get("use_vision", True),
         planner_llm=planner_llm,
