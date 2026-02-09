@@ -182,7 +182,9 @@ class BrowserUseAgent(Agent):
         self.save_history_path = agent_kwargs.pop('save_history_path', None)
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
-        self.cookie_path = agent_kwargs.pop('cookie_path', "./cookies")
+        self.cookie_path = agent_kwargs.pop('cookie_path', "./cookies")        
+        self.initial_actions = agent_kwargs.pop('initial_actions', None)
+        
 
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
         if confirmer_llm:
@@ -194,7 +196,7 @@ class BrowserUseAgent(Agent):
         self.done_callback: Optional[Callable] = kwargs.get("done_callback")
 
         self.source = agent_kwargs.pop('source', None)
-        self.inhibit_close = False
+        self.inhibit_close = agent_kwargs.pop('inhibit_close', False)
         self.enable_smart_retry = enable_smart_retry
         self.enable_cost_saver = enable_cost_saver
         self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', True)
