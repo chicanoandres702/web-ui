@@ -4,7 +4,7 @@ from typing import Any, Union
 
 logger = logging.getLogger(__name__)
 
-class UserInteractionHandler:
+class UserInteractionHandler: # type: ignore
     """Handles user interaction requests for the agent."""
 
     def __init__(self, agent: Any):
@@ -23,18 +23,20 @@ class UserInteractionHandler:
         intel = "No specific new information from this step."
         if last_step_info and last_step_info.model_output:
             # Use getattr to safely access 'thought' as it might not be in the schema
-            if thought:
+            if  hasattr(last_step_info.model_output, "thought") and (thought := getattr(last_step_info.model_output, "thought", None)):
                 intel = thought
 
         next_action_desc = "Agent is considering its next move."
         if (last_step_info and last_step_info.model_output and
                 last_step_info.model_output.action):
             if hasattr(action_model, "model_dump"):
-                action_dict = action_model.model_dump()
+                    action_dict = action_model.model_dump()
             else:
                 action_strings.append(str(action_model))  # Fallback for non-standard actions
             next_action_desc = ", ".join(action_strings)
-       "" if not next_action_desc:
+        if not next_action_desc:
+            next_action_desc = "Agent is considering its next move."
+                        
 
         user_decision = await self._request_user_decision(intel, next_action_desc)
 

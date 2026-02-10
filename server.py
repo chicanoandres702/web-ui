@@ -1,17 +1,13 @@
-
 import argparse
 import logging
 import os
 import asyncio
 import sys
 import inspect
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from concurrent.futures import ThreadPoolExecutor
-import sys
-from dotenv import load_dotenv
 
-# Ensure src and src/browser are in python path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
@@ -19,8 +15,8 @@ if BASE_DIR not in sys.path:
 # Internal Components
 def get_cookie_manager():
     try:
-        from src.agent.browser_use.components.cookie_manager import CookieManager
-        return CookieManager
+        from src.agent.browser_use.components.cookie_manager import CookieManager # type: ignore
+        return CookieManager # type: ignore
     except ImportError:
         # Fallback to a dummy implementation if the specific utility is missing
         return None
@@ -28,14 +24,13 @@ def get_cookie_manager():
 from src.config import SECRET_KEY
 from src.routes import main, auth, files, models, websocket
 from src.knowledge_base_api import create_knowledge_base_router
-from src.server_setup import startup_check_ollama
 from src.agent.browser_use.components.knowledge_base import KnowledgeBase
 from starlette.middleware import Middleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-load_dotenv()
+from concurrent.futures import ThreadPoolExecutor
 
-logging.basicConfig(level=logging.INFO)
+from src.server_setup import startup_check_ollama
 logger = logging.getLogger(__name__)
 executor = ThreadPoolExecutor(max_workers=4)  # Adjust max_workers as needed
 
@@ -44,6 +39,28 @@ DOCS_DIR = os.getenv("DOCS_DIR", "docs")
 
 def configure_middleware(app: FastAPI) -> None:
     """Configures the middleware for the FastAPI application."""
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"]
+    )
+    app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
+    
+from dotenv import load_dotenv
+load_dotenv()
+logging.basicConfig(level=logging.INFO)
+
+
+STATIC_DIR = os.getenv("STATIC_DIR", "static")  # or ./public
+DOCS_DIR = os.getenv("DOCS_DIR", "docs")
+
+def configure_middleware(app: FastAPI) -> None:
+    """Configures the middleware for the FastAPI application."""
+
     from fastapi.middleware.cors import CORSMiddleware
 
     app.add_middleware(
@@ -86,6 +103,7 @@ def create_app():
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
     app.include_router(create_knowledge_base_router())
+    #app.include_router(router)
     
     return app
 

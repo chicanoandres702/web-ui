@@ -3,7 +3,7 @@ import abc
 import asyncio
 from asyncio.log import logger
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union, cast
 import json
 import json_repair
 import logging
@@ -19,15 +19,16 @@ from browser_use.agent.service import Agent, AgentHookFunc # AIMessage is from l
 from browser_use.agent.views import (
     ActionResult,
     AgentHistoryList,
-    AgentHistory,
+    BrowserStateHistory,
     AgentOutput,
     AgentStepInfo,
-    BrowserStateHistory,
-)
+    BrowserStateHistory)
 # from browser_use.agent.message_manager.utils import is_model_without_tool_support
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from langchain_core.runnables import Runnable, RunnableLambda # Import RunnableLambda
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
+
+from src.agent.browser_use import agent_utils  # Import the new module
 from src.utils.utils import retry_async
 from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
 from src.utils.io_manager import IOManager
@@ -38,7 +39,21 @@ class InstructionHandlerInterface(abc.ABC):
     async def handle_instructions(self, task: Any, decision: Dict[str, str]) -> str:
         pass
 
+
+def _convert_settings_to_dict(settings: Any) -> Dict[str, Any]:
+    """
+    Converts settings to a dictionary, handling RunnableSequence objects.
+    """
+    if isinstance(settings, dict):
+        return settings.copy()
+    elif hasattr(settings, "dict") and callable(settings.dict):
+        return cast(Dict[str, Any], settings.dict())
+    else:
+        logger.warning(f"Settings object is not a dictionary.  Returning empty dictionary.")
+        return {}
+    
 load_dotenv()
+
 class AgentLLMManager:
     """Manages LLM-related operations for the agent, including model switching and patching."""
     def __init__(self, agent: Any, model_priority_list: Optional[List[Dict]] = None):
@@ -62,7 +77,7 @@ class AgentLLMManager:
         tool_calls = []
         json_content = agent_output.model_dump_json()
         if agent_output.action:
-            actions_list = agent_output.action if isinstance(agent_output.action, list) else [agent_output.action]
+            actions_list: List[Any] = agent_output.action if isinstance(agent_output.action, list) else [agent_output.action]
             for action_model in actions_list:
                 if hasattr(action_model, "model_dump"):
                     action_args = action_model.model_dump(exclude_unset=True)
@@ -80,7 +95,6 @@ class AgentLLMManager:
 
     def _set_tool_calling_method(self) -> str | None:
         """Sets the tool calling method based on model and configuration."""
-        # Accessing settings from the agent instance
         settings = getattr(self.agent, 'settings', None)
         if not settings:
             return None
@@ -140,24 +154,40 @@ class AgentLLMManager:
                 # Handle control commands (pause/resume/stop) if needed
                 pass
 
+def _convert_settings_to_dict(settings: Any) -> Dict[str, Any]:
+    """
+    Converts settings to a dictionary, handling RunnableSequence objects.
+    """
+    if isinstance(settings, dict):
+        return settings.copy()
+    elif hasattr(settings, "dict") and callable(settings.dict):
+        return cast(Dict[str, Any], settings.dict())
+    else:
+        #If settings is a RunnableSequence or other type, return an empty dictionary or handle appropriately
+        logger.warning(f"Settings object is not a dictionary.  Returning empty dictionary.")
+
+def _safe_get_attribute(obj: Any, attr: str, default: Any = None) -> Any:
+    return getattr(obj, attr, default)
+
 ToolCallingMethod = str
 
 def _prepare_agent_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """
     Prepares and validates the agent settings before passing them to AgentSettings.
     """
-    prepared_settings = settings.copy()
+    if isinstance(settings, dict):
+        prepared_settings = settings.copy()
 
-    # Convert relevant arguments to the expected type
-    for key in ['max_steps', 'confirmer_strictness']:
-        if key in prepared_settings and isinstance(prepared_settings[key], str):
-            try:
-                prepared_settings[key] = int(prepared_settings[key])
-            except ValueError:
-                logger.warning(f"Could not convert {key} to int, using default value.")
-                prepared_settings.pop(key)
-
-    return prepared_settings
+        # Convert relevant arguments to the expected type
+        for key in ['max_steps', 'confirmer_strictness']:
+            if key in prepared_settings and isinstance(prepared_settings[key], str):
+                try:
+                    prepared_settings[key] = int(prepared_settings[key])
+                except ValueError:
+                    logger.warning(f"Could not convert {key} to int, using default value.")
+                    prepared_settings.pop(key)
+        return prepared_settings
+    return {}
 
 
 class BrowserUseAgent(Agent):
@@ -166,8 +196,8 @@ class BrowserUseAgent(Agent):
         state,
         settings,
         controller,
+
         message_manager,
-        confirmer_llm=None,
         confirmer_strictness=7,
 
         model_priority_list: Optional[List[Dict]] = None,
@@ -180,9 +210,11 @@ class BrowserUseAgent(Agent):
         confirmation_response_queue: Optional[asyncio.Queue] = None,
         enable_smart_retry=False,
         enable_cost_saver=False,
+        confirmer_llm=None,
         instruction_handler: Optional[InstructionHandlerInterface] = None,
         **kwargs
     ):
+
         self.last_domain = None
         self.state = state
         self.browser_context = browser_context # type: ignore
@@ -192,13 +224,14 @@ class BrowserUseAgent(Agent):
         self.switched_to_retry_model = False
         self.planner_task: Optional[asyncio.Task] = None
 
+
         agent_kwargs = kwargs.copy()
-        self.use_custom_memory = agent_kwargs.pop('use_memory', True)
+        self.use_custom_memory = agent_kwargs.pop('use_memory', True) #type: ignore
         # Extract agent-specific args that should not be passed to the base Agent classs
         self.save_history_path = agent_kwargs.pop('save_history_path', None)
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
-        self.cookie_path = agent_kwargs.pop('cookie_path', "./cookies")        
+        self.cookie_path = agent_kwargs.pop('cookie_path', "./cookies")
         self.initial_actions = agent_kwargs.pop('initial_actions', None)
 
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
@@ -217,33 +250,38 @@ class BrowserUseAgent(Agent):
         self.auto_save_on_stuck = auto_save_on_stuck
         self.instruction_handler = instruction_handler
 
-        original_llm = agent_kwargs['llm']
-        # This instructs the LLM to produce output conforming to AgentOutput
+        #Safely get the llm
+        original_llm = agent_kwargs.get('llm')
+        if not original_llm:
+            raise ValueError("LLM must be provided in agent_kwargs or model_priority_list")
+                        
+        # This instructs the LLM to produce output conforming to AgentOutput -type: ignore
         if hasattr(original_llm, "with_structured_output"):
             structured_llm = original_llm.with_structured_output(AgentOutput)
-            logger.info("Applied AgentOutput schema to LLM using with_structured_output.")
+            logger.info("Applied AgentOutput schema to LLM using with_structured_output.") #type: ignore
         else:
             logger.warning("LLM does not support with_structured_output. Proceeding without structured output enforcement.")
             structured_llm = original_llm
+        
         # Patch LLM if it's a model that needs JSON fixes (e.g., Qwen/Ollama)
         self.llm_manager = AgentLLMManager(self, model_priority_list)
-        chat_model_library = original_llm.__class__.__name__ if original_llm else ""
+        chat_model_library = original_llm.__class__.__name__ if original_llm else "" #type: ignore
         model_name = getattr(original_llm, "model_name", "").lower() or getattr(original_llm, "model", "").lower()
-        
-        if 'Ollama' in chat_model_library or any(m in model_name for m in ['qwen', 'deepseek']):
-            agent_kwargs['llm'] = self.llm_manager._patch_llm_with_qwen_fix(structured_llm)
+        if any(m in model_name for m in ['qwen', 'ollama']):
+            structured_llm = self.llm_manager._patch_llm_with_qwen_fix(structured_llm)
             logger.info(f"Applied Qwen/Ollama JSON fix patch to LLM: {model_name}")
         else:
-            agent_kwargs['llm'] = structured_llm    
+            logger.info(f"Using standard LLM output for: {model_name}")
+        agent_kwargs['llm'] = structured_llm
         self.max_consecutive_failures = kwargs.get("max_consecutive_failures", 500)
-        
 
-        super().__init__(**agent_kwargs)
-        self.llm_manager = AgentLLMManager(self, model_priority_list)
+        # super().__init__(**agent_kwargs)
+
         from src.agent.browser_use.agent_components import AgentHeuristics as ComponentHeuristics
         self.heuristics = ComponentHeuristics(self)
         self.confirmer_llm = confirmer_llm
         self.confirmer_strictness = confirmer_strictness
+        self.controller = controller
 
         if model_priority_list and model_priority_list[0].get('llm'):
             self.llm_manager.set_llm(model_priority_list[0]['llm'])
@@ -251,24 +289,29 @@ class BrowserUseAgent(Agent):
             self.llm_manager.set_llm(agent_kwargs['llm'])
 
         from src.agent.browser_use.agent_components import BrowserActionHandler
-        from src.agent.browser_use.agent_components import BrowserActionHandler
-        self._initialize_action_handler()
+        # self._initialize_action_handler()
+        self.action_handler = BrowserActionHandler(self.browser_context, controller=self.controller, heuristics=self.heuristics)
+
     def _initialize_action_handler(self):
         """d
-
         Initializes the BrowserActionHandler.
         """
         if not self.browser_context:
             return # type: ignore
+        from src.agent.browser_use.control_queue_handler import ControlQueueHandler #type: ignore
 
-        from src.agent.browser_use.control_queue_handler import ControlQueueHandler
-        self.control_queue_handler = ControlQueueHandler(self) # type: ignore
-        self.cleanup_handler = AgentCleanupHandler(self)
-        self.action_handler = BrowserActionHandler(self.browser_context, self.controller, self.heuristics)
+        # self.control_queue_handler = ControlQueueHandler(self) # type: ignore
+        self.cleanup_handler = AgentCleanupHandler(self) #type: ignore
+        self.action_handler = BrowserActionHandler(self.browser_context, controller=self.controller, heuristics=self.heuristics)
         self.post_step_handler = PostStepHandler(self)
 
     def _set_tool_calling_method(self) -> str:
         return self.llm_manager._set_tool_calling_method() or "auto"
+    
+    @property
+    def _tool_calling_supported(self) -> bool:
+        """Whether tool calling is supported by the agent."""
+        return self._set_tool_calling_method() == "function_calling"
     def _initialize_components(self, agent_kwargs: Dict[str, Any], system_prompt: Optional[str] = None) -> None:
 
         """
@@ -276,7 +319,7 @@ class BrowserUseAgent(Agent):
         """
         from src.agent.browser_use.agent_components import ComponentInitializer
         from src.agent.browser_use.agent_components import AgentCleanupHandler
-        ComponentInitializer(self, agent_kwargs, system_prompt)
+        # ComponentInitializer(self, agent_kwargs, system_prompt)
 
         # Initialize SiteKnowledgeInjector
         self.site_knowledge_injector = SiteKnowledgeInjector(self)
@@ -611,6 +654,8 @@ class BrowserUseAgent(Agent):
   
         self.heuristics.inject_message(full_msg)
 
+
+
     def inject_notification(self, content: str):
         """
         Injects a system notification into the message manager as a HumanMessage.
@@ -735,6 +780,7 @@ class BrowserUseAgent(Agent):
         if self.cookie_path and os.path.exists(self.cookie_path):
 
             if self.browser_context:   
+
                 try:
                     with open(self.cookie_path, 'r', encoding='utf-8') as f:
                         cookies = json.load(f)
@@ -905,7 +951,7 @@ class AgentHeuristics:
         self.is_waiting_for_mfa = False
 
     def inject_message(self, content: str):
-        self.agent.inject_notification(content)
+        self.agent.inject_notification(content) # type: ignore
 
     async def check_completion_heuristics(self):
         """Heuristic checks to see if the task is actually finished even if LLM didn't say so."""
@@ -1113,6 +1159,7 @@ class AgentCleanupHandler:
         self.agent = agent
 
     async def _manage_tabs(self):
+
         """Closes extraneous tabs to keep the agent focused."""
         nav_controller = getattr(self.agent.controller, 'nav_controller', None)
         if nav_controller:
@@ -1138,6 +1185,7 @@ class AgentCleanupHandler:
             pass
 
 
+
         if self.agent.settings and getattr(self.agent.settings, 'generate_gif', False):
             output_path = 'agent_history.gif'
             if isinstance(self.agent.settings.generate_gif, str):
@@ -1147,6 +1195,7 @@ class AgentCleanupHandler:
         await self.agent._execute_done_callback()
         
     async def _handle_user_interaction(self) -> bool:
+
 
         """
         Handles the user interaction dialog.
@@ -1269,6 +1318,7 @@ class AgentCleanupHandler:
                 metadata=None,
             )
         )
+
         logger.info(f'❌ {error_message}')
 
     async def save_history_async(self, path: str):
@@ -1278,6 +1328,7 @@ class AgentCleanupHandler:
             await IOManager.write_file(path, self.agent.state.history.model_dump_json(indent=2))
         except Exception as e:
             logger.error(f"Failed to save history asynchronously: {e}")
+
 
 
         """Handle cleanup after run."""

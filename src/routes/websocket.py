@@ -184,7 +184,6 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
         settings=agent_settings,
         task=task,
         llm=llm,
-        browser=browser,
         browser_context=browser_context,
         message_manager=None,
         controller=controller,

@@ -3,7 +3,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-class TabManagementHandler:
+class TabManagementHandler: # type: ignore
     """
     Handles tab management for the agent.
     This class is responsible for closing extraneous tabs to keep the agent focused.

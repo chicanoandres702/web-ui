@@ -17,6 +17,7 @@ class ComponentInitializer:
         Args:
             agent: The BrowserUseAgent instance.
             agent_kwargs: Keyword arguments passed to the agent.
+
             system_prompt: An optional system prompt to override the default.
         """
         self.agent = agent

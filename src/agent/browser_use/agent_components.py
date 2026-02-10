@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import asyncio
 from datetime import datetime
 import inspect
@@ -11,25 +12,26 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 from dotenv import load_dotenv
 
 import sys
+
 if str(Path(__file__).resolve().parents[3]) not in sys.path:
     sys.path.append(str(Path(__file__).resolve().parents[3]))
 from browser_use.agent.gif import create_history_gif
-from browser_use.agent.service import Agent, AgentHookFunc # AIMessage is from langchain_core.messages
-from browser_use.agent.views import ( #AgentHistory, #AgentHistoryList,
+from browser_use.agent.service import AgentHookFunc # AIMessage is from langchain_core.messages
+from browser_use.agent.views import (
     AgentOutput,
     ActionResult,
-    #AgentSettings,
     AgentStepInfo,
+    AgentHistoryList,
 )
-
-from src.agent.browser_use.component_initializer import ComponentInitializer
 from src.agent.browser_use.control_queue_handler import ControlQueueHandler
+from src.agent.browser_use.tab_management_handler import TabManagementHandler
 from src.agent.browser_use.user_interaction_handler import UserInteractionHandler
 from src.agent.browser_use.agent_cleanup_handler import AgentCleanupHandler
-from src.agent.browser_use.tab_management_handler import TabManagementHandler
+from src.agent.browser_use.agent_heuristics import AgentHeuristics
+
 
 import abc
-class InstructionHandlerInterface(abc.ABC):
+class InstructionHandlerInterface(abc.ABC): # type: ignore
     @abc.abstractmethod
     async def handle_instructions(self, task: Any, decision: Dict[str, str]) -> str:
         pass
@@ -37,6 +39,7 @@ class InstructionHandlerInterface(abc.ABC):
 logger = logging.getLogger(__name__)
 
 from langchain_core.messages import HumanMessage, BaseMessage, AIMessage
+from langchain_core.runnables import Runnable, RunnableLambda
 from src.agent.browser_use import agent_utils  # Import the new module
 from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
 
@@ -45,15 +48,21 @@ from src.utils.utils import parse_json_safe, retry_async
 
 class AgentLLMManager:
     """Manages LLM-related operations for the agent, including model switching and patching."""
-
-    def __init__(self, agent: Any):
+    def __init__(self, agent):
         self.agent = agent
 
     def set_llm(self, llm):
         """Sets the current LLM for the agent."""
+        #Before setting, log the previous and new LLM
+        old_llm_name = getattr(self.agent, 'llm', None)
+        if old_llm_name:
+            old_llm_name = old_llm_name.__class__.__name__
+
+        new_llm_name = llm.__class__.__name__
+        logger.info(f"Switching LLM from {old_llm_name} to {new_llm_name}")
         self.agent.llm = llm
 
-'''
+
     def _patch_llm_with_qwen_fix(self, llm: Runnable) -> Runnable:
         """Wraps the LLM with a RunnableLambda that applies Qwen/Ollama JSON fix logic."""
         llm_with_aimessage_output = llm | RunnableLambda(self._convert_agent_output_to_aimessage)
@@ -102,19 +111,18 @@ class AgentLLMManager:
                     logger.info("🔧 Fixed Qwen/Ollama output format by extracting 'arguments'.")
                     response.content = json.dumps(data["arguments"])
                 else:
-
                     response.content = json.dumps(data)
         except Exception as e:
             logger.debug(f"QwenFixWrapper: Initial json_repair failed: {e}. Attempting more aggressive repair.")
             # Fallback to more aggressive repair or default to empty JSON
-            try:
-                    fixed_content = content + '}' * (content.count('{') - content.count('}'))
-                    data = json_repair.loads(fixed_content)
-                    response.content = json.dumps(data)
-            except Exception as inner_e:
-                logger.warning(f"QwenFixWrapper: Inner repair attempt failed: {inner_e}. Original: '{content}'")
-                response.content = "{}"
                 
+            fixed_content = content + '}' * (content.count('{') - content.count('}'))
+            data = json_repair.loads(fixed_content)
+            response.content = json.dumps(data)
+        except Exception as inner_e:
+            logger.warning(f"QwenFixWrapper: Inner repair attempt failed: {inner_e}. Original: '{content}'")
+            response.content = "{}"
+            
         return response
 
     def _set_tool_calling_method(self) -> str | None:
@@ -122,7 +130,7 @@ class AgentLLMManager:
         tool_calling_method = self.agent.settings.tool_calling_method
         chat_model_library = self.agent.chat_model_library
         model_name = self.agent.model_name.lower()
-
+    
         if tool_calling_method == 'auto':
             if 'Ollama' in chat_model_library:
                 return None
@@ -167,7 +175,7 @@ class AgentLLMManager:
             return custom_task
         else:
             return False
-'''
+
 
 class BrowserActionHandler:
     """Handles browser-specific actions.
@@ -182,33 +190,18 @@ class BrowserActionHandler:
 
     async def save_cookies(self, cookie_path: str) -> None:
         """Saves cookies from the browser context to a file."""
-        if self.browser_context and cookie_path:
-            try:
-                cookies = await self.browser_context.get_cookies()
-                # Serialize the cookies to a JSON string before writing to the file
-                cookies_json = json.dumps(cookies, indent=2)  # Pretty print the JSON
+        try:
+            cookies = await self.browser_context.get_cookies()
+            # Serialize the cookies to a JSON string before writing to the file
+            cookies_json = json.dumps(cookies, indent=2)  # Pretty print the JSON
 
-                # Write the JSON string to the file
-                with open(cookie_path, 'w', encoding='utf-8') as f:
-                    f.write(cookies_json)
-                logger.info(f"Saved cookies to {cookie_path}")
-            except Exception as e:
-                logger.error(f"Failed to save cookies: {e}")
+            # Write the JSON string to the file
+            with open(cookie_path, 'w', encoding='utf-8') as f:
+                f.write(cookies_json)
+            logger.info(f"Saved cookies to {cookie_path}")
+        except Exception as e:
+            logger.error(f"Failed to save cookies: {e}")
 
-
-
-class AgentHeuristics:
-    """Encapsulates heuristic logic for agent behavior, loop detection, and strategy."""
-    def __init__(self, agent: Any):
-        self.agent = agent
-        self.is_waiting_for_mfa = False
-
-    def inject_message(self, content: str):
-        self.agent.inject_notification(content)
-
-    async def check_completion_heuristics(self):
-        """Heuristic checks to see if the task is actually finished even if LLM didn't say so."""
-        pass
 
     def detect_loop(self):
         """Detects if the agent is stuck in an action loop."""
@@ -245,37 +238,32 @@ class AgentHeuristics:
 
 ToolCallingMethod = str
 
-class BrowserUseAgent(Agent):
+class BrowserUseAgent:
     def __init__(
-
         self,
         state,
         settings,
         message_manager,
         confirmer_llm=None,
         confirmer_strictness=7,
-
         model_priority_list: Optional[List[Dict]] = None,
         enable_cost_saver=False,
         enable_smart_retry=False,
         auto_save_on_stuck=True,
         system_prompt: Optional[str] = None,
         validation_callback=None,
+        task: str = " ",
         browser_context=None,
         send_agent_message_callback: Optional[Callable] = None,
         confirmation_event: Optional[asyncio.Event] = None,
         confirmation_response_queue: Optional[asyncio.Queue] = None,
         instruction_handler: Optional[InstructionHandlerInterface] = None,
         **kwargs
-
     ):
-
         self.last_domain = None
-
+        self.task = task
         self.state = state
         self.settings = settings
-        self.browser_context = browser_context # type: ignore
-        self.send_agent_message_callback = send_agent_message_callback
         self.confirmation_response_queue = confirmation_response_queue
         self.successful_steps_since_switch = 0
         self.switched_to_retry_model = False
@@ -284,8 +272,6 @@ class BrowserUseAgent(Agent):
         # Extract use_memory to avoid passing it to parent Agent which doesn't support it
         # We intercept 'use_memory' to use our own SimpleMemoryManager instead of mem0
 
-
-        self.use_custom_memory = kwargs.pop('use_memory', True)
         
         # Extract agent-specific args that should not be passed to the base Agent class
         self.save_history_path = kwargs.pop('save_history_path', None)
@@ -293,8 +279,10 @@ class BrowserUseAgent(Agent):
         self.planner_interval = kwargs.pop('planner_interval', 5.0)
         self.cookie_path = kwargs.pop('cookie_path', "./tmp/cookies.json")
         self.enable_user_interaction_dialog = kwargs.pop('enable_user_interaction_dialog', True)
+        self.initial_actions = kwargs.pop('initial_actions', None)
         self.agent_control_queue = kwargs.pop('agent_control_queue', None)
         
+
         if confirmer_llm:
             kwargs['validate_output'] = True
 
@@ -309,7 +297,7 @@ class BrowserUseAgent(Agent):
         self.auto_save_on_stuck = auto_save_on_stuck
         self.instruction_handler = instruction_handler
         if 'llm' in kwargs:
-            agent_kwargs = kwargs.copy()
+            agent_kwargs = kwargs.copy() # type: ignore
 
             original_llm = agent_kwargs['llm']
             
@@ -322,13 +310,12 @@ class BrowserUseAgent(Agent):
                 logger.warning("LLM does not support with_structured_output. Proceeding without structured output enforcement.")
                 structured_llm = original_llm
         self.max_consecutive_failures = kwargs.get("max_consecutive_failures", 500)
-        super().__init__(**agent_kwargs)
+        super().__init__(task=task, **agent_kwargs) # type: ignore
 
         self.llm_manager = AgentLLMManager(self)
         self.heuristics = AgentHeuristics(self)
         self.confirmer_llm = confirmer_llm
         self.confirmer_strictness = confirmer_strictness
-        self._initialize_components(agent_kwargs, system_prompt)
 
         if model_priority_list and model_priority_list[0].get('llm'):
             self.llm_manager.set_llm(model_priority_list[0]['llm'])
@@ -338,38 +325,46 @@ class BrowserUseAgent(Agent):
         from src.agent.browser_use.browser_use_agent import BrowserActionHandler
         self.action_handler = BrowserActionHandler(self.browser_context, self.controller, self.heuristics) # type: ignore
         self._initialize_action_handler()
+        self.control_queue_handler = ControlQueueHandler(self)
 
     def _initialize_action_handler(self):
         """d
         Initializes the BrowserActionHandler.
         """
-        pass
 
-    def _set_tool_calling_method(self) -> str:
         return self.llm_manager._set_tool_calling_method() or "auto"
         
     def _initialize_components(self, agent_kwargs: Dict[str, Any], system_prompt: Optional[str] = None) -> None:
         """
         Initializes agent components and applies system prompt override.
         """
-        ComponentInitializer(self, agent_kwargs, system_prompt)
-        self.site_knowledge_injector = SiteKnowledgeInjector(self)
+        ComponentInitializer(self, agent_kwargs, system_prompt) # type: ignore
+        self.site_knowledge_injector = SiteKnowledgeInjector(self) # type: ignore
 
-        self.user_interaction_handler = UserInteractionHandler(self)
-        self.cleanup_handler = AgentCleanupHandler(self)
-        self.tab_handler = TabManagementHandler(self)
-        self.cookie_handler = CookieHandler(self)
+        self.user_interaction_handler = UserInteractionHandler(self) # type: ignore
+        self.cleanup_handler = AgentCleanupHandler(self) # type: ignore
+        self.tab_handler = TabManagementHandler(self) # type: ignore
+        self.cookie_handler = CookieHandler(self) # type: ignore
+
+class CookieHandler:
+    """Handles cookie loading and saving for the agent."""
+    def __init__(self, agent: Any):
+        """Initializes the CookieHandler with the agent instance."""
+        self.agent = agent
+
+    async def load_cookies(self, browser_context: Any, cookie_path: str) -> None:
+        """Loads cookies from a file into the browser context."""
 
     async def _process_control_queue(self) -> None:
         """Processes commands from the control queue."""
-        if hasattr(self, 'control_queue_handler'):
-            await self.control_queue_handler.process_control_queue()
+        await self.control_queue_handler.process_control_queue()
     
     async def run(self, max_steps: int = 100, on_step_start: AgentHookFunc | None = None, on_step_end: AgentHookFunc | None = None) -> AgentHistoryList:
 
         loop = asyncio.get_event_loop()
         try:
-            self._log_agent_run()
+            if hasattr(self, '_log_agent_run'):
+                self._log_agent_run()
 
             # Start Planner Loop if enabled
             if self.planner_llm:
@@ -383,9 +378,10 @@ class BrowserUseAgent(Agent):
                     # Inject into message history so the agent knows what happened
                     summary = "\n".join(results)
                     msg = f"SYSTEM NOTE: The following actions were already executed for this step:\n{summary}\n\nCheck the current state. If the goal is achieved, output {{'finish': ...}}. Do NOT repeat the above actions."
-                    if hasattr(self, "message_manager") and self.message_manager:
+                    message_manager = getattr(self, "message_manager", None)
+                    if message_manager:
                         # MessageManager in browser-use uses add_message for HumanMessages
-                        add_msg_func = getattr(self.message_manager, "add_message", None)
+                        add_msg_func = getattr(message_manager, "add_message", None)
                         if callable(add_msg_func):
                             add_msg_func(HumanMessage(content=msg))
                     # Also set last_result for good measure if the parent class uses it
@@ -397,19 +393,24 @@ class BrowserUseAgent(Agent):
                         break
 
                     if on_step_start is not None:
-                        await on_step_start(self)
+                        await on_step_start(self) # type: ignore
 
                     step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
                     await self._execute_agent_step(step_info)
 
                     if on_step_end is not None:
-                        await on_step_end(self)
+                        await on_step_end(self) # type: ignore
 
                     if await self._handle_post_step(step, max_steps):
                         break
 
                     # If a custom task was provided, the agent.task would have been updated.
                     # We should continue the loop to process the new task.
+                except Exception as e:
+                    logger.error(f"Error in step {step}: {e}")
+                    self.state.consecutive_failures += 1
+                    if self.state.consecutive_failures >= self.max_consecutive_failures:
+                        break
             else:
                 self._handle_max_steps_reached()
             return self.state.history
@@ -429,7 +430,7 @@ class BrowserUseAgent(Agent):
     async def _execute_agent_step(self, step_info: AgentStepInfo):
         """Executes a single step of the agent."""
         try:
-            await self.step(step_info)
+            await super().step(step_info)
         except Exception as e:
             if "Timeout" in str(e) and "exceeded" in str(e):
                 logger.warning(f"⚠️ Step {step_info.step_number + 1} timed out: {e}. Attempting to recover by reloading page.")
@@ -445,7 +446,8 @@ class BrowserUseAgent(Agent):
         try:
             logger.info("Attempting to reload the page to recover...")
             if self.browser_context:
-                await page.reload(wait_until="domcontentloaded", timeout=15000)
+                current_page = await self.browser_context.get_current_page()
+                await current_page.reload(wait_until="domcontentloaded", timeout=15000)
                 self.heuristics.inject_message("SYSTEM: A timeout occurred. I have reloaded the page to recover. Please re-assess the current state.")
         except Exception as reload_e:
             logger.error(f"Failed to reload page after timeout: {reload_e}")
@@ -549,7 +551,7 @@ class BrowserUseAgent(Agent):
 
             if isinstance(action_data, dict):
                 for action_name, params in action_data.items():
-                  try:
+                    try:
 
                         logger.info(f"🚀 Executing initial action: {action_name} with params: {params}")
                         execute_func = getattr(self.controller, "execute_action_by_name", None)
@@ -610,6 +612,8 @@ class BrowserUseAgent(Agent):
 
             if self.validation_callback:
                 try:
+                    if inspect.iscoroutinefunction(self.validation_callback):
+                                
                         await self.validation_callback(think_content, reason, is_confirmed)
                     else:
                         self.validation_callback(think_content, reason, is_confirmed)
@@ -625,6 +629,10 @@ class BrowserUseAgent(Agent):
                             if "CAPTCHA" in reason_upper:
                                 new_step_desc = "Solve CAPTCHA detected on page"
                             elif "LOGIN" in reason_upper or "SIGN IN" in reason_upper:
+                                new_step_desc = "Navigate to login page and authenticate"
+                            else:
+                                new_step_desc = None
+                                                            
                                 
                             
 
@@ -687,13 +695,10 @@ class BrowserUseAgent(Agent):
 
     def _handle_confirmer_rejection(self, response_text: str):
         """Handles the logic when the confirmer rejects the completion."""
-            msg = f"Confirmer rejected completion: {response_text}"
-
-        
+        msg = f"Confirmer rejected completion: {response_text}"
         # Inject strategy hint to force re-assessment
         strategy_hint = " STRATEGY UPDATE: The previous action did NOT complete the task. You MUST change your approach. 1. Do NOT repeat the same action. 2. Use `assess_page_section` or `get_page_structure` to re-orient. 3. Check for popups or errors."
         full_msg = msg + strategy_hint
-  
         self.heuristics.inject_message(full_msg)
 
     def inject_notification(self, content: str):
@@ -784,8 +789,11 @@ class BrowserUseAgent(Agent):
         if self.heuristics.is_waiting_for_mfa:
             logger.info("MFA required, waiting for approval from another device, after setting pre step...")
             if self.send_agent_message_callback:
-                await self.send_agent_message_callback({"type": "mfa_required", "message": "MFA Required: Approve from your other device to continue."})
-           })
+                await self.send_agent_message_callback({
+                    "type": "agent_status", 
+                    "status": "Waiting for MFA 🔐"
+                })
+                
             while self.heuristics.is_waiting_for_mfa and not self.state.stopped:
                 await asyncio.sleep(1)  # Check every second
             logger.info("MFA approved or agent stopped.")
@@ -814,13 +822,10 @@ class BrowserUseAgent(Agent):
             if self.browser_context:   
                 try:
                     with open(self.cookie_path, 'r', encoding='utf-8') as f:
-                    await self.browser_context.add_cookies(cookies)
-                    logger.info(f"Loaded cookies from {self.cookie_path}")
+                        await self.browser_context.add_cookies(cookies)
+                        logger.info(f"Loaded cookies from {self.cookie_path}")
                 except Exception as e:
                     logger.error(f"Failed to load cookies: {e}")
-
-
-
         return False
 
     async def _manage_tabs(self):
@@ -877,8 +882,8 @@ class BrowserUseAgent(Agent):
 
 
         if self.cookie_path:
-            await self.action_handler.save_cookies(self.cookie_path)
-
+            await self.browser_action_handler.save_cookies(self.cookie_path)
+        
         # --- User Interaction Dialog ---
         if await self.user_interaction_handler.handle_user_interaction():
             return True # Stop requested
@@ -918,10 +923,8 @@ class BrowserUseAgent(Agent):
                     action_dict = action_model.model_dump()
                 else:
                     action_strings.append(str(action_model)) # Fallback for non-standard actions
-                next_action_desc = ", ".join(action_strings)
-       "" if not next_action_desc:
-                    next_action_desc = "Agent is considering its next move."
-                
+                next_action_desc = ", ".join(action_strings) if action_strings else "Agent is considering its next move."
+
         user_decision = await self._request_user_decision(intel, next_action_desc)
 
         if user_decision is False: # User chose No/Abort

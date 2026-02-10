@@ -32,6 +32,3 @@ class AgentCleanupHandler:
                 create_history_gif(task=self.agent.task, history=self.agent.state.history, output_path=output_path)
             except Exception as e:
                 logger.error(f"Failed to generate history GIF: {e}")
-
-        # Execute Done Callback
-        await self.agent._execute_done_callback()

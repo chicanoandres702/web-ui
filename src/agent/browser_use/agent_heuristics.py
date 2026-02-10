@@ -13,6 +13,7 @@ if str(Path(__file__).resolve().parents[3]) not in sys.path:
 from datetime import datetime
 from langchain_core.messages import HumanMessage
 from browser_use.agent.views import ActionResult, AgentStepInfo
+
 from src.utils.utils import save_text_to_file
 from src.utils.browser_scripts import JS_DETECT_BLOCKING_ELEMENTS, JS_DETECT_NAVIGATION_CONTROLS
 from src.agent.browser_use.navigation_recovery import evaluate_site_state
@@ -169,9 +170,10 @@ async def _safe_evaluate(page, js_code: str) -> str | None:
         return None
 
 async def _safe_take_screenshot(page, path: str):
+
      try:
           await page.screenshot(path=path)
-     except Exception as e:
+     except Exception as e: # type: ignore
           logger.warning(f"Failed to save screenshot: {e}")
 
 class AgentHeuristics:
@@ -216,7 +218,6 @@ class AgentHeuristics:
         """Handles Cost Saver and Smart Retry logic."""
         agent = self.agent
         if not agent.model_priority_list or not (agent.enable_smart_retry or agent.enable_cost_saver):
-            # Reset to main if heuristics are off or no list is provided
             if agent.llm_manager.get_current_llm() != agent.llm_manager.main_llm: agent.llm_manager.set_llm(agent.llm_manager.main_llm)
             agent.current_model_index = -1
             agent.switched_to_retry_model = False
@@ -235,7 +236,7 @@ class AgentHeuristics:
                 best_fallback = max(candidates, key=lambda x: x['priority'])
                 new_index = agent.model_priority_list.index(next(m for m in agent.model_priority_list if m['priority'] == best_fallback['priority']))
                 
-                if new_index != agent.current_model_index:
+                if new_index != agent.current_model_index: # type: ignore
                     logger.warning(f'⚠️ Smart Retry: Switching to stronger model (Priority {best_fallback["priority"]}).')
                     agent.llm = best_fallback['llm']
                     agent.current_model_index = new_index
@@ -254,7 +255,7 @@ class AgentHeuristics:
                 cheapest_option = min(candidates, key=lambda x: x['priority'])
                 new_index = agent.model_priority_list.index(next(m for m in agent.model_priority_list if m['priority'] == cheapest_option['priority']))
 
-                if new_index != agent.current_model_index:
+                if new_index != agent.current_model_index: # type: ignore
                     logger.info(f'💰 Cost Saver: Downgrading to cheaper model (Priority {cheapest_option["priority"]}).')
                     agent.llm = cheapest_option['llm']
                     agent.current_model_index = new_index
@@ -264,7 +265,7 @@ class AgentHeuristics:
                     return
 
         # --- Fallback: Revert to main model on any failure ---
-        if agent.state.consecutive_failures > 0 and agent.current_model_index != -1:
+        if agent.state.consecutive_failures > 0 and agent.current_model_index != -1: # type: ignore
             logger.warning(f"Failure on model (Priority {current_priority}). Reverting to main model: {agent.llm_manager.main_llm}.")
             agent.llm = agent.main_llm
             agent.current_model_index = -1
@@ -301,11 +302,25 @@ class AgentHeuristics:
 
     def detect_loop(self):
         """Detects if the agent is performing repetitive actions without state change."""
+        try:
+            history = self.agent.state.history.history
+            if len(history) < 3:
+                return False
 
-            if not page:
-        except Exception:
-             pass
+            # Check if the last 3 actions are identical
+            last_actions = []
+            for item in history[-3:]:
+                if item.model_output and item.model_output.action:
+                    last_actions.append(str(item.model_output.action))
 
+            if len(last_actions) == 3 and len(set(last_actions)) == 1:
+                logger.warning("🔄 Loop detected: Agent is repeating the same action.")
+                self.inject_message("SYSTEM: Loop detected. You have performed the same action 3 times. Please try a different approach or inspect the page more closely.")
+                return True
+            return False
+        except Exception as e:
+            logger.debug(f"Error in loop detection: {e}")
+            return False
 
     async def check_navigation_recovery(self):
         """Checks if navigation recovery is needed using specialized assessment logic."""
