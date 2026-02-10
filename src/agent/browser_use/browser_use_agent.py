@@ -28,6 +28,8 @@ from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AI
 from langchain_core.runnables import Runnable, RunnableLambda # Import RunnableLambda
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 
+from src.agent.browser_use.agent_components import ComponentInitializer, AgentCleanupHandler, BrowserActionHandler, AgentHeuristics, CompletionCheckHandler, UserInteractionHandler
+
 from src.agent.browser_use import agent_utils  # Import the new module
 from src.utils.utils import retry_async
 from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
@@ -35,7 +37,6 @@ from src.utils.io_manager import IOManager
 
 class InstructionHandlerInterface(abc.ABC):
     @abc.abstractmethod
-
     async def handle_instructions(self, task: Any, decision: Dict[str, str]) -> str:
         pass
 
@@ -59,7 +60,7 @@ class AgentLLMManager:
     def __init__(self, agent: Any, model_priority_list: Optional[List[Dict]] = None):
         self.agent = agent
         self.model_priority_list = model_priority_list
-
+        
     def set_llm(self, llm):
         """Sets the current LLM for the agent."""
         self.agent.llm = llm
@@ -137,10 +138,9 @@ class AgentLLMManager:
             
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             
-            # Cancel pending tasks
             for task in pending:
                 task.cancel()
-            
+
             if confirmation_task in done:
                 response_data = confirmation_task.result()
                 response = response_data.get("response")
@@ -149,25 +149,24 @@ class AgentLLMManager:
                 if response == "yes": return True
                 if response == "no": return False
                 if custom_task: return custom_task
-            
+
             if control_task and control_task in done:
-                # Handle control commands (pause/resume/stop) if needed
-                pass
-
-def _convert_settings_to_dict(settings: Any) -> Dict[str, Any]:
-    """
-    Converts settings to a dictionary, handling RunnableSequence objects.
-    """
-    if isinstance(settings, dict):
-        return settings.copy()
-    elif hasattr(settings, "dict") and callable(settings.dict):
-        return cast(Dict[str, Any], settings.dict())
-    else:
-        #If settings is a RunnableSequence or other type, return an empty dictionary or handle appropriately
-        logger.warning(f"Settings object is not a dictionary.  Returning empty dictionary.")
-
-def _safe_get_attribute(obj: Any, attr: str, default: Any = None) -> Any:
-    return getattr(obj, attr, default)
+                control_data = control_task.result()
+                command = control_data.get("command")
+                
+                if command == "pause":
+                    self.agent.pause()
+                    logger.info("Agent paused via user request during confirmation.")
+                    if self.agent.send_agent_message_callback:
+                        await self.agent.send_agent_message_callback({"type": "agent_status", "status": "Paused ⏸️"})
+                elif command == "resume":
+                    self.agent.resume()
+                    logger.info("Agent resumed via user request during confirmation.")
+                    if self.agent.send_agent_message_callback:
+                        await self.agent.send_agent_message_callback({"type": "agent_status", "status": "Participating"})
+                elif command == 'stop':
+                    self.agent.stop()
+                    return False
 
 ToolCallingMethod = str
 
@@ -195,6 +194,7 @@ class BrowserUseAgent(Agent):
         self,
         state,
         settings,
+        task,
         controller,
 
         message_manager,
@@ -205,6 +205,7 @@ class BrowserUseAgent(Agent):
         system_prompt: Optional[str] = None,
         validation_callback=None,
         browser_context=None,
+
         send_agent_message_callback: Optional[Callable] = None,
         confirmation_event: Optional[asyncio.Event] = None,
         confirmation_response_queue: Optional[asyncio.Queue] = None,
@@ -214,8 +215,8 @@ class BrowserUseAgent(Agent):
         instruction_handler: Optional[InstructionHandlerInterface] = None,
         **kwargs
     ):
-
         self.last_domain = None
+        self.task = task
         self.state = state
         self.browser_context = browser_context # type: ignore
         self.send_agent_message_callback = send_agent_message_callback
@@ -223,7 +224,7 @@ class BrowserUseAgent(Agent):
         self.successful_steps_since_switch = 0
         self.switched_to_retry_model = False
         self.planner_task: Optional[asyncio.Task] = None
-
+        self.settings = settings
 
         agent_kwargs = kwargs.copy()
         self.use_custom_memory = agent_kwargs.pop('use_memory', True) #type: ignore
@@ -273,25 +274,24 @@ class BrowserUseAgent(Agent):
         else:
             logger.info(f"Using standard LLM output for: {model_name}")
         agent_kwargs['llm'] = structured_llm
-        self.max_consecutive_failures = kwargs.get("max_consecutive_failures", 500)
+
 
         # super().__init__(**agent_kwargs)
 
         from src.agent.browser_use.agent_components import AgentHeuristics as ComponentHeuristics
         self.heuristics = ComponentHeuristics(self)
         self.confirmer_llm = confirmer_llm
-        self.confirmer_strictness = confirmer_strictness
+        self.confirmer_strictness: int = confirmer_strictness
         self.controller = controller
 
         if model_priority_list and model_priority_list[0].get('llm'):
+
             self.llm_manager.set_llm(model_priority_list[0]['llm'])
         else:
             self.llm_manager.set_llm(agent_kwargs['llm'])
-
-        from src.agent.browser_use.agent_components import BrowserActionHandler
-        # self._initialize_action_handler()
+        self._initialize_action_handler()
         self.action_handler = BrowserActionHandler(self.browser_context, controller=self.controller, heuristics=self.heuristics)
-
+        
     def _initialize_action_handler(self):
         """d
         Initializes the BrowserActionHandler.
@@ -317,8 +317,7 @@ class BrowserUseAgent(Agent):
         """
         Initializes agent components and applies system prompt override.
         """
-        from src.agent.browser_use.agent_components import ComponentInitializer
-        from src.agent.browser_use.agent_components import AgentCleanupHandler
+
         # ComponentInitializer(self, agent_kwargs, system_prompt)
 
         # Initialize SiteKnowledgeInjector
@@ -593,21 +592,17 @@ class BrowserUseAgent(Agent):
 
             if not is_confirmed:
                 reason_upper = reason.upper()
-                manager = getattr(self.controller, "webui_manager", None)
-                if manager and hasattr(manager, "add_plan_step"):
-                    new_step_desc = None
-                    if "CAPTCHA" in reason_upper:
-                        new_step_desc = "Solve CAPTCHA detected on page"
-                    elif "LOGIN" in reason_upper or "SIGN IN" in reason_upper:
-                        new_step_desc = "Handle login requirement"
 
-                    step_index = getattr(self.state, 'current_step_index', 0)
-                    if new_step_desc:
-                        insert_idx = step_index + 1
-                        manager.add_plan_step(new_step_desc, index=insert_idx)
-                        manager.update_plan_step_status(step_index, "failed", result=f"Blocked: {reason}")
-                        self.state.stopped = True
-                        return False
+                new_step_desc = None
+                if "CAPTCHA" in reason_upper:
+                    new_step_desc = "Solve CAPTCHA detected on page"
+                elif "LOGIN" in reason_upper or "SIGN IN" in reason_upper:
+                    new_step_desc = "Handle login requirement"
+
+                step_index = getattr(self.state, 'current_step_index', 0)
+                if new_step_desc:
+                    self.state.stopped = True
+                    return False
                 return True
             
             self._handle_confirmer_rejection(reason)
@@ -669,6 +664,7 @@ class BrowserUseAgent(Agent):
         try:   
             # Use getattr to avoid static analysis errors for unknown attributes on MessageManager
             add_msg_func = getattr(self.message_manager, "add_message", None)
+            # print(f"trying add messafe", add_msg_func)
             if callable(add_msg_func):
                 add_msg_func(msg)
             else:
@@ -810,10 +806,7 @@ class UserInteractionHandler:
         
         if last_step_info and last_step_info.model_output:
             thought = getattr(last_step_info.model_output, "thought", None)
-            if thought:
-                intel = thought
-        
-        next_action_desc = "Agent is considering its next move."
+            intel = thought
         if last_step_info and last_step_info.model_output and last_step_info.model_output.action:
             action_strings = []
             actions = last_step_info.model_output.action if isinstance(last_step_info.model_output.action, list) else [last_step_info.model_output.action]
@@ -824,7 +817,6 @@ class UserInteractionHandler:
                 else:
                     action_strings.append(str(action_model))
             next_action_desc = ", ".join(action_strings)
-                
         user_decision = await self.agent.llm_manager.request_user_decision(intel, next_action_desc)
 
         if user_decision is False:
@@ -893,8 +885,7 @@ class PostStepHandler:
 
                 return False # Validation failed, continue loop
 
-            await self.agent.log_completion()
-            # Finalize the run
+
             await self.agent.cleanup_handler.cleanup()
             return True # Task done, break loop
 
@@ -905,6 +896,7 @@ class PostStepHandler:
         """
         handler = UserInteractionHandler(self.agent)
         return await handler.handle_user_interaction()
+
 
     async def _request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]:
         """
@@ -1186,6 +1178,7 @@ class AgentCleanupHandler:
 
 
 
+
         if self.agent.settings and getattr(self.agent.settings, 'generate_gif', False):
             output_path = 'agent_history.gif'
             if isinstance(self.agent.settings.generate_gif, str):
@@ -1310,7 +1303,7 @@ class AgentCleanupHandler:
                 result=[ActionResult(error=error_message, include_in_memory=True)],
                 state=BrowserStateHistory(
                     url='',
-                    title='',
+                    title= '',
                     tabs=[],
                     interacted_element=[],
                     screenshot=None,

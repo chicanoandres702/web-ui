@@ -1,5 +1,4 @@
-
-<!DOCTYPE html>
+﻿// Control Bar Module
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -55,7 +54,7 @@ function setMode(mode) {
             --shadow-lg: 0 10px 25px rgba(0,0,0,0.5);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+       * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: 'Inter', system-ui, sans-serif;
@@ -381,7 +380,7 @@ function setMode(mode) {
 
     <div class="app-container">
         
-        <!-- LEFT SIDEBAR: CONFIG -->
+       <!-- LEFT SIDEBAR: CONFIG -->
         <aside class="sidebar" id="configSidebar">
             <div class="sidebar-header">
                 <div class="sidebar-title" id="configSidebarTitle">⚡ Browser Agent Pro</div>
@@ -456,7 +455,7 @@ function setMode(mode) {
         </aside>
 
         <!-- CENTER: MONITOR & CHAT -->
-        <main class="main-content" id="mainContent">
+       <main class="main-content" id="mainContent">
          <!-- Enhanced Monitor Stats -->
             <div class="monitor-stats">
                 <div class="stat-box">
@@ -504,7 +503,7 @@ function setMode(mode) {
         </main>
 
         <!-- RIGHT SIDEBAR: ULTIMATE TASK QUEUE -->
-        <aside class="sidebar right" id="taskQueueSidebar">
+       <aside class="sidebar right" id="taskQueueSidebar">
          <div class="sidebar-header">
                 <div class="sidebar-title">📋 Task Queue</div>
                 <div style="display: flex; gap: 4px;">
@@ -546,7 +545,7 @@ function setMode(mode) {
     </div>
 
     <!-- MODALS -->
-    <!-- Task Editor Modal -->
+   <!-- Task Editor Modal -->
     <div id="taskEditorModal" class="modal-overlay" >
         <div class="modal">
             <div class="modal-header">
@@ -1004,10 +1003,10 @@ function setMode(mode) {
         });
 
         // --- Component Modules ---
-
+       
         // Config Sidebar Module
         function initConfig() {
-            const fastModeButton = document.querySelector('.btn-sm.btn-secondary[onclick="setMode(\'fast\')"]');
+           const fastModeButton = document.querySelector('.btn-sm.btn-secondary[onclick="setMode(\'fast\')"]');
             const deepModeButton = document.querySelector('.btn-sm.btn-secondary.active');
 
              function updateConfig() {
@@ -1058,9 +1057,9 @@ function setMode(mode) {
         }
 
 
-        function setMode(mode) {
+       function setMode(mode) {
             showTicker('setMode: ' + mode);
-        }
+       }
 
 
     </script>

@@ -1,13 +1,3 @@
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Browser Agent Pro - Ultimate Edition</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-        
         :root {
             --bg-primary: #0a0e1a;
             --bg-secondary: #0f1419;
@@ -63,27 +53,6 @@ function setMode(mode) {
             --shadow-lg: 0 10px 25px rgba(0,0,0,0.5);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: 'Inter', system-ui, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            height: 100vh;
-            overflow: hidden;
-            font-size: 13px;
-        }
-
-        /* Layout - Enhanced Grid */
-        .app-container {
-            display: grid;
-            grid-template-columns: 300px 1fr 400px; /* Wider Task Queue */
-            height: 100vh;
-        }
-
-        /* Global UI Components */
-        .btn {
-            display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
@@ -107,16 +76,6 @@ function setMode(mode) {
         .btn-secondary:hover { border-color: var(--text-muted); color: var(--text-primary); }
 
         input, select, textarea {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 8px 12px;
-            border-radius: var(--radius-sm);
-            font-family: inherit;
-            font-size: 12px;
-            width: 100%;
-        }
-        input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: var(--accent-primary);
         }
@@ -389,7 +348,7 @@ function setMode(mode) {
 
     <div class="app-container">
         
-        <!-- LEFT SIDEBAR: CONFIG -->
+       <!-- LEFT SIDEBAR: CONFIG -->
         <aside class="sidebar" id="configSidebar">
             <div class="sidebar-header">
                 <div class="sidebar-title" id="configSidebarTitle">⚡ Browser Agent Pro</div>
@@ -464,7 +423,7 @@ function setMode(mode) {
         </aside>
 
         <!-- CENTER: MONITOR & CHAT -->
-        <main class="main-content" id="mainContent">
+       <main class="main-content" id="mainContent">
          <!-- Enhanced Monitor Stats -->
             <div class="monitor-stats">
                 <div class="stat-box">
@@ -512,7 +471,7 @@ function setMode(mode) {
         </main>
 
         <!-- RIGHT SIDEBAR: ULTIMATE TASK QUEUE -->
-        <aside class="sidebar right" id="taskQueueSidebar">
+       <aside class="sidebar right" id="taskQueueSidebar">
          <div class="sidebar-header">
                 <div class="sidebar-title">📋 Task Queue</div>
                 <div style="display: flex; gap: 4px;">
@@ -554,7 +513,7 @@ function setMode(mode) {
     </div>
 
     <!-- MODALS -->
-    <!-- Task Editor Modal -->
+   <!-- Task Editor Modal -->
     <div id="taskEditorModal" class="modal-overlay" >
         <div class="modal">
             <div class="modal-header">
@@ -1012,10 +971,10 @@ function setMode(mode) {
         });
 
         // --- Component Modules ---
-
+       
         // Config Sidebar Module
         function initConfig() {
-            const fastModeButton = document.querySelector('.btn-sm.btn-secondary[onclick="setMode(\'fast\')"]');
+           const fastModeButton = document.querySelector('.btn-sm.btn-secondary[onclick="setMode(\'fast\')"]');
             const deepModeButton = document.querySelector('.btn-sm.btn-secondary.active');
 
              function updateConfig() {
@@ -1066,9 +1025,9 @@ function setMode(mode) {
         }
 
 
-        function setMode(mode) {
+       function setMode(mode) {
             showTicker('setMode: ' + mode);
-        }
+       }
 
 
     </script>

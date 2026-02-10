@@ -8,6 +8,7 @@ import json
 import json_repair
 import logging
 import os
+import re
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 from dotenv import load_dotenv
 
@@ -16,19 +17,28 @@ import sys
 if str(Path(__file__).resolve().parents[3]) not in sys.path:
     sys.path.append(str(Path(__file__).resolve().parents[3]))
 from browser_use.agent.gif import create_history_gif
-from browser_use.agent.service import AgentHookFunc # AIMessage is from langchain_core.messages
+from browser_use.agent.service import Agent, AgentHookFunc # AIMessage is from langchain_core.messages
 from browser_use.agent.views import (
     AgentOutput,
     ActionResult,
     AgentStepInfo,
     AgentHistoryList,
+    AgentHistory,
+    BrowserStateHistory
 )
 from src.agent.browser_use.control_queue_handler import ControlQueueHandler
 from src.agent.browser_use.tab_management_handler import TabManagementHandler
 from src.agent.browser_use.user_interaction_handler import UserInteractionHandler
 from src.agent.browser_use.agent_cleanup_handler import AgentCleanupHandler
 from src.agent.browser_use.agent_heuristics import AgentHeuristics
+from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 
+class ComponentInitializer:
+    """Initializes and configures agent components."""
+    def __init__(self, agent: Any, agent_kwargs: Dict[str, Any], system_prompt: Optional[str] = None):
+        self.agent = agent
+        if system_prompt:
+            self.agent.message_manager.system_prompt = SystemMessage(content=system_prompt)
 
 import abc
 class InstructionHandlerInterface(abc.ABC): # type: ignore
@@ -38,7 +48,7 @@ class InstructionHandlerInterface(abc.ABC): # type: ignore
 
 logger = logging.getLogger(__name__)
 
-from langchain_core.messages import HumanMessage, BaseMessage, AIMessage
+from langchain_core.messages import HumanMessage, BaseMessage, AIMessage, SystemMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 from src.agent.browser_use import agent_utils  # Import the new module
 from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
@@ -112,16 +122,16 @@ class AgentLLMManager:
                     response.content = json.dumps(data["arguments"])
                 else:
                     response.content = json.dumps(data)
-        except Exception as e:
-            logger.debug(f"QwenFixWrapper: Initial json_repair failed: {e}. Attempting more aggressive repair.")
+        except Exception:
+            logger.debug("QwenFixWrapper: Initial json_repair failed. Attempting more aggressive repair.")
             # Fallback to more aggressive repair or default to empty JSON
-                
-            fixed_content = content + '}' * (content.count('{') - content.count('}'))
-            data = json_repair.loads(fixed_content)
-            response.content = json.dumps(data)
-        except Exception as inner_e:
-            logger.warning(f"QwenFixWrapper: Inner repair attempt failed: {inner_e}. Original: '{content}'")
-            response.content = "{}"
+            try:
+                fixed_content = content + '}' * (content.count('{') - content.count('}'))
+                data = json_repair.loads(fixed_content)
+                response.content = json.dumps(data)
+            except Exception as inner_e:
+                logger.warning(f"QwenFixWrapper: Inner repair attempt failed: {inner_e}. Original: '{content}'")
+                response.content = "{}"
             
         return response
 
@@ -147,16 +157,16 @@ class AgentLLMManager:
         else:
             return tool_calling_method
 
-
     async def request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]:
         """Requests user decision via WebSocket."""
         """
         Requests confirmation/input from the user via WebSocket, allowing indefinite waiting.
         """
-        if not self.agent.send_agent_message_callback or not self.agent.confirmation_response_queue:
+        send_callback = getattr(self.agent, 'send_agent_message_callback', None)
+        if not send_callback or not self.agent.confirmation_response_queue:
             return True
 
-        await self.agent.send_agent_message_callback({
+        await send_callback({
             "type": "request_confirmation",
             "message": "Agent is pausing for your review. Awaiting external device approval.",
             "intel": intel,
@@ -203,42 +213,41 @@ class BrowserActionHandler:
             logger.error(f"Failed to save cookies: {e}")
 
 
-    def detect_loop(self):
-        """Detects if the agent is stuck in an action loop."""
-        pass
+    def detect_loop(self) -> bool:
+        """Delegates loop detection to heuristics."""
+        return self.heuristics.detect_loop()
 
-    async def detect_progress(self):
-        """Detects if progress is being made."""
-        pass
+    async def detect_progress(self) -> bool:
+        """Delegates progress detection to heuristics."""
+        return await self.heuristics.detect_progress()
 
-    async def check_blocking_elements(self):
-        """Checks for overlays, cookie banners, or popups."""
-        pass
+    async def check_blocking_elements(self) -> None:
+        """Delegates blocking element checks to heuristics."""
+        await self.heuristics.check_blocking_elements()
 
-    async def check_navigation_recovery(self):
-        """Checks if navigation is stuck and attempts recovery."""
-        pass
+    async def check_navigation_recovery(self) -> None:
+        """Delegates navigation recovery to heuristics."""
+        await self.heuristics.check_navigation_recovery()
 
-    async def check_login_status(self):
-        """Checks if the agent has been logged out or needs to log in."""
-        pass
+    async def check_login_status(self) -> None:
+        """Delegates login status checks to heuristics."""
+        await self.heuristics.check_login_status()
 
-    def manage_model_switching(self):
-        """Handles logic for switching between primary and retry models."""
-        pass
+    def manage_model_switching(self) -> None:
+        """Delegates model switching logic to heuristics."""
+        self.heuristics.manage_model_switching()
 
-    def suggest_alternative_strategy(self):
-        """Injects strategy hints into the message history on failure."""
+    def suggest_alternative_strategy(self) -> None:
+        """Delegates strategy hints to heuristics."""
+        self.heuristics.suggest_alternative_strategy()
 
-        pass
-
-    async def check_and_add_subtasks(self):
-        """Analyzes page complexity and adds subtasks to the plan if needed."""
-        pass
+    async def check_and_add_subtasks(self) -> None:
+        """Delegates subtask analysis to heuristics."""
+        await self.heuristics.check_and_add_subtasks()
 
 ToolCallingMethod = str
 
-class BrowserUseAgent:
+class BrowserUseAgentBase:
     def __init__(
         self,
         state,
@@ -260,6 +269,7 @@ class BrowserUseAgent:
         instruction_handler: Optional[InstructionHandlerInterface] = None,
         **kwargs
     ):
+        self.send_agent_message_callback = send_agent_message_callback
         self.last_domain = None
         self.task = task
         self.state = state
@@ -281,7 +291,7 @@ class BrowserUseAgent:
         self.enable_user_interaction_dialog = kwargs.pop('enable_user_interaction_dialog', True)
         self.initial_actions = kwargs.pop('initial_actions', None)
         self.agent_control_queue = kwargs.pop('agent_control_queue', None)
-        
+        self.done_callback = kwargs.pop('done_callback', None)
 
         if confirmer_llm:
             kwargs['validate_output'] = True
@@ -342,9 +352,13 @@ class BrowserUseAgent:
         self.site_knowledge_injector = SiteKnowledgeInjector(self) # type: ignore
 
         self.user_interaction_handler = UserInteractionHandler(self) # type: ignore
+        self.pre_step_handler = PreStepHandler(self) # type: ignore
         self.cleanup_handler = AgentCleanupHandler(self) # type: ignore
         self.tab_handler = TabManagementHandler(self) # type: ignore
         self.cookie_handler = CookieHandler(self) # type: ignore
+
+        from src.agent.browser_use.browser_use_agent import PostStepHandler
+        self.post_step_handler = PostStepHandler(self) # type: ignore
 
 class CookieHandler:
     """Handles cookie loading and saving for the agent."""
@@ -354,13 +368,12 @@ class CookieHandler:
 
     async def load_cookies(self, browser_context: Any, cookie_path: str) -> None:
         """Loads cookies from a file into the browser context."""
+        pass
 
-    async def _process_control_queue(self) -> None:
-        """Processes commands from the control queue."""
-        await self.control_queue_handler.process_control_queue()
-    
+class BrowserUseAgent(Agent, BrowserUseAgentBase): # Ensure inheritance if intended, or keep as is if wrapper
+    # ... (existing __init__ and other methods)
+
     async def run(self, max_steps: int = 100, on_step_start: AgentHookFunc | None = None, on_step_end: AgentHookFunc | None = None) -> AgentHistoryList:
-
         loop = asyncio.get_event_loop()
         try:
             if hasattr(self, '_log_agent_run'):
@@ -389,7 +402,7 @@ class CookieHandler:
 
             for step in range(max_steps):
                 try:
-                    if await self._handle_pre_step():
+                    if await self.pre_step_handler.handle_pre_step():
                         break
 
                     if on_step_start is not None:
@@ -401,7 +414,7 @@ class CookieHandler:
                     if on_step_end is not None:
                         await on_step_end(self) # type: ignore
 
-                    if await self._handle_post_step(step, max_steps):
+                    if await self.post_step_handler.handle_post_step(step, max_steps):
                         break
 
                     # If a custom task was provided, the agent.task would have been updated.
@@ -412,7 +425,8 @@ class CookieHandler:
                     if self.state.consecutive_failures >= self.max_consecutive_failures:
                         break
             else:
-                self._handle_max_steps_reached()
+                completion_handler = CompletionCheckHandler(self)
+                completion_handler.handle_max_steps_reached()
             return self.state.history
         except Exception as e:
             logger.error(f"Agent run failed: {e}")
@@ -425,7 +439,15 @@ class CookieHandler:
             logger.info('Agent execution cancelled')
             return self.state.history
         finally:
-            await self._handle_cleanup()
+            if hasattr(self, 'cleanup_handler'):
+                await self.cleanup_handler.handle_cleanup()
+
+    async def save_history_async(self, path: str):
+        """Saves the agent history to a file asynchronously."""
+        try:
+            await IOManager.write_file(path, self.state.history.model_dump_json(indent=2))
+        except Exception as e:
+            logger.error(f"Failed to save history asynchronously: {e}")
 
     async def _execute_agent_step(self, step_info: AgentStepInfo):
         """Executes a single step of the agent."""
@@ -620,7 +642,8 @@ class CookieHandler:
                 except Exception as e:
                     logger.error(f"Validation callback failed: {e}")
             reason_upper = reason.upper()
-            if self.current_step_index is not None and self.controller:
+            current_step_index = getattr(self, 'current_step_index', None)
+            if current_step_index is not None and self.controller:
                     manager = getattr(self.controller, "webui_manager", None)
                     if manager and hasattr(manager, "update_plan_step_status"):
 
@@ -637,9 +660,9 @@ class CookieHandler:
                             
 
                             if new_step_desc:
-                                insert_idx = self.current_step_index + 1
+                                insert_idx = current_step_index + 1
                                 manager.add_plan_step(new_step_desc, index=insert_idx)
-                                manager.update_plan_step_status(self.current_step_index, "failed", result=f"Blocked: {reason}")
+                                manager.update_plan_step_status(current_step_index, "failed", result=f"Blocked: {reason}")
 
                                 logger.info(f"🚨 Confirmer detected blocker. Added recovery step: '{new_step_desc}' at index {insert_idx}")
                                 self.state.stopped = True # Stop current agent to switch to new step
@@ -651,8 +674,8 @@ class CookieHandler:
                         if not is_confirmed:
                             display_result = f"⚠️ Rejection: {reason}"
                         
-                        manager.update_plan_step_status(self.current_step_index,status, result=display_result)
-                        logger.info(f"✅ Confirmer updated plan step {self.current_step_index + 1}. Status: {status}. Reason: {reason}")
+                        manager.update_plan_step_status(current_step_index,status, result=display_result)
+                        logger.info(f"✅ Confirmer updated plan step {current_step_index + 1}. Status: {status}. Reason: {reason}")
 
             if is_confirmed:
                 return True
@@ -687,7 +710,7 @@ class CookieHandler:
             
             content = list(content) + [{"type": "text", "text": state_desc}]
 
-            if last_item.state.screenshot and self.use_vision_for_confirmer:
+            if last_item.state.screenshot and getattr(self.settings, 'use_vision_for_confirmer', True):
                 image_url = f"data:image/jpeg;base64,{last_item.state.screenshot}"
                 content.append({"type": "image_url", "image_url": {"url": image_url}})
 
@@ -748,9 +771,25 @@ class CookieHandler:
                 logger.error(f"Error in step_callback: {e}")
 
     async def _execute_done_callback(self):
+        """Executes registered done callbacks."""
+        if self.done_callback and callable(self.done_callback):
+            try:
+                if inspect.iscoroutinefunction(self.done_callback):
+                    await self.done_callback(self.state.history)
+                else:
+                    self.done_callback(self.state.history)
+            except Exception as e:
                 logger.error(f"Error in done_callback: {e}")
 
-    async def _handle_pre_step(self) -> bool:
+class PreStepHandler:
+    def __init__(self, agent: BrowserUseAgent):
+        self.agent = agent
+
+    async def _process_control_queue(self) -> None:
+        """Processes commands from the control queue."""
+        await self.agent.control_queue_handler.process_control_queue()
+
+    async def handle_pre_step(self) -> bool:
         """
         Handles pre-step checks: pause, stop, model switching, failures.
 
@@ -762,19 +801,19 @@ class CookieHandler:
         await self._process_control_queue()
 
 
-        # Suggest alternative strategies on failure
         # Manage Model Switching (Cost Saver / Smart Retry)
-        self.heuristics.manage_model_switching()
+        self.agent.heuristics.manage_model_switching()
 
-                # Suggest alternative strategies on failure
-        self._suggest_alternative_strategy()
+        # Suggest alternative strategies on failure
+        if hasattr(self.agent, '_suggest_alternative_strategy'):
+            self.agent._suggest_alternative_strategy()
 
         # Close extraneous tabs (e.g. ads, social shares)
         await self._manage_tabs()
 
         # Custom Memory Injection
         # if self.use_custom_memory and self.memory_manager:
-        await self.site_knowledge_injector.inject_site_knowledge()
+        await self.agent.site_knowledge_injector.inject_site_knowledge()
 
 
         # Check if we should stop due to too many failures
@@ -786,57 +825,65 @@ class CookieHandler:
 
         # Check if MFA is required and wait for approval
 
-        if self.heuristics.is_waiting_for_mfa:
+        if self.agent.heuristics.is_waiting_for_mfa:
             logger.info("MFA required, waiting for approval from another device, after setting pre step...")
-            if self.send_agent_message_callback:
-                await self.send_agent_message_callback({
+            if getattr(self.agent, 'send_agent_message_callback', None):
+                await self.agent.send_agent_message_callback({ # type: ignore
                     "type": "agent_status", 
                     "status": "Waiting for MFA 🔐"
                 })
                 
-            while self.heuristics.is_waiting_for_mfa and not self.state.stopped:
-                await asyncio.sleep(1)  # Check every second
+            while self.agent.heuristics.is_waiting_for_mfa and not self.agent.state.stopped:
+                await asyncio.sleep(15)  # Check every second
             logger.info("MFA approved or agent stopped.")
-            self.heuristics.is_waiting_for_mfa = False  # Reset flag
+            self.agent.heuristics.is_waiting_for_mfa = False  # Reset flag
 
             # Verify there is still a valid page and browser context
-            if not self.browser_context or not hasattr(self.browser_context, "get_current_page"):
+            if not self.agent.browser_context or not hasattr(self.agent.browser_context, "get_current_page"):
                 logger.warning("Browser context is no longer valid after MFA, stopping agent.")
-                self.state.stopped = True
+                self.agent.state.stopped = True
                 return True
 
             return True
 
-        if self.state.stopped:
+        if self.agent.state.stopped:
 
             logger.info('Agent stopped')
             return True
 
-        while self.state.paused:
+        while self.agent.state.paused:
             await asyncio.sleep(0.2)  # Small delay to prevent CPU spinning
-            if self.state.stopped:  # Allow stopping while paused
+            if self.agent.state.stopped:  # Allow stopping while paused
 
                 return True
         # Load cookies at the beginning of each session
-        if self.cookie_path and os.path.exists(self.cookie_path):
-            if self.browser_context:   
+        if self.agent.cookie_path and os.path.exists(self.agent.cookie_path):
+            if self.agent.browser_context:   
                 try:
-                    with open(self.cookie_path, 'r', encoding='utf-8') as f:
-                        await self.browser_context.add_cookies(cookies)
-                        logger.info(f"Loaded cookies from {self.cookie_path}")
+                    with open(self.agent.cookie_path, 'r', encoding='utf-8') as f:
+                        cookies = json.load(f)
+                        
+                        # browser-use BrowserContext objects store the Playwright context in .context
+                        playwright_context = getattr(self.agent.browser_context, 'context', None)
+                        if playwright_context and hasattr(playwright_context, 'add_cookies'):
+                            await playwright_context.add_cookies(cookies)
+                        else:
+                            logger.warning("Could not access Playwright context to add cookies.")
+                            
+                        logger.info(f"Loaded cookies from {self.agent.cookie_path}")
                 except Exception as e:
                     logger.error(f"Failed to load cookies: {e}")
         return False
 
     async def _manage_tabs(self):
         """Closes extraneous tabs to keep the agent focused."""
-        nav_controller = getattr(self.controller, 'nav_controller', None)
-        if nav_controller:
-            await nav_controller.manage_tabs(self.browser_context)
+        nav_controller = getattr(self.agent.controller, 'nav_controller', None)
+        if nav_controller and self.agent.browser_context:
+            await nav_controller.manage_tabs(self.agent.browser_context)
 
     async def _inject_site_knowledge(self):
         """Checks if we have entered a new domain and injects relevant knowledge."""
-        await self.site_knowledge_injector.inject_site_knowledge()
+        await self.agent.site_knowledge_injector.inject_site_knowledge()
 
 
     async def _handle_post_step(self, step: int, max_steps: int) -> bool:
@@ -845,56 +892,55 @@ class CookieHandler:
         Returns True if the agent should stop/break the loop (task done).
         """
         # Execute WebUI Callbacks
-        await self._execute_step_callbacks(step)
+        await self.agent._execute_step_callbacks(step)
 
         # Persistence: Auto-save history after each step
-        if self.save_history_path:
+        if self.agent.save_history_path:
             try:
-                await self.save_history_async(self.save_history_path)
+                await self.agent.save_history_async(self.agent.save_history_path)
             except Exception as e:
                 logger.warning(f"Failed to auto-save history: {e}")
 
-        await self.heuristics.check_completion_heuristics()
+        await self.agent.heuristics.check_completion_heuristics()
 
         # Check for loops
-        self.heuristics.detect_loop()
+        self.agent.heuristics.detect_loop()
   
-        # Check for progress indicators
-        await self.heuristics.detect_progress()
+        # Check for progress indicators (if implemented in heuristics)
+        if hasattr(self.agent.heuristics, 'detect_progress'):
+            await self.agent.heuristics.detect_progress()
 
-        # Check for blocking elements
-        await self.heuristics.check_blocking_elements()
+        if hasattr(self.agent.action_handler, 'check_blocking_elements'):
+            await self.agent.action_handler.check_blocking_elements()
   
-        # Check navigation recovery
-        await self.heuristics.check_navigation_recovery()
+        if hasattr(self.agent.action_handler, 'check_navigation_recovery'):
+            await self.agent.action_handler.check_navigation_recovery()
         
 
         # Check for complex page structure and add subtasks
-        await self.heuristics.check_and_add_subtasks()
+        await self.agent.heuristics.check_and_add_subtasks()
 
-        # completion_check_handler = CompletionCheckHandler(self)
-        # await completion_check_handler.check_completion()
-        completion_check_handler = CompletionCheckHandler(self)
+        completion_check_handler = CompletionCheckHandler(self.agent)
         await completion_check_handler.check_completion()
 
-        # Check login status (New)
-        await self.heuristics.check_login_status()
+        if hasattr(self.agent.action_handler, 'check_login_status'):
+            await self.agent.action_handler.check_login_status()
 
 
-        if self.cookie_path:
-            await self.browser_action_handler.save_cookies(self.cookie_path)
+        if self.agent.cookie_path and hasattr(self.agent.action_handler, 'save_cookies'):
+            await self.agent.action_handler.save_cookies(self.agent.cookie_path)
         
         # --- User Interaction Dialog ---
-        if await self.user_interaction_handler.handle_user_interaction():
+        if await self.agent.user_interaction_handler.handle_user_interaction():
             return True # Stop requested
 
 
-        if self.state.history.is_done():
-            if getattr(self.settings, 'validate_output', False) and step < max_steps - 1:
-                if not await self._validate_output():
+        if self.agent.state.history.is_done():
+            if getattr(self.agent.settings, 'validate_output', False) and step < max_steps - 1:
+                if not await self.agent._validate_output():
                     return False # Validation failed, continue loop
 
-            await self.log_completion()
+            await self.agent.log_completion()
             return True # Task done, break loop
 
         return False
@@ -904,47 +950,51 @@ class CookieHandler:
         Handles the user interaction dialog.
         Returns True if the agent should stop (User aborted), False otherwise.
         """
-        if not self.enable_user_interaction_dialog:
+        if not self.agent.enable_user_interaction_dialog:
             return False
 
-        last_step_info = self.state.history.history[-1] if self.state.history.history else None
+        last_step_info = self.agent.state.history.history[-1] if self.agent.state.history.history else None
         intel = "No specific new information from this step."
+        thought = None
         if last_step_info and last_step_info.model_output:
             # Use getattr to safely access 'thought' as it might not be in the schema
             # or might be in a nested structure depending on the specific AgentOutput implementation
+            thought = getattr(last_step_info.model_output, "thought", None)
             if thought:
-                intel = thought
+                intel = str(thought) if thought is not None else intel
         
         next_action_desc = "Agent is considering its next move."
         if (last_step_info and last_step_info.model_output and
                 last_step_info.model_output.action):
-                if hasattr(action_model, "model_dump"):
+                action_strings = []
+                actions = last_step_info.model_output.action if isinstance(last_step_info.model_output.action, list) else [last_step_info.model_output.action]
+                for action_model in actions:
+                    if hasattr(action_model, "model_dump"):
+                        action_strings.append(str(action_model.model_dump()))
+                    else:
+                        action_strings.append(str(action_model))
+                next_action_desc = ", ".join(action_strings) if action_strings else next_action_desc
 
-                    action_dict = action_model.model_dump()
-                else:
-                    action_strings.append(str(action_model)) # Fallback for non-standard actions
-                next_action_desc = ", ".join(action_strings) if action_strings else "Agent is considering its next move."
-
-        user_decision = await self._request_user_decision(intel, next_action_desc)
+        user_decision = await self.agent.llm_manager.request_user_decision(intel, next_action_desc)
 
         if user_decision is False: # User chose No/Abort
-            self.state.stopped = True
+            self.agent.state.stopped = True
             return True # Break the loop
         elif isinstance(user_decision, str): # User provided a custom task
-            self.task = user_decision # Update the main task for the agent to re-evaluate
-
-            self.heuristics.inject_message(f"SYSTEM: User provided new task: '{user_decision}'. Re-evaluating plan.")
-
+            self.agent.task = user_decision 
+            self.agent.heuristics.inject_message(f"SYSTEM: User provided new task: '{user_decision}'. Re-evaluating plan.")
             return False # Continue the loop, agent will now work on the new task
+        return False
 
     async def request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]:
         """
         Requests confirmation/input from the user via WebSocket.
         """
-        if not self.send_agent_message_callback or not self.confirmation_response_queue:
+        send_callback = getattr(self.agent, 'send_agent_message_callback', None)
+        if not send_callback or not self.agent.confirmation_response_queue:
             return True
 
-        await self.send_agent_message_callback({
+        await send_callback({
             "type": "request_confirmation",
             "message": "Agent is pausing for your review.",
             "intel": intel,
@@ -953,20 +1003,20 @@ class CookieHandler:
 
         while True:
             # Create tasks for both queues
-            confirmation_task = asyncio.create_task(self.confirmation_response_queue.get())
-            control_task = asyncio.create_task(self.agent_control_queue.get()) if self.agent_control_queue else None
+            confirmation_task = asyncio.create_task(self.agent.confirmation_response_queue.get())
+            control_task = asyncio.create_task(self.agent.agent_control_queue.get()) if self.agent.agent_control_queue else None
             
             tasks = [confirmation_task]
             if control_task:
                 tasks.append(control_task)
             
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            done_tasks, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             
             # Cancel pending tasks
             for task in pending:
                 task.cancel()
             
-            if confirmation_task in done:
+            if confirmation_task in done_tasks:
                 response_data = confirmation_task.result()
                 response = response_data.get("response")
                 custom_task = response_data.get("custom_task")
@@ -975,30 +1025,33 @@ class CookieHandler:
                 if response == "no": return False
                 if custom_task: return custom_task
             
-            if control_task and control_task in done:
+            if control_task and control_task in done_tasks:
                 control_data = control_task.result()
                 command = control_data.get("command")
                 
                 if command == "pause":
-                    self.pause()
+                    self.agent.pause()
                     logger.info("Agent paused via user request during confirmation.")
-                    if self.send_agent_message_callback:
-                        await self.send_agent_message_callback({"type": "agent_status", "status": "Paused ⏸️"})
+                    if send_callback:
+                        await send_callback({"type": "agent_status", "status": "Paused ⏸️"})
                 elif command == "resume":
-                    self.resume()
+                    self.agent.resume()
                     logger.info("Agent resumed via user request during confirmation.")
-                    if self.send_agent_message_callback:
-                        await self.send_agent_message_callback({"type": "agent_status", "status": "Participating"})
+                    if send_callback:
+                        await send_callback({"type": "agent_status", "status": "Participating"})
 
                 elif command == 'stop':
-                    self.stop()
+                    self.agent.stop()
                     return False
 
+class CompletionCheckHandler:
+    def __init__(self, agent: Any):
+        self.agent = agent
 
-    def _handle_max_steps_reached(self):
+    def handle_max_steps_reached(self):
         """Handles the case where the agent reaches maximum steps without completion."""
         error_message = 'Failed to complete task in maximum steps'
-        self.state.history.history.append( #type: ignore
+        self.agent.state.history.history.append(
             AgentHistory(
                 model_output=None,
                 result=[ActionResult(error=error_message, include_in_memory=True)],
@@ -1014,15 +1067,11 @@ class CookieHandler:
         )
         logger.info(f'❌ {error_message}')
 
-    async def save_history_async(self, path: str):
-        """Saves the agent history to a file asynchronously."""
-        try:
-            await IOManager.write_file(path, self.state.history.model_dump_json(indent=2))
-        except Exception as e:
-            logger.error(f"Failed to save history asynchronously: {e}")
+    async def check_completion(self) -> bool:
+        return self.agent.state.history.is_done()
 
     async def _handle_cleanup(self):
         """Handles agent cleanup using the AgentCleanupHandler."""
-        if hasattr(self, 'cleanup_handler') and self.cleanup_handler:
-            await self.cleanup_handler.handle_cleanup()
-        await self._execute_done_callback()
+        if hasattr(self.agent, 'cleanup_handler') and self.agent.cleanup_handler:
+            await self.agent.cleanup_handler.handle_cleanup()
+        await self.agent._execute_done_callback()
