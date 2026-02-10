@@ -79,6 +79,7 @@ CORE_BROWSER_SKILLS = """
    - **Quizzes/Modules**: When taking a quiz or course, look for "Next", "Continue", or arrow icons. Do not exit the module flow until completed.
    - **Veering**: If you find yourself veering off track, stop and reassess.
 18. **Task Execution**:
+
    - **Reading Tasks**: Prioritize capturing the full text. Use `scroll_down(amount='full')` to ensure all content is loaded. If pagination exists, navigate through all pages. If the target is a PDF, use `download_file` to save it, then `read_pdf_file` to extract the text.
    - **Citation Mandatory**: When reading articles or sources, you MUST actively look for and extract an APA style citation. If you quote or use information from a source, you must provide this citation. Use `format_citation` to generate it if not explicitly provided on the page.
    - **Writing Tasks**: If the task involves writing a paper or response, draft it in the input field or external editor as requested. Ensure you have gathered necessary information before writing.
@@ -554,3 +555,60 @@ Each task should be atomic, and executable.
 Here is the prompt:
 {prompt}
 """
+
+PLANNER_PROMPT = """You are a strategic planning agent. Update the execution plan based on the current state.
+
+**Current Goal:** {goal}
+**Current Plan:** {plan}
+**Last Thought:** {last_thought}
+**Page Summary:** {page_summary}
+
+**Action Types:**
+- "add": Insert a new task.
+- "update": Change status of an existing task.
+- "remove": Delete a redundant task.
+
+**JSON Output Format (Return ONLY a JSON array of objects):**
+{{
+  "action": "add" | "update" | "remove",
+  "step_description": "Clear description of the task",
+  "step_index": 1-based index (required for update/remove),
+  "status": "todo" | "in_progress" | "completed" | "failed",
+  "reason": "Why this change is being made",
+  "subtasks": [
+    {
+      "description": "Clear description of the step",
+      "action": "go_to_url",
+      "params":{"url": "https://example.com"}
+    }
+  ],
+
+  "after_index": 1-based index (optional for add),
+  "params": [
+  {"description": "Navigate to URL", "action": "go_to_url", "params": {"url": "https://example.com"}},
+  {"description": "Close popup", "action": "clear_view", "params": {}},
+  {"description": "Search for 'Target'"}
+]
+}}"""
+
+INITIAL_PLANNING_PROMPT = """You are a lead architect. Break down the goal into a logical sequence of executable steps.
+
+**Goal:** {goal}
+
+**JSON Output Format (Return ONLY a JSON object with a "tasks" key):**
+{{
+  "tasks": [
+    {{
+      "description": "Clear description of the step",
+      "action": "The specific tool name (e.g., go_to_url, click_element_by_text, smart_action)",
+      "params": [
+  {"description": "Navigate to URL", "action": "go_to_url", "params": {"url": "https://example.com"}},
+  {"description": "Close popup", "action": "clear_view", "params": {}},
+  {"description": "Search for 'Target'"}
+],
+"subtasks": [
+    ],
+      "status": "todo"
+    }}
+  ]
+}}"""

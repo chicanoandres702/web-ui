@@ -5,10 +5,12 @@ from src.agent.deep_research.types import ResearchTaskItem as Task
 
 logger = logging.getLogger(__name__)
 
+
 class InstructionHandler:
     """
     Handles specific instructions, breaking them down into actionable tasks for the agent.
     """
+
 
     def __init__(self, agent):
         self.agent = agent
@@ -24,7 +26,7 @@ class InstructionHandler:
             return self._handle_find_resource(instruction)
         else:
             logger.warning(f"Unknown instruction type: {instruction}")
-            return [Task(description=instruction, task_type="instruction")]
+            return [Task(task_description=instruction, status="pending", queries=[], result_summary=None, metadata={})]
 
     def _handle_read_chapter(self, instruction: str) -> List[Task]:
         """
@@ -33,6 +35,11 @@ class InstructionHandler:
         chapter_number = extract_quoted_text(instruction)
         if not chapter_number:
             chapter_number = instruction.split("chapter")[-1].strip()
+        reading_task: Task = {
+            "task_description": f"Read Chapter {chapter_number}",
+            "status": "pending",
+            "queries": [],
+        }
 
         reading_task = Task(
             description=f"Read Chapter {chapter_number}",
@@ -100,7 +107,7 @@ class InstructionHandler:
         return f"Successfully located resource: {resource_name}."
 
 
-
+# create and load insructions
 def create_instruction_handler(agent):
     """
     Factory function to create an InstructionHandler.

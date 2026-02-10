@@ -1,40 +1,49 @@
-import asyncio
-import base64
 import json
-import logging
-import os
-from typing import Any
-import threading
-import uuid
-from collections import defaultdict
-from pathlib import Path
+
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.runnables import RunnableSequence
+
+from typing import Any, Dict
+
+
+def prepare_agent_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepares and validates the agent settings before passing them to AgentSettings.
+    """
+    if isinstance(settings, dict):
+        prepared_settings = settings.copy()
+        return prepared_settings
+    return {}
+
 
 from src.agent.browser_use.browser_use_agent import BrowserUseAgent
 from src.agent.deep_research.deep_research_agent import DeepResearchAgent
 from src.browser.custom_browser import CustomBrowser
+from src.agent.browser_use.agent_settings_manager import prepare_agent_settings
 from browser_use.agent.views import AgentSettings
 from browser_use.browser.browser import BrowserConfig
 from src.controller.custom_controller import CustomController
 from src.utils.llm_manager import get_llm_model
-from src.agent.browser_use.components.cookie_manager import CookieManager
 from browser_use.browser.context import BrowserContextConfig
 from src.utils import llm_provider
-
-# from browser_use.agent.message_manager.service import MessageManager, MessageManagerSettings, MessageManagerState
 from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS
 from src.agent.deep_research.state_manager import DeepResearchStateManager
 from src.routes.models import load_model_from_file
 from src.config import RATE_LIMIT_SECONDS, MAX_REQUESTS_PER_MINUTE
 
-from src.utils.instruction_handler import InstructionHandler, create_instruction_handler
+from src.utils.instruction_handler import create_instruction_handler
+import logging
 
-logger = logging.getLogger(__name__)
-COOKIE_PATH = "./tmp/cookies.json"
+
+from typing import Any, Dict
+
+from browser_use.agent.views import AgentSettings
+
 
 router = APIRouter()
+
 
 
 def get_cookie_manager():
@@ -44,9 +53,11 @@ def get_cookie_manager():
     except ImportError:
         return None
 
+logger = logging.getLogger(__name__)
+COOKIE_PATH = "./tmp/cookies.json"
 
 async def run_browser_agent(payload, websocket, browser, browser_context):
-    task = payload.get('task')
+    task = payload.get("task")
     agent_settings = payload.get("agent", {})
     browser_settings = payload.get("browser", {})
     llm_settings = payload.get("llm", {})
@@ -60,6 +71,7 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
 
     if browser is None:
         browser = CustomBrowser(
+            
             config=BrowserConfig(
                 headless=browser_settings.get("headless", False),
                 disable_security=browser_settings.get("disable_security", True),
@@ -68,7 +80,7 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
                 extra_browser_args=browser_settings.get("extra_browser_args", [])
             )
         )
-
+    
     if browser_context is None:
         browser_context = await browser.new_context(
             config=BrowserContextConfig(
@@ -92,10 +104,10 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
     provider = llm_settings.get("provider", "openai")
     if provider == "gemini":
         try:
-            from src.utils.llm_provider import load_gemini_llm  # Import Gemini loading function
+            from langchain_google_genai import ChatGoogleGenerativeAI
             
-            llm = await load_gemini_llm(llm_settings, websocket)  # Use centralized Gemini loading
-            if not llm: return # Handle error within the function
+            # Check for OAuth credentials in session
+            creds_data = websocket.session.get("google_creds")
             
             # Check for Service Account file
             service_account_path = "service_account.json"
@@ -103,7 +115,31 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
             if os.path.exists(service_account_path):
                 from google.oauth2 import service_account
                 creds = service_account.Credentials.from_service_account_file(service_account_path)
+                await websocket.send_json({"type": "log", "content": "Using Google Gemini with Service Account"})
+                llm = ChatGoogleGenerativeAI(
+                    model=llm_settings.get("model_name", "gemini-flash-latest"),
+                    temperature=float(llm_settings.get("temperature", 0.8)),
+                    credentials=creds
+                )
+            elif creds_data:
+                from google.oauth2.credentials import Credentials
+                creds = Credentials(**creds_data)
+                await websocket.send_json({"type": "log", "content": "Using Google Gemini with OAuth Credentials"})
+                llm = ChatGoogleGenerativeAI(
+                    model=llm_settings.get("model_name", "gemini-flash-latest"),
+                    temperature=float(llm_settings.get("temperature", 0.8)),
+                    credentials=creds
+                )
+            else:
+                # Fallback to API Key
+                await websocket.send_json({"type": "log", "content": "Using Google Gemini with API Key"})
+                llm = ChatGoogleGenerativeAI(
+                    model=llm_settings.get("model_name", "gemini-flash-latest"),
+                    temperature=float(llm_settings.get("temperature", 0.8)),
+                    google_api_key=llm_settings.get("api_key", "")
+                )
         except ImportError as e:
+            await websocket.send_json({"type": "error", "content": "Please install langchain-google-genai to use Gemini."})
             return
     else:
         llm = llm_provider.get_llm_model(
@@ -112,32 +148,30 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
             temperature=float(llm_settings.get("temperature", 0.8)),
             base_url=llm_settings.get("base_url", ""),
             api_key=llm_settings.get("api_key", ""),
-            project_id=llm_settings.get("google_project_id", "")
+            project_id=llm_settings.get("google_project_id", "")                                    
         )
 
     # Initialize Planner/Confirmer if configured
-    planner_llm = llm
-    # planner_llm = None
-    # if agent_settings.get("planner", {}).get("enabled", True):
-    #     p_conf = agent_settings.get("planner", {})
-    #     planner_llm = llm_provider.get_llm_model(
-    #         provider=p_conf.get("provider", llm_settings.get("provider", "gemini")),
-    #         model_name=p_conf.get("model_name", llm_settings.get("model_name", "gemini-flash-latest")),
-    #         temperature=p_conf.get("temperature", 0.8),
-    #         base_url=p_conf.get("base_url", ""),
-    #         api_key=p_conf.get("api_key", "")
-    #     )
-    confirmer_llm = llm
-    # confirmer_llm = None
-    # if agent_settings.et("confirmer", {}).get("enabled", True):
-    #     c_conf = agent_settings.get("confirmer", {})
-    #     confirmer_llm = llm_provider.get_llm_model(
-    #         provider=c_conf.get("provider", llm_settings.get("provider", "gemini")),
-    #         model_name=c_conf.get("model_name", llm_settings.get("model_name", "gemini-flash-latest")),
-    #         temperature=c_conf.get("temperature", 0.8),
-    #         base_url=c_conf.get("base_url", ""),
-    #         api_key=c_conf.get("api_key", "")
-    #     )
+    planner_llm = None
+    if agent_settings.get("planner", {}).get("enabled", False):
+        p_conf = agent_settings.get("planner", {})
+        planner_llm = llm_provider.get_llm_model(
+            provider=p_conf.get("provider", llm_settings.get("provider", "openai")),
+            model_name=p_conf.get("model_name", llm_settings.get("model_name", "gpt-4o")),
+            temperature=p_conf.get("temperature", 0.8),
+            base_url=p_conf.get("base_url", ""),
+            api_key=p_conf.get("api_key", "")
+        )
+    confirmer_llm = None
+    if agent_settings.get("confirmer", {}).get("enabled", False):
+        c_conf = agent_settings.get("confirmer", {})
+        confirmer_llm = llm_provider.get_llm_model(
+            provider=c_conf.get("provider", llm_settings.get("provider", "openai")),
+            model_name=c_conf.get("model_name", llm_settings.get("model_name", "gpt-4o")),
+            temperature=c_conf.get("temperature", 0.8),
+            base_url=c_conf.get("base_url", ""),
+            api_key=c_conf.get("api_key", "")
+        )
     
     # --- Heuristic Model Switching Setup ---
     enable_smart_retry = agent_settings.get("enable_smart_retry", False)
@@ -154,14 +188,13 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
                     await websocket.send_json({"type": "log", "content": f"⚠️ Skipping model in priority list due to missing 'priority': {model_conf.get('model_name')}"})
                     continue
                 
-                # heuristic_llm = llm_provider.get_llm_model(
-                #     provider=model_conf.get("provider"),
-                #     model_name=model_conf.get("model_name"),
-                #     temperature=float(model_conf.get("temperature", 0.1)),
-                #     base_url=model_conf.get("base_url", ""),
-                #     api_key=model_conf.get("api_key", "")
-                # )
-                heuristic_llm = llm
+                heuristic_llm = llm_provider.get_llm_model(
+                    provider=model_conf.get("provider"),
+                    model_name=model_conf.get("model_name"),
+                    temperature=float(model_conf.get("temperature", 0.1)),
+                    base_url=model_conf.get("base_url", ""),
+                    api_key=model_conf.get("api_key", "")
+                )
                 model_priority_list.append({"priority": int(priority), "llm": heuristic_llm})
             except Exception as e:
                 await websocket.send_json({"type": "log", "content": f"⚠️ Failed to initialize heuristic model {model_conf.get('model_name')}: {e}"})
@@ -170,26 +203,10 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
     
     output_model = None
     if extraction_model_name:
+
         output_model = load_model_from_file(extraction_model_name)
     controller = CustomController(output_model=output_model)
-    
-    agent_settings_prepared = prepare_agent_settings(
-        agent_settings
-    )
 
-    # message_manager = MessageManager(
-    #     task=task,
-    #     system_message=llm.system_message if hasattr(llm, "system_message") else None,
-    #     settings=MessageManagerSettings(
-    #         max_input_tokens=agent_settings.get("max_input_tokens", 128000),
-    #         include_attributes=agent_settings.get("include_attributes", []),
-    #         message_context=agent_settings.get("message_context")
-    #     ),
-    #     state=MessageManagerState(
-    #         history={},
-    #         tool_id=1
-    #     )
-    # )
 
     agent = BrowserUseAgent(
         version="0.0.2",
@@ -234,7 +251,6 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
                 "actions": actions
             })
         except Exception as e:
-
             logger.error(f"Error in callback: {e}")
 
     agent.step_callback = step_callback
@@ -242,7 +258,7 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
     await websocket.send_json({"type": "log", "content": "Agent started..."}) 
     
     stream_task = None
-    if browser_settings.get("enable_live_view", True):
+    if browser_settings.get("enable_live_view", False):
         async def stream_browser():
             while True:
                 try:
@@ -254,10 +270,10 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
                             await websocket.send_json({"type": "stream", "image": encoded})
                 except Exception:
                     pass
-                await asyncio.sleep(0.5)
-
+            await asyncio.sleep(0.5)
+        
         stream_task = asyncio.create_task(stream_browser())
-    
+
     try:
         history = await agent.run(max_steps=agent_settings.get("max_steps", 100))
         result = history.final_result()
@@ -266,7 +282,6 @@ async def run_browser_agent(payload, websocket, browser, browser_context):
         if stream_task:
             stream_task.cancel()
             try:
-
                 await stream_task
             except asyncio.CancelledError:                                        
                 pass
@@ -281,7 +296,6 @@ async def run_deep_research_agent(payload, websocket):
     mcp_config = payload.get("mcp_config")
 
     provider = llm_settings.get("provider", "openai")
-
     if provider == "gemini":
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -469,6 +483,12 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         if runner_task and not runner_task.cancelled():
             runner_task.cancel()
+        
+        if browser_context:
+            CookieManagerClass = get_cookie_manager()
+            if CookieManagerClass:
+                cookie_manager = CookieManagerClass()
+                await cookie_manager.save_cookies(browser_context)
             await browser_context.close()
 
         if browser:

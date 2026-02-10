@@ -14,6 +14,7 @@ from datetime import datetime
 import sys
 from src.utils.io_manager import IOManager
 
+
 try:
     import json_repair
 except ImportError:
@@ -21,11 +22,13 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 def str_to_bool(val: Any) -> bool:
     """Converts a string representation of truth to True (1, y, yes, t, true, on) or False."""
     if isinstance(val, bool): return val
     if val is None: return False
     return str(val).lower() in ('y', 'yes', 't', 'true', 'on', '1')
+
 
 def encode_image(img_path):
     if not img_path:
@@ -33,6 +36,7 @@ def encode_image(img_path):
     with open(img_path, "rb") as fin:
         image_data = base64.b64encode(fin.read()).decode("utf-8")
     return image_data
+
 
 
 def get_latest_files(directory: str, file_types: list = ['.webm', '.zip']) -> Dict[str, Optional[str]]:
@@ -72,11 +76,13 @@ async def save_text_to_file_async(path: str, text: str, mode: str = "w"):
     await IOManager.write_file(path, text, mode=mode)
 
 
+
 def sanitize_filename(name: str) -> str:
     """Sanitize a string to be safe for use as a filename."""
     return "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_').lower()
 
 def resolve_file_path(filename: str) -> Optional[str]:
+
     """Helper to resolve file paths from common directories."""
     if not filename:
         return None
@@ -112,6 +118,7 @@ def extract_text_from_pdf(filepath: str) -> str:
     except Exception as e:
         return f"Error reading PDF: {e}"
 
+
 def save_to_knowledge_base_file(text: str, topic: str, memory_file_path: str) -> Optional[str]:
     """Appends text to a knowledge base file derived from the topic."""
     if not memory_file_path:
@@ -126,6 +133,7 @@ def save_to_knowledge_base_file(text: str, topic: str, memory_file_path: str) ->
     return filepath
 
 
+
 def get_progress_bar_html(progress: int, label: str = "Progress") -> str:
     """Generates HTML for a progress bar."""
     return f"""
@@ -138,6 +146,7 @@ def get_progress_bar_html(progress: int, label: str = "Progress") -> str:
         </div>
     </div>
     """
+
 
 
 def calculate_progress_from_markdown(markdown_content: str) -> int:
@@ -157,6 +166,7 @@ def calculate_progress_from_markdown(markdown_content: str) -> int:
         return 0
         
     return min(100, int((processed_tasks / total_tasks) * 100))
+
 
 
 def parse_agent_thought(thought: str) -> Dict[str, str]:
@@ -219,6 +229,7 @@ async def retry_async(
     raise last_exception
 
 
+
 def clean_json_string(content: str) -> str:
     """Cleans a string to extract JSON content, removing markdown code blocks and thinking traces."""
     # Remove <think> blocks (common in reasoning models)
@@ -258,13 +269,14 @@ def clean_json_string(content: str) -> str:
             
     return content
 
+
 def extract_quoted_text(text: str) -> Optional[str]:
     """Extracts text inside single or double quotes."""
     if not text: return None
     match = re.search(r"['\"](.*?)['\"]", text)
     if match:
         return match.group(1)
-    return None
+    return ""
 
 
 def parse_json_safe(content: str) -> Any:
@@ -282,6 +294,7 @@ def parse_json_safe(content: str) -> Any:
                 pass
         raise
 
+
 async def run_tasks_in_parallel(
     task_factories: List[Callable[[], Any]],
     max_concurrent: int = 5,
@@ -293,6 +306,7 @@ async def run_tasks_in_parallel(
         async with semaphore:
             return await factory()
     return await asyncio.gather(*(worker(f) for f in task_factories), return_exceptions=return_exceptions)
+
 
 
 def ensure_default_extraction_models():
@@ -372,6 +386,7 @@ def ensure_default_extraction_models():
                     json.dump(model, f, indent=2)
             except Exception as e:
                 logger.error(f"Failed to create default extraction model {filename}: {e}")
+
 
 def suppress_asyncio_cleanup_errors():
     """

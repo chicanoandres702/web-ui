@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 import inspect
+import json
 from pathlib import Path
 import json
 import json_repair
@@ -19,11 +20,13 @@ if str(Path(__file__).resolve().parents[3]) not in sys.path:
 from browser_use.agent.gif import create_history_gif
 from browser_use.agent.service import Agent, AgentHookFunc # AIMessage is from langchain_core.messages
 from browser_use.agent.views import (
+
     AgentOutput,
     ActionResult,
     AgentStepInfo,
     AgentHistoryList,
     AgentHistory,
+
     BrowserStateHistory
 )
 from src.agent.browser_use.control_queue_handler import ControlQueueHandler
@@ -32,6 +35,7 @@ from src.agent.browser_use.user_interaction_handler import UserInteractionHandle
 from src.agent.browser_use.agent_cleanup_handler import AgentCleanupHandler
 from src.agent.browser_use.agent_heuristics import AgentHeuristics
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
+
 
 class ComponentInitializer:
     """Initializes and configures agent components."""
@@ -51,8 +55,10 @@ logger = logging.getLogger(__name__)
 from langchain_core.messages import HumanMessage, BaseMessage, AIMessage, SystemMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 from src.agent.browser_use import agent_utils  # Import the new module
+
 from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
 
+from src.agent.browser_use.components.cookie_manager import CookieManager
 from src.utils.io_manager import IOManager
 from src.utils.utils import parse_json_safe, retry_async
 
@@ -63,7 +69,7 @@ class AgentLLMManager:
 
     def set_llm(self, llm):
         """Sets the current LLM for the agent."""
-        #Before setting, log the previous and new LLM
+                #Before setting, log the previous and new LLM
         old_llm_name = getattr(self.agent, 'llm', None)
         if old_llm_name:
             old_llm_name = old_llm_name.__class__.__name__
@@ -178,7 +184,7 @@ class AgentLLMManager:
         custom_task = response_data.get("custom_task")
 
         if response == "yes":
-            return True
+                        return True
         elif response == "no":
             return False
         elif custom_task:
@@ -325,6 +331,7 @@ class BrowserUseAgentBase:
         self.llm_manager = AgentLLMManager(self)
         self.heuristics = AgentHeuristics(self)
         self.confirmer_llm = confirmer_llm
+
         self.confirmer_strictness = confirmer_strictness
 
         if model_priority_list and model_priority_list[0].get('llm'):
@@ -356,6 +363,7 @@ class BrowserUseAgentBase:
         self.cleanup_handler = AgentCleanupHandler(self) # type: ignore
         self.tab_handler = TabManagementHandler(self) # type: ignore
         self.cookie_handler = CookieHandler(self) # type: ignore
+
 
         from src.agent.browser_use.browser_use_agent import PostStepHandler
         self.post_step_handler = PostStepHandler(self) # type: ignore
@@ -898,6 +906,7 @@ class PreStepHandler:
         if self.agent.save_history_path:
             try:
                 await self.agent.save_history_async(self.agent.save_history_path)
+
             except Exception as e:
                 logger.warning(f"Failed to auto-save history: {e}")
 
@@ -1072,6 +1081,17 @@ class CompletionCheckHandler:
 
     async def _handle_cleanup(self):
         """Handles agent cleanup using the AgentCleanupHandler."""
+
+        if self.agent.browser_context:
+                try:
+                    if hasattr(self.agent, 'cookie_manager'):
+                        await self.agent.cookie_manager.save_cookies(self.agent.browser_context)
+                        logger.info("Cookies saved on shutdown.")
+                except Exception as e:
+                    logger.warning(f"Failed to save cookies on agent shutdown: {e}")
+
+        
+        
         if hasattr(self.agent, 'cleanup_handler') and self.agent.cleanup_handler:
             await self.agent.cleanup_handler.handle_cleanup()
         await self.agent._execute_done_callback()

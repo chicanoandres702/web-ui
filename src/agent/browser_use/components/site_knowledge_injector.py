@@ -1,4 +1,5 @@
 import asyncio
+import os
 import logging
 from typing import TYPE_CHECKING
 
@@ -17,7 +18,7 @@ class SiteKnowledgeInjector:
     """
 
     def __init__(self, agent: "BrowserUseAgent"):
-        self.agent = agent
+        self.agent = agent        
         self.knowledge_base = KnowledgeBase(name="SiteKnowledge")
 
     async def inject_site_knowledge(self) -> None:
@@ -35,13 +36,14 @@ class SiteKnowledgeInjector:
             url = page.url
             domain = url.split('/')[2] if '/' in url else url
 
+            
             # Only inject if the domain has changed to avoid redundant memory operations
             if domain != getattr(self.agent.step_handler, 'last_domain', None):
                 try:
-                    knowledge = await self.agent.memory_manager.get_knowledge_for_domain(domain)
-                    if knowledge:
-                        if self.knowledge_base.store_knowledge(domain, knowledge):
-                            self.agent.heuristics.inject_message(f"SYSTEM: Site-specific knowledge for {domain}: {knowledge}")
+                    knowledge = self.agent.knowledge_base_manager.get_site_knowledge(url)
+                    if knowledge and knowledge.strip():
+                        self.agent.heuristics.inject_message(f"SYSTEM: Site-specific knowledge for {domain}:\n{knowledge}")
+                        if await self.agent.memory_manager.store_knowledge(domain, knowledge):
                             logger.info(f"Successfully injected site knowledge for {domain}")
                         else:
                             logger.warning(f"Failed to store knowledge in knowledge base for domain: {domain}")

@@ -22,7 +22,7 @@ class UserInteractionHandler: # type: ignore
         last_step_info = self.agent.state.history.history[-1] if self.agent.state.history.history else None
         intel = "No specific new information from this step."
         if last_step_info and last_step_info.model_output:
-            thought = getattr(last_step_info.model_output, "thought", None)
+            thought = getattr(last_step_info.model_output, "thought", None) # type: ignore
             if thought:
                 intel = str(thought)
 

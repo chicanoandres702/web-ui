@@ -23,17 +23,19 @@ from browser_use.agent.views import (
     AgentOutput,
     AgentStepInfo,
     BrowserStateHistory)
-# from browser_use.agent.message_manager.utils import is_model_without_tool_support
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from langchain_core.runnables import Runnable, RunnableLambda # Import RunnableLambda
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
+from src.agent.browser_use.components.planner import AgentPlanner
 
-from src.agent.browser_use.agent_components import ComponentInitializer, AgentCleanupHandler, BrowserActionHandler, AgentHeuristics, CompletionCheckHandler, UserInteractionHandler
+from src.agent.browser_use.agent_components import ComponentInitializer, AgentCleanupHandler, BrowserActionHandler, AgentHeuristics, CompletionCheckHandler, UserInteractionHandler, PreStepHandler, CookieHandler
+from browser_use.agent.views import AgentHistory
 
 from src.agent.browser_use import agent_utils  # Import the new module
-from src.utils.utils import retry_async
 from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
 from src.utils.io_manager import IOManager
+
+from src.agent.browser_use.components.knowledge_base_manager import KnowledgeBaseManager
 
 class InstructionHandlerInterface(abc.ABC):
     @abc.abstractmethod
@@ -94,7 +96,8 @@ class AgentLLMManager:
 
         return response
 
-    def _set_tool_calling_method(self) -> str | None:
+
+    def _set_tool_calling_method(self) -> str | None: # type: ignore
         """Sets the tool calling method based on model and configuration."""
         settings = getattr(self.agent, 'settings', None)
         if not settings:
@@ -113,7 +116,8 @@ class AgentLLMManager:
         else:
             return tool_calling_method
 
-    async def request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]:
+
+    async def request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]: # type: ignore
         """
         Requests confirmation/input from the user via WebSocket.
         """
@@ -168,6 +172,7 @@ class AgentLLMManager:
                     self.agent.stop()
                     return False
 
+
 ToolCallingMethod = str
 
 def _prepare_agent_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -193,7 +198,8 @@ class BrowserUseAgent(Agent):
     def __init__(
         self,
         state,
-        settings,
+        version: str,
+        settings:Dict[str, Any],
         task,
         controller,
 
@@ -215,6 +221,7 @@ class BrowserUseAgent(Agent):
         instruction_handler: Optional[InstructionHandlerInterface] = None,
         **kwargs
     ):
+        self.version = version
         self.last_domain = None
         self.task = task
         self.state = state
@@ -232,7 +239,7 @@ class BrowserUseAgent(Agent):
         self.save_history_path = agent_kwargs.pop('save_history_path', None)
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
-        self.cookie_path = agent_kwargs.pop('cookie_path', "./cookies")
+        self.cookie_path = agent_kwargs.pop('cookie_path', "./tmp/cookies.json")
         self.initial_actions = agent_kwargs.pop('initial_actions', None)
 
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
@@ -243,13 +250,14 @@ class BrowserUseAgent(Agent):
         self.step_callback: Optional[Callable] = kwargs.get("step_callback")
 
         self.done_callback: Optional[Callable] = kwargs.get("done_callback")
-        self.source = agent_kwargs.pop('source', None)
+
         self.inhibit_close = agent_kwargs.pop('inhibit_close', False)
         self.enable_smart_retry = enable_smart_retry
         self.enable_cost_saver = enable_cost_saver
         self.enable_user_interaction_dialog = agent_kwargs.pop('enable_user_interaction_dialog', True)
         self.auto_save_on_stuck = auto_save_on_stuck
-        self.instruction_handler = instruction_handler
+
+        self.instruction_handler = instruction_handler # type: ignore
 
         #Safely get the llm
         original_llm = agent_kwargs.get('llm')
@@ -266,17 +274,26 @@ class BrowserUseAgent(Agent):
         
         # Patch LLM if it's a model that needs JSON fixes (e.g., Qwen/Ollama)
         self.llm_manager = AgentLLMManager(self, model_priority_list)
-        chat_model_library = original_llm.__class__.__name__ if original_llm else "" #type: ignore
-        model_name = getattr(original_llm, "model_name", "").lower() or getattr(original_llm, "model", "").lower()
+        
+        # Extract raw LLM from RunnableSequence if necessary to check model name
+        raw_llm = original_llm
+        if hasattr(original_llm, "first"):
+            raw_llm = original_llm.first
+            
+        model_name = getattr(raw_llm, "model_name", "").lower() or getattr(raw_llm, "model", "").lower()
         if any(m in model_name for m in ['qwen', 'ollama']):
             structured_llm = self.llm_manager._patch_llm_with_qwen_fix(structured_llm)
             logger.info(f"Applied Qwen/Ollama JSON fix patch to LLM: {model_name}")
-        else:
-            logger.info(f"Using standard LLM output for: {model_name}")
+            
         agent_kwargs['llm'] = structured_llm
 
 
         # super().__init__(**agent_kwargs)
+        super().__init__(task=task, **agent_kwargs)
+        self.state = state if state is not None else BrowserStateHistory(url='', title='', tabs=[], interacted_element=[], screenshot=None) #type: ignore
+        if not hasattr(self.state, 'consecutive_failures'):
+            self.state.consecutive_failures = 0
+
 
         from src.agent.browser_use.agent_components import AgentHeuristics as ComponentHeuristics
         self.heuristics = ComponentHeuristics(self)
@@ -289,26 +306,29 @@ class BrowserUseAgent(Agent):
             self.llm_manager.set_llm(model_priority_list[0]['llm'])
         else:
             self.llm_manager.set_llm(agent_kwargs['llm'])
-        self._initialize_action_handler()
-        self.action_handler = BrowserActionHandler(self.browser_context, controller=self.controller, heuristics=self.heuristics)
         
-    def _initialize_action_handler(self):
-        """d
-        Initializes the BrowserActionHandler.
-        """
+        self._initialize_internal_components(agent_kwargs, system_prompt)
+        
+    def _initialize_internal_components(self, agent_kwargs, system_prompt):
+        """Initializes modular components for the agent."""
         if not self.browser_context:
-            return # type: ignore
-        from src.agent.browser_use.control_queue_handler import ControlQueueHandler #type: ignore
+            return # No browser context to work with
 
-        # self.control_queue_handler = ControlQueueHandler(self) # type: ignore
-        self.cleanup_handler = AgentCleanupHandler(self) #type: ignore
-        self.action_handler = BrowserActionHandler(self.browser_context, controller=self.controller, heuristics=self.heuristics)
+        self.cleanup_handler = AgentCleanupHandler(self)
+        self.action_handler = BrowserActionHandler(self.browser_context, self.controller, self.heuristics)
         self.post_step_handler = PostStepHandler(self)
+        self.pre_step_handler = PreStepHandler(self)
+        self.user_interaction_handler = UserInteractionHandler(self)
+        self.site_knowledge_injector = SiteKnowledgeInjector(self)
+        self.knowledge_base_manager = KnowledgeBaseManager(base_dir=agent_kwargs.get('kb_dir', './tmp/memory'))
+        
+        if system_prompt:
+            ComponentInitializer(self, agent_kwargs, system_prompt) # type: ignore
 
     def _set_tool_calling_method(self) -> str:
-        return self.llm_manager._set_tool_calling_method() or "auto"
+        return self.llm_manager._set_tool_calling_method() or "auto" # type: ignore
     
-    @property
+    @property # type: ignore
     def _tool_calling_supported(self) -> bool:
         """Whether tool calling is supported by the agent."""
         return self._set_tool_calling_method() == "function_calling"
@@ -359,7 +379,7 @@ class BrowserUseAgent(Agent):
 
             for step in range(max_steps):
                 try:
-                    if await self._handle_pre_step():
+                    if await self.pre_step_handler.handle_pre_step():
                         break
 
                     if on_step_start is not None:
@@ -727,7 +747,7 @@ class BrowserUseAgent(Agent):
         self._suggest_alternative_strategy()
 
         # Close extraneous tabs (e.g. ads, social shares)
-        await self.cleanup_handler._manage_tabs()
+        await self.tab_handler._manage_tabs()
 
         # Custom Memory Injection
         # if self.use_custom_memory and self.memory_manager:
@@ -745,7 +765,7 @@ class BrowserUseAgent(Agent):
             logger.info("MFA required, waiting for approval from another device...")
         if self.send_agent_message_callback:
             if self.send_agent_message_callback:
-                await self.send_agent_message_callback({
+                await self.send_agent_message_callback({ # type: ignore
                     "type": "mfa_required",
                     "message": "MFA Required: Approve from your other device to continue."   
                 })
@@ -754,7 +774,8 @@ class BrowserUseAgent(Agent):
             logger.info("MFA approved or agent stopped.")
             self.heuristics.is_waiting_for_mfa = False  # Reset flag
 
-            # Verify there is still a valid page and browser context
+                        # Verify there is still a valid page and browser context
+
             if not self.browser_context or not hasattr(self.browser_context, "get_current_page"):
                 logger.warning("Browser context is no longer valid after MFA, stopping agent.")
                 self.state.stopped = True
@@ -873,6 +894,9 @@ class PostStepHandler:
 
         if self.agent.cookie_path:
             await self.agent.action_handler.save_cookies(self.agent.cookie_path)
+    async def _handle_shutdown_cookie_persistence(self) -> None:
+        """Handles saving cookies on shutdown if a browser context exists."""
+        await self.action_handler.save_cookies(self.cookie_path)
 
 
 
@@ -884,6 +908,8 @@ class PostStepHandler:
             if not await self.agent._validate_output():
 
                 return False # Validation failed, continue loop
+
+
 
 
             await self.agent.cleanup_handler.cleanup()
