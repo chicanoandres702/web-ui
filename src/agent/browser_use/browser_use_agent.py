@@ -6,37 +6,42 @@ import inspect
 from queue import Empty
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, cast
 import json
-import json_repair
 import logging
 import os
 import re
 from pathlib import Path
 import sys
+
+import json_repair
 from dotenv import load_dotenv
+from langchain_core.runnables import Runnable, RunnableLambda
 
 sys.path.append(str(Path(__file__).resolve().parents[3]))
 from browser_use.agent.gif import create_history_gif
-from browser_use.agent.service import Agent, AgentHookFunc # AIMessage is from langchain_core.messages
 from browser_use.agent.views import (
     ActionResult,
     AgentHistoryList,
-    BrowserStateHistory,
     AgentOutput,
-    BrowserStateHistory)
+    BrowserStateHistory,
+    AgentStepInfo)
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
-from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
-from src.agent.browser_use.components.planner import AgentPlanner
-from src.agent.browser_use import agent_utils
-from src.agent.browser_use.agent_components import ComponentInitializer, AgentCleanupHandler, BrowserActionHandler, AgentHeuristics, CompletionCheckHandler, UserInteractionHandler, PreStepHandler, CookieHandler
-from browser_use.agent.views import AgentHistory
 
+from browser_use.agent.service import Agent, AgentHookFunc  # AIMessage is from langchain_core.messages
+from browser_use.agent.views import AgentHistory
+from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
+from src.agent.browser_use import agent_utils
+from src.agent.browser_use.agent_components import CookieHandler
+from src.agent.browser_use.agent_heuristics import AgentHeuristics
 from src.agent.browser_use import agent_utils  # Import the new module
 from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
 
+from src.agent.browser_use.components.planner import AgentPlanner
 from src.agent.browser_use.components.browser_factory import BrowserFactory
 from src.utils.io_manager import IOManager
 
+from src.agent.browser_use.user_interaction_handler import UserInteractionHandler
 from src.agent.browser_use.components.knowledge_base_manager import KnowledgeBaseManager
+
 
 class InstructionHandlerInterface(abc.ABC):
     @abc.abstractmethod
@@ -44,11 +49,11 @@ class InstructionHandlerInterface(abc.ABC):
         pass
 
 
-def _nvert_settings_to_dict(settings: Any) -> Dict[str, Any]:
+def _settings_to_dict(settings: Any) -> Dict[str, Any]:
     """
     Converts settings to a dictionary, handling RunnableSequence objects.
     """
-    if isinstance(settings, dict):
+    if isinstance(settings, dict): # type: ignore
         return settings.copy()
     elif hasattr(settings, "dict") and callable(settings.dict):
         return cast(Dict[str, Any], settings.dict())
@@ -60,10 +65,14 @@ load_dotenv()
 
 class AgentLLMManager:
     """Manages LLM-related operations for the agent, including model switching and patching."""
+    # The AgentLLMManager is responsible for handling LLM related tasks such as:
+    # -Setting the LLM for the agent
+    # -Applying fixes to the LLM responses
+    # -Setting the tool calling method
     def __init__(self, agent: Any, model_priority_list: Optional[List[Dict]] = None):
         self.agent = agent
         self.model_priority_list = model_priority_list
-
+    
     def set_llm(self, llm):
         """Sets the current LLM for the agent."""
         self.agent.llm = llm
@@ -73,11 +82,14 @@ class AgentLLMManager:
         return self.agent.llm
 
     def _patch_llm_with_qwen_fix(self, llm: Runnable) -> Runnable:
-        """Wraps the LLM with a RunnableLambda that applies Qwen/Ollama JSON fix logic."""
+        """Wraps the LLM with a RunnableLambda that applies Qwen/Ollama JSON fix logic to handle responses which require JSON fixes."""
+        # This step converts the LLM output to an AIMessage format
         llm_with_aimessage_output = llm | RunnableLambda(self._convert_agent_output_to_aimessage)
+        # This step applies the actual fix
         return llm_with_aimessage_output | RunnableLambda(self._apply_qwen_fix_logic)
 
     def _convert_agent_output_to_aimessage(self, agent_output: AgentOutput) -> BaseMessage:
+        """Converts structured agent output to an AIMessage, extracting tool calls for structured tool use."""
         tool_calls = []
         json_content = agent_output.model_dump_json()
         if agent_output.action:
@@ -91,17 +103,19 @@ class AgentLLMManager:
         return AIMessage(content=json_content, tool_calls=tool_calls)
 
     def _apply_qwen_fix_logic(self, response: BaseMessage) -> BaseMessage:
+        """Logic to fix potential JSON formatting issues, which is common in Qwen models, ensuring proper data structure."""
         """Applies the Qwen/Ollama JSON fix logic to an LLM response (BaseMessage)."""
-        if not hasattr(response, 'content') or not isinstance(response.content, str):
+        if not hasattr(response, 'content') or not isinstance(response.content, str): # type: ignore
             return response
 
         return response
 
 
     def _set_tool_calling_method(self) -> str | None: # type: ignore
-        """Sets the tool calling method based on model and configuration."""
-        settings = getattr(self.agent, 'settings', None)
-        if not settings:
+        """Automatically determines and sets the correct tool calling method based on the LLM being used, and the agent settings."""
+        """Sets the tool calling method based on model and configuration, with auto-detection for Ollama and other models."""
+        settings = getattr(self.agent, 'settings', None) # type: ignore
+        if not settings: # type: ignore
             return None
 
         tool_calling_method = getattr(settings, 'tool_calling_method', 'auto')
@@ -120,9 +134,10 @@ class AgentLLMManager:
 
     async def request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]: # type: ignore
         """
+        Asynchronously requests a decision from the user, using a WebSocket to communicate the request and await the response.
         Requests confirmation/input from the user via WebSocket.
         """
-        if not self.agent.send_agent_message_callback or not self.agent.confirmation_response_queue:
+        if not self.agent.send_agent_message_callback or not self.agent.confirmation_response_queue: # type: ignore
             return True
 
         await self.agent.send_agent_message_callback({
@@ -180,7 +195,7 @@ def _prepare_agent_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """
     Prepares and validates the agent settings before passing them to AgentSettings.
     """
-    if isinstance(settings, dict):
+    if isinstance(settings, dict): # type: ignore
         prepared_settings = settings.copy()
 
         # Convert relevant arguments to the expected type
@@ -196,6 +211,7 @@ def _prepare_agent_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
 
 
 class BrowserUseAgent(Agent):
+
     def __init__(
         self,
         state,
@@ -222,11 +238,11 @@ class BrowserUseAgent(Agent):
         instruction_handler: Optional[InstructionHandlerInterface] = None,
         **kwargs
     ):
-        self.version = version
+        self.version = version # type: ignore
         self.last_domain = None
         self.task = task
         self.state = state
-        self.browser_context = browser_context # type: ignore
+        self.browser_context = browser_context
         self.send_agent_message_callback = send_agent_message_callback
         self.confirmation_response_queue = confirmation_response_queue
         self.successful_steps_since_switch = 0
@@ -234,10 +250,10 @@ class BrowserUseAgent(Agent):
         self.planner_task: Optional[asyncio.Task] = None
         self.settings = settings
 
-        agent_kwargs = kwargs.copy()
-        self.use_custom_memory = agent_kwargs.pop('use_memory', True) #type: ignore
+        agent_kwargs = kwargs.copy() # type: ignore
+        self.use_custom_memory = agent_kwargs.pop('use_memory', True) # type: ignore
         # Extract agent-specific args that should not be passed to the base Agent classs
-        self.save_history_path = agent_kwargs.pop('save_history_path', None)
+        self.save_history_path = agent_kwargs.pop('save_history_path', None) # type: ignore
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
         self.cookie_path = agent_kwargs.pop('cookie_path', "./tmp/cookies.json")
@@ -245,7 +261,7 @@ class BrowserUseAgent(Agent):
 
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
         if confirmer_llm:
-            agent_kwargs['validate_output'] = True
+            agent_kwargs['validate_output'] = True # type: ignore
 
         self.validation_callback = validation_callback
         self.step_callback: Optional[Callable] = kwargs.get("step_callback")
@@ -260,11 +276,11 @@ class BrowserUseAgent(Agent):
 
         self.instruction_handler = instruction_handler # type: ignore
 
-        #Safely get the llm
+        # Safely get the llm
         original_llm = agent_kwargs.get('llm')
         if not original_llm:
             raise ValueError("LLM must be provided in agent_kwargs or model_priority_list")
-
+        
         # Patch LLM if it's a model that needs JSON fixes (e.g., Qwen/Ollama)
         self.llm_manager = AgentLLMManager(self, model_priority_list)
 
@@ -290,12 +306,8 @@ class BrowserUseAgent(Agent):
         # super().__init__(**agent_kwargs)
         super().__init__(task=task, **agent_kwargs)
         self.state = state if state is not None else BrowserStateHistory(url='', title='', tabs=[], interacted_element=[], screenshot=None) #type: ignore
-        if not hasattr(self.state, 'consecutive_failures'):
-            self.state.consecutive_failures = 0
 
-
-        from src.agent.browser_use.agent_components import AgentHeuristics as ComponentHeuristics
-        self.heuristics = ComponentHeuristics(self)
+        self.heuristics = AgentHeuristics(self)
         self.confirmer_llm = confirmer_llm
         self.confirmer_strictness: int = confirmer_strictness
         self.controller = controller
@@ -308,15 +320,16 @@ class BrowserUseAgent(Agent):
         
         self._initialize_internal_components(agent_kwargs, system_prompt)
         
+
     def _initialize_internal_components(self, agent_kwargs, system_prompt):
         """Initializes modular components for the agent."""
         if not self.browser_context:
             return # No browser context to work with
+        self.control_queue_handler = ControlQueueHandler(self)
 
         self.cleanup_handler = AgentCleanupHandler(self)
         self.action_handler = BrowserActionHandler(self.browser_context, self.controller, self.heuristics)
         self.post_step_handler = PostStepHandler(self)
-        self.pre_step_handler = PreStepHandler(self)
         self.user_interaction_handler = UserInteractionHandler(self)
         self.site_knowledge_injector = SiteKnowledgeInjector(self)
         self.knowledge_base_manager = KnowledgeBaseManager(base_dir=agent_kwargs.get('kb_dir', './tmp/memory'))
@@ -324,31 +337,51 @@ class BrowserUseAgent(Agent):
         if system_prompt:
             ComponentInitializer(self, agent_kwargs, system_prompt) # type: ignore
 
+
     def _set_tool_calling_method(self) -> str:
         return self.llm_manager._set_tool_calling_method() or "auto" # type: ignore
     
     @property # type: ignore
     def _tool_calling_supported(self) -> bool:
-        """Whether tool calling is supported by the agent."""
+        # Whether tool calling is supported by the agent.
         return self._set_tool_calling_method() == "function_calling" # type: ignore
     def _initialize_components(self, agent_kwargs: Dict[str, Any], system_prompt: Optional[str] = None) -> None:
 
         """
         Initializes agent components and applies system prompt override.
         """
-
-        # ComponentInitializer(self, agent_kwargs, system_prompt)
-
-        # Initialize SiteKnowledgeInjector
-        self.site_knowledge_injector = SiteKnowledgeInjector(self)
+    
+        # ComponentInitializer(self, agent_kwargs, system_prompt) # type: ignore
 
         # Initialize AgentLoopHandler
         self.planner_task = None
 
+
+        # Initialize SiteKnowledgeInjector
+        self.site_knowledge_injector = SiteKnowledgeInjector(self)
+        
     async def run(self, max_steps: int = 100, on_step_start: AgentHookFunc | None = None, on_step_end: AgentHookFunc | None = None) -> AgentHistoryList:
 
 
         loop = asyncio.get_event_loop()
+
+        # Execute initial actions if provided
+        if hasattr(self, 'initial_actions') and self.initial_actions:
+            # Use custom execution to ensure actions are run reliably via controller
+            results = await self._execute_initial_actions()
+            if results:
+                # If initial actions are provided, run them before the main loop
+                # Inject into message history so the agent knows what happened
+                summary = "\n".join(results) # type: ignore
+                msg = f"SYSTEM NOTE: The following actions were already executed for this step:\n{summary}\n\nCheck the current state. If the goal is achieved, output {{'finish': ...}}. Do NOT repeat the above actions."
+                if hasattr(self, "message_manager") and self.message_manager:
+                    add_msg_func = getattr(self.message_manager, "add_message", None)
+                    if callable(add_msg_func):
+                        add_msg_func(HumanMessage(content=msg))
+                # BrowserStateHistory does not have last_result; it is stored in the Agent's state
+                if hasattr(self, 'last_result'):
+                    self.last_result = [ActionResult(extracted_content=summary, include_in_memory=True)]
+
         if self.send_agent_message_callback:
 
             await self.send_agent_message_callback({"type": "agent_status", "status": "Participating"})
@@ -357,28 +390,11 @@ class BrowserUseAgent(Agent):
             self._log_agent_run()
 
             # Start Planner Loop if enabled
-            if self.planner_llm:
-                  self.planner_task = asyncio.create_task(self._planner_loop())
 
-            # Execute initial actions if provided
-            if hasattr(self, 'initial_actions') and self.initial_actions:
-                # Use custom execution to ensure actions are run reliably via controller
-                results = await self._execute_initial_actions()
-                if results:
-                    # Inject into message history so the agent knows what happened
-                    summary = "\n".join(results)
-                    msg = f"SYSTEM NOTE: The following actions were already executed for this step:\n{summary}\n\nCheck the current state. If the goal is achieved, output {{'finish': ...}}. Do NOT repeat the above actions."
-                    if hasattr(self, "message_manager") and self.message_manager:
-                        add_msg_func = getattr(self.message_manager, "add_message", None)
-                        if callable(add_msg_func):
-
-                            add_msg_func(HumanMessage(content=msg))
-                    # Also set last_result for good measure if the parent class uses it
-                    self.state.last_result = [ActionResult(extracted_content=summary, include_in_memory=True)]
-
-            for step in range(max_steps):
+            for step in range(max_steps): # type: ignore
+                # Main agent loop
                 try:
-                    if await self.pre_step_handler.handle_pre_step():
+                    if await self._handle_pre_step():
                         break
 
                     if on_step_start is not None:
@@ -394,14 +410,15 @@ class BrowserUseAgent(Agent):
                         break
                 except Exception as e:
                     logger.error(f"Error in step {step}: {e}")
-                    self.state.consecutive_failures += 1
-                    if self.state.consecutive_failures >= self.max_consecutive_failures:
+                    self.consecutive_failures += 1
+                    if self.consecutive_failures >= self.max_consecutive_failures:
                         break
 
                     # If a custom task was provided, the agent.task would have been updated.
-                    # We should continue the loop to process the new task.
+                    # We should continue the loop to process the new task. # type: ignore
             else:
                 await self.cleanup_handler._handle_max_steps_reached()
+                # If agent does not complete the task in the given number of steps, handle clean up
 
             return self.state.history
 
@@ -416,6 +433,7 @@ class BrowserUseAgent(Agent):
         finally:
             await self.cleanup_handler._handle_shutdown()
 
+    
     async def _execute_agent_step(self, step_info: AgentStepInfo):
         """Executes a single step of the agent."""
         try:
@@ -424,7 +442,7 @@ class BrowserUseAgent(Agent):
             if "Timeout" in str(e) and "exceeded" in str(e):
                 logger.warning(f"⚠️ Step {step_info.step_number + 1} timed out: {e}. Attempting to recover by reloading page.")
                 self.state.consecutive_failures += 1
-                await self._recover_from_timeout()
+
             else:
                 logger.error(f"An unexpected error occurred during step {step_info.step_number + 1}: {e}")
                 self.heuristics.inject_message(f"SYSTEM: An error occurred during step {step_info.step_number + 1}: {e}")
@@ -433,14 +451,14 @@ class BrowserUseAgent(Agent):
     async def _recover_from_timeout(self):
         """Attempts to recover from a timeout error by reloading the page."""
         try:
-            logger.info("Attempting to reload the page to recover...")
             if self.browser_context:
                 page = await self.browser_context.get_current_page()
                 await page.reload(wait_until="domcontentloaded", timeout=15000)
                 self.heuristics.inject_message("SYSTEM: A timeout occurred. I have reloaded the page to recover. Please re-assess the current state.")
         except Exception as reload_e:
-            logger.error(f"Failed to reload page after timeout: {reload_e}")
 
+            logger.error(f"Failed to reload page after timeout: {reload_e}")
+            
 
     async def _planner_loop(self):
         """Background task to dynamically update the plan."""
@@ -496,12 +514,11 @@ class BrowserUseAgent(Agent):
                     logger.info(f"🧠 Planner decided to '{action}' the plan.")
 
                     if action == "add" and "step_description" in plan_update:
-                        desc = plan_update["step_description"]
+                        desc = plan_update["step_description"] # type: ignore
                         after_idx = plan_update.get("after_index") # 1-based index to insert after
                         insert_pos = int(after_idx) if after_idx is not None else len(manager.bu_plan)
                         manager.add_plan_step(desc, index=insert_pos)
                         self.heuristics.inject_message(f"SYSTEM (Planner): I've added a new step to the plan: '{desc}'")
-
                     elif action == "update" and "step_index" in plan_update and "status" in plan_update:
                         idx = int(plan_update["step_index"]) - 1 # Convert 1-based to 0-based
                         status = plan_update["status"]
@@ -516,6 +533,7 @@ class BrowserUseAgent(Agent):
                 await asyncio.sleep(10)
 
     async def _execute_initial_actions(self) -> List[str]:
+        # Executes initial, forced actions using the controller to bypass the agent loop
         """
         execute initial actions directly using the controller.
         This bypasses the standard agent loop for forced plan steps.
@@ -553,6 +571,7 @@ class BrowserUseAgent(Agent):
 
     async def _validate_output(self) -> bool:
         """
+        Validates the agent's output using a confirmer LLM, if configured, to ensure quality and correctness.
         Validate the output of the agent using the confirmer LLM if available.
         """
         if not self.confirmer_llm:
@@ -633,16 +652,17 @@ class BrowserUseAgent(Agent):
             self.is_validating = False
 
     def _get_confirmer_prompt(self) -> str:
+        # Prompt helper to select the correct prompt based on strictness settings
 
         if self.confirmer_strictness and self.confirmer_strictness <= 3:
             return CONFIRMER_PROMPT_FAST.format(task=self.task)
         return CONFIRMER_PROMPT_STANDARD.format(task=self.task, strictness=self.confirmer_strictness or 5)
 
+
     def _build_confirmer_messages(self, system_prompt: str) -> List[BaseMessage]:
 
         history = self.state.history
         last_item = history.history[-1] if history.history else None
-        content: Sequence[Any] = [{"type": "text", "text": f"User Task: {self.task}"}]
 
         if last_item:
             state_desc = f"Current URL: {last_item.state.url}\nPage Title: {last_item.state.title}\n"
@@ -659,6 +679,7 @@ class BrowserUseAgent(Agent):
         return [SystemMessage(content=system_prompt), HumanMessage(content=content)]
 
     def _handle_confirmer_rejection(self, response_text: str):
+        # Handles confirmer rejection injecting strategic hints to prevent the agent from repeating the same mistake.
         """Handles the logic when the confirmer rejects the completion."""
         msg = f"Confirmer rejected completion: {response_text}"
 
@@ -669,9 +690,8 @@ class BrowserUseAgent(Agent):
         self.heuristics.inject_message(full_msg)
 
 
-
-    def inject_notification(self, content: str):
         """
+        # Inject system notification message in cases where it is needed for heuristics
         Injects a system notification into the message manager as a HumanMessage.
         This is used by heuristics to guide the agent.
         """
@@ -693,13 +713,11 @@ class BrowserUseAgent(Agent):
         except Exception as e:
             logger.warning(f"Failed to inject notification: {e}")
 
-  
     def _manage_model_switching(self):
         """Handles Cost Saver and Smart Retry logic."""
         self.heuristics.manage_model_switching()
 
     def _suggest_alternative_strategy(self):
-
         """Injects strategy hints if the agent is failing."""
         self.heuristics.suggest_alternative_strategy()
     async def _execute_step_callbacks(self, step: int):
@@ -731,6 +749,7 @@ class BrowserUseAgent(Agent):
                 logger.error(f"Error in done_callback: {e}")
 
     async def _handle_pre_step(self) -> bool:
+        # Handles pre-step operations such as loading cookies, managing tabs, and injecting site knowledge.
         """
         Handles pre-step checks: pause, stop, model switching, failures.
 
@@ -807,56 +826,14 @@ class BrowserUseAgent(Agent):
                     logger.info(f"Loaded cookies from {self.cookie_path}")
                 except Exception as e:
                     logger.error(f"Failed to load cookies: {e}")
-
-
-
-        return False
-class UserInteractionHandler:
-    """Handles user interaction requests and decision logic."""
-    def __init__(self, agent: BrowserUseAgent):
-        self.agent = agent
-
-    async def handle_user_interaction(self) -> bool:
-        """
-        Handles the user interaction dialog.
-        Returns: True if the agent should stop (User aborted), False otherwise.
-        """
-        if not self.agent.enable_user_interaction_dialog:
-            return False
-
-        last_step_info = self.agent.state.history.history[-1] if self.agent.state.history.history else None
-        intel = "No specific new information from this step."
-        
-        if last_step_info and last_step_info.model_output:
-            thought = getattr(last_step_info.model_output, "thought", None)
-            intel = thought
-        if last_step_info and last_step_info.model_output and last_step_info.model_output.action:
-            action_strings = []
-            actions = last_step_info.model_output.action if isinstance(last_step_info.model_output.action, list) else [last_step_info.model_output.action] # type: ignore
-            for action_model in actions:
-                if hasattr(action_model, "model_dump"):
-                    action_dict = action_model.model_dump()
-                    action_strings.append(str(action_dict))
-                else:
-                    action_strings.append(str(action_model))
-            next_action_desc = ", ".join(action_strings)
-        user_decision = await self.agent.llm_manager.request_user_decision(intel, next_action_desc)
-
-        if user_decision is False:
-            self.agent.state.stopped = True
-            return True
-        elif isinstance(user_decision, str):
-            self.agent.task = user_decision
-            self.agent.heuristics.inject_message(f"SYSTEM: User provided new task: '{user_decision}'. Re-evaluating plan.")
-            return False
         return False
 
 class PostStepHandler:
     """Handles post-step logic: callbacks, persistence, completion check."""
     def __init__(self, agent: BrowserUseAgent):
         self.agent = agent
-    async def handle_post_step(self, step: int, max_steps: int) -> bool:
 
+    async def handle_post_step(self, step: int, max_steps: int) -> bool:
         await self.agent._execute_step_callbacks(step)
 
         # Persistence: Auto-save history after each step
@@ -865,9 +842,7 @@ class PostStepHandler:
                 await self.agent.cleanup_handler.save_history_async(self.agent.save_history_path)
             except Exception as e:
                 logger.warning(f"Failed to auto-save history: {e}")
-
         await self.agent.heuristics.check_completion_heuristics()
-
         # Check for loops
         self.agent.heuristics.detect_loop()
   
@@ -893,41 +868,31 @@ class PostStepHandler:
         # Check login status (New)
         await self.agent.heuristics.check_login_status()
 
-
         if self.agent.cookie_path:
-            await self.agent.action_handler.save_cookies(self.agent.cookie_path)
-    async def _handle_shutdown_cookie_persistence(self) -> None:
-        """Handles saving cookies on shutdown if a browser context exists."""
-        await self.action_handler.save_cookies(self.cookie_path)
-
-
+            await self.action_handler.save_cookies(self.cookie_path)
 
         # --- User Interaction Dialog ---
         if await self._handle_user_interaction():
             return True # Stop requested
-
-        if self.agent.state.history.is_done():
-            if not await self.agent._validate_output():
-
+        else:
+            if await completion_check_handler.check_completion():
                 return False # Validation failed, continue loop
-
-
-
-
+            if self.agent.send_agent_message_callback:
+                await self.agent.send_agent_message_callback({
+                    "type": "agent_status",
+                    "status": "Completed ✅",
+                    "message": "Task completed successfully."
+                })
             await self.agent.cleanup_handler.cleanup()
             return True # Task done, break loop
 
         return False
+    
     async def _handle_user_interaction(self) -> bool:
         """
         Handles the user interaction dialog.
         """
-        handler = UserInteractionHandler(self.agent)
-        return await handler.handle_user_interaction()
-
-
-
-
+        return await self.user_interaction_handler.handle_user_interaction()
 
     async def _request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]:
         """
@@ -982,8 +947,7 @@ class ComponentInitializer:
         if system_prompt:
             self.agent.message_manager.system_prompt = SystemMessage(content=system_prompt)
 
-
-class AgentCleanupHandler:
+class AgentCleanupHandler: # type: ignore
     """Handles cleanup tasks for the agent."""
     def __init__(self, agent: BrowserUseAgent):
         self.agent = agent
@@ -1008,14 +972,12 @@ class AgentCleanupHandler:
             except asyncio.CancelledError:   
                 pass
 
-        if not self.agent.inhibit_close:
-            # MessageManager does not have a close() method in browser-use.
-            # If there are specific cleanup tasks for message_manager, they should be handled here.
-            # Otherwise, we rely on the parent Agent class or garbage collection.
-            pass
-
-
-
+        if not self.agent.inhibit_close:            
+            if self.agent.browser_context:
+                try:
+                    await self.agent.browser_context.close()
+                except Exception as e:
+                    logger.warning(f"Failed to close browser context: {e}")
 
         if self.agent.settings and getattr(self.agent.settings, 'generate_gif', False):
             output_path = 'agent_history.gif'
@@ -1023,10 +985,13 @@ class AgentCleanupHandler:
                 output_path = self.agent.settings.generate_gif
             create_history_gif(task=self.agent.task, history=self.agent.state.history, output_path=output_path)
 
+        # Execute Done Callback
+        if hasattr(self.agent, '_execute_done_callback'):
+            await self.agent._execute_done_callback()
+
         await self.agent._execute_done_callback()
+    
     async def _handle_user_interaction(self) -> bool:
-
-
         """
         Handles the user interaction dialog.
         Returns True if the agent should stop (User aborted), False otherwise.
@@ -1055,7 +1020,6 @@ class AgentCleanupHandler:
             next_action_desc = ", ".join(action_strings)
         if not next_action_desc:
             next_action_desc = "Agent is considering its next move."
-
         handler = UserInteractionHandler(self.agent)
         user_decision = await self.agent.llm_manager.request_user_decision(intel, next_action_desc)
 
@@ -1064,21 +1028,17 @@ class AgentCleanupHandler:
             return True # Break the loop
         elif isinstance(user_decision, str): # User provided a custom task
             self.agent.task = user_decision # Update the main task for the agent to re-evaluate
-
             self.agent.heuristics.inject_message(f"SYSTEM: User provided new task: '{user_decision}'. Re-evaluating plan.")
-
             return False # Continue the loop, agent will now work on the new task
         
         return False
 
     async def request_user_decision(self, intel: str, next_task: str) -> Union[bool, str]:
-
         """
         Requests confirmation/input from the user via WebSocket.
         """
         if not self.agent.send_agent_message_callback or not self.agent.confirmation_response_queue:
             return True
-
         await self.agent.send_agent_message_callback({
             "type": "request_confirmation",
             "message": "Agent is pausing for your review.",
@@ -1129,50 +1089,28 @@ class AgentCleanupHandler:
                     self.agent.stop()
                     return False
 
-
-    async def _handle_max_steps_reached(self):
-
-        """Handles the case where the agent reaches maximum steps without completion."""
-        error_message = 'Failed to complete task in maximum steps'
-        self.agent.state.history.history.append(
-            AgentHistory(
-                model_output=None,
-                result=[ActionResult(error=error_message, include_in_memory=True)],
-                state=BrowserStateHistory(
-                    url='',
-                    title= '',
-                    tabs=[],
-                    interacted_element=[],
-                    screenshot=None,
-                ),
-                metadata=None,
-            )
-        )
-
-        logger.info(f'❌ {error_message}')
+    async def _handle_max_steps_reached(self) -> None:
+        """Handles the scenario where the agent reaches the maximum number of steps."""
+        logger.info("Reached maximum number of steps.")
+        if self.agent.send_agent_message_callback:
+            await self.agent.send_agent_message_callback({
+                "type": "agent_status",
+                "status": "Max steps reached 🏁",
+                "message": "The agent has reached the maximum number of steps allowed for this task."
+            })
 
     async def save_history_async(self, path: str):
-
         """Saves the agent history to a file asynchronously."""
         try:
             await IOManager.write_file(path, self.agent.state.history.model_dump_json(indent=2))
         except Exception as e:
-
             logger.error(f"Failed to save history asynchronously: {e}")
 
-
-
+    async def _handle_shutdown(self) -> None:
         """Handle cleanup after run."""
-
         if self.agent.planner_task and not self.agent.planner_task.done():
-            self.agent.planner_task.cancel() # type: ignore
-            logger.info("🚫 Cleanup inhibited: Browser will remain open.") # type: ignore
-        else:
-            try:
-                await self.agent.close()
-            except Exception as e:
-                # Log as debug to avoid noise during forced shutdowns/interrupts
-                logger.debug(f"Error during agent cleanup (likely benign): {e}")
+            self.agent.planner_task.cancel()
+            logger.info("🚫 Planner task cancelled.")
 
         if self.agent.settings and getattr(self.agent.settings, 'generate_gif', False):
             output_path: str = 'agent_history.gif'

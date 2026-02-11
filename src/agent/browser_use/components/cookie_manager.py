@@ -10,17 +10,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_COOKIE_PATH = "./tmp/cookies.json"
+
+
 class CookieManager:
     """
     Manages the loading and saving of cookies to persist sessions across agent runs.
     """
-
     def __init__(self, cookie_path: str = DEFAULT_COOKIE_PATH):
         self.cookie_path = cookie_path
 
     async def load_cookies(self, browser_context: Any) -> None:
         """Loads cookies from a file into the browser context"""
-        DEFAULT_COOKIE_PATH = "./tmp/cookies.json"
         if not self.cookie_path or not os.path.exists(self.cookie_path):
             logger.info("No cookie path specified or file does not exist.")
             return

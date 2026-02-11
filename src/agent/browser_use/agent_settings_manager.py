@@ -31,7 +31,7 @@ from src.utils import llm_provider
 from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS
 from src.agent.deep_research.state_manager import DeepResearchStateManager
 from src.routes.models import load_model_from_file
-
+from src.config import RATE_LIMIT_SECONDS, MAX_REQUESTS_PER_MINUTE
 
 from src.utils.instruction_handler import create_instruction_handler
 import logging
@@ -43,8 +43,6 @@ from browser_use.agent.views import AgentSettings
 
 
 router = APIRouter()
-
-
 
 def get_cookie_manager():
     try:
@@ -470,8 +468,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "error", "content": f"Error processing message: {e}"})
 
     except WebSocketDisconnect:
-        logger.info("Client disconnected")
-
+        logger.info("Client disconnected") # type: ignore
         if runner_task and not runner_task.done():
             runner_task.cancel()
     

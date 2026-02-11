@@ -1813,6 +1813,10 @@
                                 <div id="autoSaveToggle" class="toggle active" onclick="toggleAutoSave()"></div>
                                 <label class="toggle-label" onclick="toggleAutoSave()">Auto-save</label>
                             </div>
+                            <div class="toggle-group">
+                                <div id="nativeBrowserToggle" class="toggle" onclick="toggleNativeBrowser()"></div>
+                                <label class="toggle-label" onclick="toggleNativeBrowser()">Use Native Browser</label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2047,7 +2051,6 @@
     </div>
 
     <script src="js/controlBar.js"></script>
-    <script>
 
         // ===== State Management =====
         const ws = new WebSocket("ws://" + window.location.host + "/ws");
@@ -2059,9 +2062,6 @@
         let autoSaveEnabled = true;
         let consoleEntries = [];
         let minimapActive = false;
-
-        // Modules
-        let controlBar;
 
         // ===== Particle Effects =====
 
@@ -2197,7 +2197,6 @@
             loadModels();
             loadSavedData();
             showNotification('Connected to agent server', 'success');
-            controlBar = initControlBar(ws);
             controlBar.saveToHistory();
         };
 
@@ -2410,7 +2409,6 @@
             tasks.push(newTask);
             controlBar.saveToHistory();
             renderTasks();
-            updateProgress();
             autoSave();
             
             controlBar.sendControl('add_task', taskText);
@@ -2813,11 +2811,16 @@
             showNotification(`Auto-save ${autoSaveEnabled ? 'enabled' : 'disabled'}`, 'info');
         }
 
+        function toggleNativeBrowser() {
+            const toggle = document.getElementById('nativeBrowserToggle');
+            toggle.classList.toggle('active');
+            showNotification(`Auto-save ${autoSaveEnabled ? 'enabled' : 'disabled'}`, 'info');
+        }
+
         function updateLLMSettings() {
             const provider = document.getElementById('llmProvider').value;
             document.getElementById('apiKeyField').style.display = provider === 'ollama' ? 'none' : 'block';
         }
-
         function updateAgentSettings() {
             const useVision = document.getElementById('visionToggle').classList.contains('active');
             const settings = JSON.parse(document.getElementById('settingsJson').value);
@@ -2842,11 +2845,10 @@
             }
         }
 
-        // ===== Keyboard Shortcuts =====
 
+        // ===== Keyboard Shortcuts =====
         document.addEventListener('keydown', function(e) {
             if (e.ctrlKey && e.key === 's') {
-                e.preventDefault();
                 showSaveGroupDialog();
             }
             
@@ -2880,6 +2882,5 @@
         logToConsole('success', 'Browser Agent Pro - Ultimate Neon Edition initialized');
         showNotification('Ultimate Neon Edition Ready', 'success');
         console.log("🚀 Ultimate Neon Edition Ready");
-    </script>
 </body>
 </html>

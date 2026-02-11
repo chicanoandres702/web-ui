@@ -6,8 +6,6 @@ from browser_use.agent.gif import create_history_gif
 logger = logging.getLogger(__name__)
 
 class AgentCleanupHandler:
-    """Handles agent cleanup tasks."""
-
     def __init__(self, agent: Any):
         """Initializes the AgentCleanupHandler with the agent instance."""
         self.agent = agent

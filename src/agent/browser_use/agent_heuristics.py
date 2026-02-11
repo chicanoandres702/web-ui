@@ -7,6 +7,7 @@ import asyncio
 import sys
 from pathlib import Path
 
+from typing import Any, Optional, Set
 
 # Ensure project root is in sys.path so 'src' imports work
 if str(Path(__file__).resolve().parents[3]) not in sys.path:
@@ -17,6 +18,7 @@ from langchain_core.messages import HumanMessage
 from browser_use.agent.views import ActionResult, AgentStepInfo
 
 from src.utils.utils import save_text_to_file
+from src.utils.browser_scripts import JS_DETECT_BLOCKING_ELEMENTS, JS_DETECT_NAVIGATION_CONTROLS
 from src.agent.browser_use.navigation_recovery import evaluate_site_state
 logger = logging.getLogger(__name__)
 
@@ -88,6 +90,10 @@ class BlockingElementChecker:
         except Exception:
             return None
 
+
+class HeuristicInterface:
+    def __init__(self, agent):
+        self.agent = agent
 
 class CompletionHeuristicsChecker:
     """Checks for common completion signals in the page content."""
@@ -191,6 +197,9 @@ class AgentHeuristics: # type: ignore
         self.is_waiting_for_mfa = False # Flag to track if the agent is waiting for MFA approval
         self.processed_urls_for_subtasks = set()
 
+        self.completion_checker = CompletionHeuristicsChecker(self.agent)
+        self.blocking_element_checker = BlockingElementChecker(self.agent)
+        self.login_status_checker = LoginStatusChecker(self.agent)
     async def _get_current_page(self):
         """Safely retrieves the current page from the browser context."""
         try:
@@ -219,12 +228,12 @@ class AgentHeuristics: # type: ignore
                  except Exception as e:
 
                      logger.warning(f"Failed to inject message via state message: {e}")
-    
+
     def manage_model_switching(self):
         """Handles Cost Saver and Smart Retry logic."""
         agent = self.agent
-        if not agent.model_priority_list or not (agent.enable_smart_retry or agent.enable_cost_saver):
-            if agent.llm_manager.get_current_llm() != agent.llm_manager.main_llm: agent.llm_manager.set_llm(agent.llm_manager.main_llm)
+        if not getattr(agent, 'model_priority_list', None) or not (getattr(agent, 'enable_smart_retry', False) or getattr(agent, 'enable_cost_saver', False)):
+            # Reset to main LLM if not already there
             agent.current_model_index = -1
             agent.switched_to_retry_model = False
             agent.using_cheap_model = False
@@ -245,6 +254,7 @@ class AgentHeuristics: # type: ignore
                 if new_index != agent.current_model_index: # type: ignore
                     logger.warning(f'⚠️ Smart Retry: Switching to stronger model (Priority {best_fallback["priority"]}).')
                     agent.llm = best_fallback['llm']
+
                     agent.current_model_index = new_index
                     agent.switched_to_retry_model = True
                     agent.using_cheap_model = False
@@ -298,9 +308,7 @@ class AgentHeuristics: # type: ignore
              msg = f"⚠️ Action failed {self.agent.state.consecutive_failures} times. STOP repeating the same action. You MUST try a different strategy (e.g. search instead of click, go back, or use a different tool)."
              self.inject_message(msg)
              
-        self.completion_checker = CompletionHeuristicsChecker(self.agent)
-        self.blocking_element_checker = BlockingElementChecker(self.agent)
-        self.login_status_checker = LoginStatusChecker(self.agent)
+
 
     async def check_completion_heuristics(self):
         """Checks for common completion signals in the page content."""
