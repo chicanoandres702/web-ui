@@ -5,8 +5,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 class ControlQueueHandler: # type: ignore
-    """Processes commands from the control queue."""
 
+    """Processes commands from the control queue."""
     def __init__(self, agent: Any):
         """Initializes the ControlQueueHandler with the agent instance."""
         self.agent = agent

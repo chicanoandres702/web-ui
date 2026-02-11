@@ -4,7 +4,7 @@ from typing import Any, Union
 
 logger = logging.getLogger(__name__)
 
-class UserInteractionHandler: # type: ignore
+class UserInteractionHandler:
     """Handles user interaction requests for the agent."""
 
     def __init__(self, agent: Any):
@@ -24,7 +24,7 @@ class UserInteractionHandler: # type: ignore
         if last_step_info and last_step_info.model_output:
             thought = getattr(last_step_info.model_output, "thought", None) # type: ignore
             if thought:
-                intel = str(thought)
+                intel = str(thought) # type: ignore
 
         next_action_desc = "Agent is considering its next move."
         if (last_step_info and last_step_info.model_output and

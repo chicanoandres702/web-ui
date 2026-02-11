@@ -20,19 +20,20 @@ if str(Path(__file__).resolve().parents[3]) not in sys.path:
 from browser_use.agent.gif import create_history_gif
 from browser_use.agent.service import Agent, AgentHookFunc # AIMessage is from langchain_core.messages
 from browser_use.agent.views import (
-
-    AgentOutput,
     ActionResult,
     AgentStepInfo,
     AgentHistoryList,
     AgentHistory,
-
     BrowserStateHistory
+    ,AgentOutput
 )
 from src.agent.browser_use.control_queue_handler import ControlQueueHandler
 from src.agent.browser_use.tab_management_handler import TabManagementHandler
+from src.agent.browser_use.components.browser_factory import BrowserFactory
 from src.agent.browser_use.user_interaction_handler import UserInteractionHandler
-from src.agent.browser_use.agent_cleanup_handler import AgentCleanupHandler
+from src.agent.browser_use.components.planner import AgentPlanner
+
+from browser_use.agent.browser_use_init import load_dotenv
 from src.agent.browser_use.agent_heuristics import AgentHeuristics
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 
@@ -44,6 +45,9 @@ class ComponentInitializer:
         if system_prompt:
             self.agent.message_manager.system_prompt = SystemMessage(content=system_prompt)
 
+load_dotenv()
+logger = logging.getLogger(__name__)
+
 import abc
 class InstructionHandlerInterface(abc.ABC): # type: ignore
     @abc.abstractmethod
@@ -51,6 +55,41 @@ class InstructionHandlerInterface(abc.ABC): # type: ignore
         pass
 
 logger = logging.getLogger(__name__)
+class LocalModelParser:
+    """
+    A reusable component for local AI-based parsing and conversion.
+    Encapsulates the logic for using lightweight local models (like TinyLlama)
+    to process or fix LLM outputs.
+    """
+    def __init__(self, model_name: str = "tiny-llama-q4_k_m.gguf"):
+        self.model_name = model_name
+        self.model_path = os.path.join(os.getcwd(), "models", model_name)
+        self._llm_instance = None
+
+    def _ensure_model_downloaded(self):
+        if not os.path.exists(self.model_path):
+            logger.info(f"Downloading local model: {self.model_name}...")
+            os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+            import urllib.request
+            url = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+            urllib.request.urlretrieve(url, self.model_path)
+
+    def get_instance(self):
+        if not self._llm_instance:
+            from llama_cpp import Llama
+            self._ensure_model_downloaded()
+            self._llm_instance = Llama(model_path=self.model_path, n_ctx=2048, verbose=False)
+        return self._llm_instance
+
+    async def parse_text_to_json(self, text: str) -> str:
+        """Converts raw text to a JSON string using the local model."""
+        try:
+            llm = self.get_instance()
+            prompt = f"<|system|>\nConvert this text to valid JSON tool calls:\n{text}\n<|assistant|>\n"
+            output = llm(prompt, max_tokens=512, stop=["<|endoftext|>"], echo=False)
+            return output['choices'][0]['text'].strip()
+        except:
+            return text
 
 from langchain_core.messages import HumanMessage, BaseMessage, AIMessage, SystemMessage
 from langchain_core.runnables import Runnable, RunnableLambda
@@ -80,9 +119,68 @@ class AgentLLMManager:
 
 
     def _patch_llm_with_qwen_fix(self, llm: Runnable) -> Runnable:
-        """Wraps the LLM with a RunnableLambda that applies Qwen/Ollama JSON fix logic."""
+        """Wraps the LLM with aRunnableLambda that applies Qwen/Ollama JSON fix logic."""
         llm_with_aimessage_output = llm | RunnableLambda(self._convert_agent_output_to_aimessage)
         return llm_with_aimessage_output | RunnableLambda(self._apply_qwen_fix_logic)
+
+    def _parse_with_local_model(self, agent_output: Any) -> BaseMessage:
+        """
+        Uses a local lightweight model (via llama-cpp-python or similar) 
+        to ensure the output is parsed into a valid AIMessage structure.
+        """
+        try:
+            from llama_cpp import Llama
+            import os
+
+            # Download/Initialize local model if not present
+            model_path = os.path.join(os.getcwd(), "models", "tiny-llama-q4_k_m.gguf")
+            if not os.path.exists(model_path):
+                logger.info("Downloading local parsing model...")
+                os.makedirs(os.path.dirname(model_path), exist_ok=True)
+                import urllib.request
+                url = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+                urllib.request.urlretrieve(url, model_path)
+
+            llm_local = Llama(model_path=model_path, n_ctx=2048, verbose=False)
+            
+            raw_text = str(agent_output)
+            prompt = f"<|system|>\nConvert this text to JSON tool calls: {raw_text}\n<|assistant|>\n"
+            
+            output = llm_local(prompt, max_tokens=512, stop=["<|endoftext|>"], echo=False)
+            parsed_content = output['choices'][0]['text']
+            
+            # Convert the local model's interpretation back into the standard AIMessage
+            return self._convert_agent_output_to_aimessage(AgentOutput(thought=parsed_content, action=[]))
+        except:
+            local_python_parser = RunnableLambda(self._parse_with_local_model)
+            return llm | local_python_parser | RunnableLambda(self._apply_qwen_fix_logic)
+
+    def _parse_with_local_model(self, agent_output: Any) -> BaseMessage:
+        """
+        Uses a local lightweight model (via llama-cpp-python or similar) 
+        to ensure the output is parsed into a valid AIMessage structure.
+        """
+
+            from llama_cpp import Llama
+            import os
+
+            # Download/Initialize local model if not present
+            model_path = os.path.join(os.getcwd(), "models", "tiny-llama-q4_k_m.gguf")
+            if not os.path.exists(model_path):
+                logger.info("Downloading local parsing model...")
+                os.makedirs(os.path.dirname(model_path), exist_ok=True)
+                import urllib.request
+                url = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+                urllib.request.urlretrieve(url, model_path)
+
+            llm_local = Llama(model_path=model_path, n_ctx=2048, verbose=False)
+            
+            raw_text = str(agent_output)
+            prompt = f"<|system|>\nConvert this text to JSON tool calls: {raw_text}\n<|assistant|>\n"
+            
+            output = llm_local(prompt, max_tokens=512, stop=["<|endoftext|>"], echo=False)
+            parsed_content = output['choices'][0]['text']
+            
 
     def _convert_agent_output_to_aimessage(self, agent_output: AgentOutput) -> BaseMessage:
         tool_calls = []
@@ -92,7 +190,6 @@ class AgentLLMManager:
             for action_model in actions_list:
                 if hasattr(action_model, "model_dump"):  # Ensure it's an ActionModel-like object
                     action_args = action_model.model_dump(exclude_unset=True)
-                    tool_name = action_args.pop("name", None)  # Extract 'name' and remove from args
 
                     if tool_name:
                         tool_calls.append({
@@ -123,6 +220,7 @@ class AgentLLMManager:
 
             if isinstance(data, (dict, list)):
                 # Specific fix for AgentOutput wrapped in a dict
+
                 if isinstance(data, dict) and data.get("name") == "AgentOutput" and "arguments" in data:
                     logger.info("🔧 Fixed Qwen/Ollama output format by extracting 'arguments'.")
                     response.content = json.dumps(data["arguments"])
@@ -146,7 +244,7 @@ class AgentLLMManager:
         tool_calling_method = self.agent.settings.tool_calling_method
         chat_model_library = self.agent.chat_model_library
         model_name = self.agent.model_name.lower()
-    
+
         if tool_calling_method == 'auto':
             if 'Ollama' in chat_model_library:
                 return None
@@ -197,6 +295,7 @@ class BrowserActionHandler:
     """Handles browser-specific actions.
 
     This class decouples browser interactions from the agent's core logic,
+
     providing a clear abstraction for performing actions in the browser.
     """
     def __init__(self, browser_context, controller, heuristics):
@@ -344,6 +443,7 @@ class BrowserUseAgentBase:
         self._initialize_action_handler()
         self.control_queue_handler = ControlQueueHandler(self)
 
+
     def _initialize_action_handler(self):
         """d
         Initializes the BrowserActionHandler.
@@ -356,19 +456,20 @@ class BrowserUseAgentBase:
         Initializes agent components and applies system prompt override.
         """
         ComponentInitializer(self, agent_kwargs, system_prompt) # type: ignore
+        self.browser_factory = BrowserFactory(self)
+
         self.site_knowledge_injector = SiteKnowledgeInjector(self) # type: ignore
 
         self.user_interaction_handler = UserInteractionHandler(self) # type: ignore
-        self.pre_step_handler = PreStepHandler(self) # type: ignore
         self.cleanup_handler = AgentCleanupHandler(self) # type: ignore
         self.tab_handler = TabManagementHandler(self) # type: ignore
         self.cookie_handler = CookieHandler(self) # type: ignore
 
 
-        from src.agent.browser_use.browser_use_agent import PostStepHandler
         self.post_step_handler = PostStepHandler(self) # type: ignore
 
 class CookieHandler:
+
     """Handles cookie loading and saving for the agent."""
     def __init__(self, agent: Any):
         """Initializes the CookieHandler with the agent instance."""
@@ -786,6 +887,7 @@ class BrowserUseAgent(Agent, BrowserUseAgentBase): # Ensure inheritance if inten
                     await self.done_callback(self.state.history)
                 else:
                     self.done_callback(self.state.history)
+
             except Exception as e:
                 logger.error(f"Error in done_callback: {e}")
 
@@ -867,7 +969,7 @@ class PreStepHandler:
         # Load cookies at the beginning of each session
         if self.agent.cookie_path and os.path.exists(self.agent.cookie_path):
             if self.agent.browser_context:   
-                try:
+                try:   
                     with open(self.agent.cookie_path, 'r', encoding='utf-8') as f:
                         cookies = json.load(f)
                         
@@ -1049,6 +1151,117 @@ class PreStepHandler:
                     if send_callback:
                         await send_callback({"type": "agent_status", "status": "Participating"})
 
+class BrowserFactory:
+    @staticmethod
+    def get_default_chrome_path() -> str:
+        """
+        Returns the default Chrome user data path based on the operating system.
+        """
+        if sys.platform == "win32":
+            return os.path.join(os.environ["LOCALAPPDATA"], "Google\\Chrome\\User Data")
+        elif sys.platform == "darwin":
+            return os.path.expanduser("~/Library/Application Support/Google/Chrome")
+        else:  # Linux
+            return os.path.expanduser("~/.config/google-chrome")
+
+    async def create_native_browser(self, headless: bool = False) -> Any:
+        """
+        Creates a browser instance using the native default Chrome installation and user data.
+        """
+        from browser_use.browser.browser import Browser, BrowserConfig
+        
+        chrome_path = self.get_default_chrome_path()
+        logger.info(f"🚀 Launching native browser with user data from: {chrome_path}")
+        
+        config = BrowserConfig(
+            headless=headless,
+            chrome_instance_path=chrome_path,
+            extra_chromium_args=[
+                "--no-first-run",
+                "--no-default-browser-check",
+            ]
+        )
+        self.browser = Browser(config=config)
+        return self.browser
+
+    """
+    Handles browser creation and context management
+    """
+    def __init__(self, agent):
+        self.agent = agent
+        self.browser = None
+        self.context = None
+
+    async def create_browser(self, config: Dict[str, Any]) -> Any:
+        """
+        Creates and configures a browser instance based on provided settings.
+        """
+        from browser_use.browser.browser import Browser, BrowserConfig
+        
+        browser_config = BrowserConfig(
+            headless=config.get('headless', False),
+            disable_security=config.get('disable_security', True),
+            extra_chromium_args=config.get('extra_chromium_args', []),
+            wss_url=config.get('wss_url'),
+            chrome_instance_path=config.get('chrome_instance_path')
+        )
+        
+        self.browser = Browser(config=browser_config)
+        return self.browser
+
+    async def close_browser(self):
+        if self.browser:
+            await self.browser.close()
+            self.browser = None
+        
+class PostStepHandler:
+            def __init__(self, agent: BrowserUseAgent):
+                self.agent = agent
+        
+            async def handle_post_step(self, step: int, max_steps: int) -> bool:
+                """
+                Handles post-step logic: callbacks, persistence, completion check.
+                Returns True if the agent should stop/break the loop (task done).
+                """
+                # Execute WebUI Callbacks
+                await self.agent._execute_step_callbacks(step)
+        
+                # Persistence: Auto-save history after each step
+                if self.agent.save_history_path:
+                    try:
+                        await self.agent.save_history_async(self.agent.save_history_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to auto-save history: {e}")
+        
+                await self.agent.heuristics.check_completion_heuristics()
+        
+                # Check for loops
+                self.agent.heuristics.detect_loop()
+          
+                # Check for progress indicators
+                if hasattr(self.agent.heuristics, 'detect_progress'):
+                    await self.agent.heuristics.detect_progress()
+        
+                if hasattr(self.agent.action_handler, 'check_blocking_elements'):
+                    await self.agent.action_handler.check_blocking_elements()
+          
+                if hasattr(self.agent.action_handler, 'check_navigation_recovery'):
+                    await self.agent.action_handler.check_navigation_recovery()
+        
+                # Check for complex page structure and add subtasks
+                await self.agent.heuristics.check_and_add_subtasks()
+        
+                completion_check_handler = CompletionCheckHandler(self.agent)
+                await completion_check_handler.check_completion()
+        
+                if hasattr(self.agent.action_handler, 'check_login_status'):
+                    await self.agent.action_handler.check_login_status()
+        
+                if self.agent.cookie_path and hasattr(self.agent.action_handler, 'save_cookies'):
+                    await self.agent.action_handler.save_cookies(self.agent.cookie_path)
+                
+                # --- User Interaction Dialog ---
+                if await self
                 elif command == 'stop':
                     self.agent.stop()
                     return False

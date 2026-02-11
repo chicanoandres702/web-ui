@@ -9,7 +9,7 @@ from browser_use.controller.registry.views import ActionModel
 from langchain.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from pydantic import BaseModel, Field, create_model
-from pydantic.v1 import BaseModel, Field
+
 
 logger = logging.getLogger(__name__)
 

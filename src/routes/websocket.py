@@ -26,8 +26,8 @@ from src.utils import llm_provider
 # from browser_use.agent.message_manager.service import MessageManager, MessageManagerSettings, MessageManagerState
 from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS
 from src.agent.deep_research.state_manager import DeepResearchStateManager
-from src.routes.models import load_model_from_file
-from src.config import RATE_LIMIT_SECONDS, MAX_REQUESTS_PER_MINUTE
+from src.utils.model_loader import load_model_from_file
+
 
 from src.utils.instruction_handler import InstructionHandler, create_instruction_handler
 

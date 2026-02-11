@@ -1,0 +1,5902 @@
+[
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAssignmentType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAssignmentType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Type \"type[src.agent.browser_use.agent_components.ComponentInitializer]\" is not assignable to declared type \"type[src.agent.browser_use.browser_use_agent.ComponentInitializer]\"\n  \"src.agent.browser_use.agent_components.ComponentInitializer\" is not assignable to \"src.agent.browser_use.browser_use_agent.ComponentInitializer\"\n  Type \"type[src.agent.browser_use.agent_components.ComponentInitializer]\" is not assignable to type \"type[src.agent.browser_use.browser_use_agent.ComponentInitializer]\"",
+		"source": "Pylance",
+		"startLineNumber": 31,
+		"startColumn": 52,
+		"endLineNumber": 31,
+		"endColumn": 72
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"AgentCleanupHandler\" is unknown import symbol",
+		"source": "Pylance",
+		"startLineNumber": 31,
+		"startColumn": 74,
+		"endLineNumber": 31,
+		"endColumn": 93
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAssignmentType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAssignmentType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Type \"type[src.agent.browser_use.agent_components.BrowserActionHandler]\" is not assignable to declared type \"type[src.agent.browser_use.browser_use_agent.BrowserActionHandler]\"\n  \"src.agent.browser_use.agent_components.BrowserActionHandler\" is not assignable to \"src.agent.browser_use.browser_use_agent.BrowserActionHandler\"\n  Type \"type[src.agent.browser_use.agent_components.BrowserActionHandler]\" is not assignable to type \"type[src.agent.browser_use.browser_use_agent.BrowserActionHandler]\"",
+		"source": "Pylance",
+		"startLineNumber": 31,
+		"startColumn": 95,
+		"endLineNumber": 31,
+		"endColumn": 115
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"CompletionCheckHandler\" is unknown import symbol",
+		"source": "Pylance",
+		"startLineNumber": 31,
+		"startColumn": 134,
+		"endLineNumber": 31,
+		"endColumn": 156
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAssignmentType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAssignmentType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Type \"type[src.agent.browser_use.user_interaction_handler.UserInteractionHandler]\" is not assignable to declared type \"type[src.agent.browser_use.browser_use_agent.UserInteractionHandler]\"\n  \"src.agent.browser_use.user_interaction_handler.UserInteractionHandler\" is not assignable to \"src.agent.browser_use.browser_use_agent.UserInteractionHandler\"\n  Type \"type[src.agent.browser_use.user_interaction_handler.UserInteractionHandler]\" is not assignable to type \"type[src.agent.browser_use.browser_use_agent.UserInteractionHandler]\"",
+		"source": "Pylance",
+		"startLineNumber": 31,
+		"startColumn": 158,
+		"endLineNumber": 31,
+		"endColumn": 180
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportUndefinedVariable",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportUndefinedVariable.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"Runnable\" is not defined",
+		"source": "Pylance",
+		"startLineNumber": 75,
+		"startColumn": 45,
+		"endLineNumber": 75,
+		"endColumn": 53
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportUndefinedVariable",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportUndefinedVariable.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"Runnable\" is not defined",
+		"source": "Pylance",
+		"startLineNumber": 75,
+		"startColumn": 58,
+		"endLineNumber": 75,
+		"endColumn": 66
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportUndefinedVariable",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportUndefinedVariable.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"RunnableLambda\" is not defined",
+		"source": "Pylance",
+		"startLineNumber": 77,
+		"startColumn": 43,
+		"endLineNumber": 77,
+		"endColumn": 57
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportUndefinedVariable",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportUndefinedVariable.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"RunnableLambda\" is not defined",
+		"source": "Pylance",
+		"startLineNumber": 78,
+		"startColumn": 44,
+		"endLineNumber": 78,
+		"endColumn": 58
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot assign to attribute \"consecutive_failures\" for class \"BrowserStateHistory\"\n  Attribute \"consecutive_failures\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 296,
+		"startColumn": 24,
+		"endLineNumber": 296,
+		"endColumn": 44
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportArgumentType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportArgumentType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Argument of type \"Self@BrowserUseAgent\" cannot be assigned to parameter \"agent\" of type \"BrowserUseAgent\" in function \"__init__\"\n  \"BrowserUseAgent*\" is not assignable to \"BrowserUseAgent\"",
+		"source": "Pylance",
+		"startLineNumber": 321,
+		"startColumn": 48,
+		"endLineNumber": 321,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot assign to attribute \"last_result\" for class \"BrowserStateHistory\"\n  Attribute \"last_result\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 379,
+		"startColumn": 32,
+		"endLineNumber": 379,
+		"endColumn": 43
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"consecutive_failures\" for class \"BrowserStateHistory\"\n  Attribute \"consecutive_failures\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 399,
+		"startColumn": 32,
+		"endLineNumber": 399,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot assign to attribute \"consecutive_failures\" for class \"BrowserStateHistory\"\n  Attribute \"consecutive_failures\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 399,
+		"startColumn": 32,
+		"endLineNumber": 399,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"consecutive_failures\" for class \"BrowserStateHistory\"\n  Attribute \"consecutive_failures\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 400,
+		"startColumn": 35,
+		"endLineNumber": 400,
+		"endColumn": 55
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"max_consecutive_failures\" for class \"BrowserUseAgent*\"\n  Attribute \"max_consecutive_failures\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 400,
+		"startColumn": 64,
+		"endLineNumber": 400,
+		"endColumn": 88
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1139,
+		"startColumn": 26,
+		"endLineNumber": 1139,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 408,
+		"startColumn": 31,
+		"endLineNumber": 408,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 413,
+		"startColumn": 31,
+		"endLineNumber": 413,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 417,
+		"startColumn": 31,
+		"endLineNumber": 417,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"_handle_shutdown\" for class \"AgentCleanupHandler\"\n  Attribute \"_handle_shutdown\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 419,
+		"startColumn": 40,
+		"endLineNumber": 419,
+		"endColumn": 56
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"consecutive_failures\" for class \"BrowserStateHistory\"\n  Attribute \"consecutive_failures\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 428,
+		"startColumn": 28,
+		"endLineNumber": 428,
+		"endColumn": 48
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot assign to attribute \"consecutive_failures\" for class \"BrowserStateHistory\"\n  Attribute \"consecutive_failures\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 428,
+		"startColumn": 28,
+		"endLineNumber": 428,
+		"endColumn": 48
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"stopped\" for class \"BrowserStateHistory\"\n  Attribute \"stopped\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 453,
+		"startColumn": 30,
+		"endLineNumber": 453,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"paused\" for class \"BrowserStateHistory\"\n  Attribute \"paused\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 457,
+		"startColumn": 31,
+		"endLineNumber": 457,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 457,
+		"startColumn": 74,
+		"endLineNumber": 457,
+		"endColumn": 81
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 468,
+		"startColumn": 40,
+		"endLineNumber": 468,
+		"endColumn": 47
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportUndefinedVariable",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportUndefinedVariable.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"retry_async\" is not defined",
+		"source": "Pylance",
+		"startLineNumber": 574,
+		"startColumn": 30,
+		"endLineNumber": 574,
+		"endColumn": 41
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 457,
+		"startColumn": 110,
+		"endLineNumber": 457,
+		"endColumn": 117
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot assign to attribute \"stopped\" for class \"BrowserStateHistory\"\n  Attribute \"stopped\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 625,
+		"startColumn": 32,
+		"endLineNumber": 625,
+		"endColumn": 39
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 645,
+		"startColumn": 30,
+		"endLineNumber": 645,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 712,
+		"startColumn": 31,
+		"endLineNumber": 712,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 714,
+		"startColumn": 45,
+		"endLineNumber": 714,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 715,
+		"startColumn": 46,
+		"endLineNumber": 715,
+		"endColumn": 53
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 729,
+		"startColumn": 57,
+		"endLineNumber": 729,
+		"endColumn": 64
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 731,
+		"startColumn": 51,
+		"endLineNumber": 731,
+		"endColumn": 58
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"control_queue_handler\" for class \"BrowserUseAgent*\"\n  Attribute \"control_queue_handler\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 744,
+		"startColumn": 20,
+		"endLineNumber": 744,
+		"endColumn": 41
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"tab_handler\" for class \"BrowserUseAgent*\"\n  Attribute \"tab_handler\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 754,
+		"startColumn": 20,
+		"endLineNumber": 754,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"stopped\" for class \"BrowserStateHistory\"\n  Attribute \"stopped\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 776,
+		"startColumn": 73,
+		"endLineNumber": 776,
+		"endColumn": 80
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot assign to attribute \"stopped\" for class \"BrowserStateHistory\"\n  Attribute \"stopped\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 785,
+		"startColumn": 28,
+		"endLineNumber": 785,
+		"endColumn": 35
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"stopped\" for class \"BrowserStateHistory\"\n  Attribute \"stopped\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 791,
+		"startColumn": 23,
+		"endLineNumber": 791,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"paused\" for class \"BrowserStateHistory\"\n  Attribute \"paused\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 796,
+		"startColumn": 26,
+		"endLineNumber": 796,
+		"endColumn": 32
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"stopped\" for class \"BrowserStateHistory\"\n  Attribute \"stopped\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 798,
+		"startColumn": 27,
+		"endLineNumber": 798,
+		"endColumn": 34
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 829,
+		"startColumn": 83,
+		"endLineNumber": 829,
+		"endColumn": 90
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 829,
+		"startColumn": 43,
+		"endLineNumber": 829,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportArgumentType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportArgumentType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Argument of type \"Any | Literal['No specific new information from this step.'] | None\" cannot be assigned to parameter \"intel\" of type \"str\" in function \"request_user_decision\"\n  Type \"Any | Literal['No specific new information from this step.'] | None\" is not assignable to type \"str\"\n    \"None\" is not assignable to \"str\"",
+		"source": "Pylance",
+		"startLineNumber": 845,
+		"startColumn": 76,
+		"endLineNumber": 845,
+		"endColumn": 81
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot assign to attribute \"stopped\" for class \"BrowserStateHistory\"\n  Attribute \"stopped\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 848,
+		"startColumn": 30,
+		"endLineNumber": 848,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1160,
+		"startColumn": 63,
+		"endLineNumber": 1160,
+		"endColumn": 70
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"check_blocking_elements\" for class \"AgentHeuristics\"\n  Attribute \"check_blocking_elements\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 880,
+		"startColumn": 37,
+		"endLineNumber": 880,
+		"endColumn": 60
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"check_login_status\" for class \"AgentHeuristics\"\n  Attribute \"check_login_status\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 896,
+		"startColumn": 37,
+		"endLineNumber": 896,
+		"endColumn": 55
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportReturnType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportReturnType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Function with declared return type \"bool\" must return value on all code paths\n  \"None\" is not assignable to \"bool\"",
+		"source": "Pylance",
+		"startLineNumber": 860,
+		"startColumn": 68,
+		"endLineNumber": 860,
+		"endColumn": 72
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"action_handler\" for class \"PostStepHandler*\"\n  Attribute \"action_handler\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 903,
+		"startColumn": 20,
+		"endLineNumber": 903,
+		"endColumn": 34
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"cookie_path\" for class \"PostStepHandler*\"\n  Attribute \"cookie_path\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 903,
+		"startColumn": 53,
+		"endLineNumber": 903,
+		"endColumn": 64
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportReturnType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportReturnType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Type \"Literal[True]\" is not assignable to return type \"None\"\n  \"Literal[True]\" is not assignable to \"None\"",
+		"source": "Pylance",
+		"startLineNumber": 909,
+		"startColumn": 20,
+		"endLineNumber": 909,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 911,
+		"startColumn": 29,
+		"endLineNumber": 911,
+		"endColumn": 36
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportReturnType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportReturnType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Type \"Literal[False]\" is not assignable to return type \"None\"\n  \"Literal[False]\" is not assignable to \"None\"",
+		"source": "Pylance",
+		"startLineNumber": 914,
+		"startColumn": 24,
+		"endLineNumber": 914,
+		"endColumn": 29
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportReturnType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportReturnType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Type \"Literal[True]\" is not assignable to return type \"None\"\n  \"Literal[True]\" is not assignable to \"None\"",
+		"source": "Pylance",
+		"startLineNumber": 920,
+		"startColumn": 20,
+		"endLineNumber": 920,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportReturnType",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportReturnType.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Type \"Literal[False]\" is not assignable to return type \"None\"\n  \"Literal[False]\" is not assignable to \"None\"",
+		"source": "Pylance",
+		"startLineNumber": 922,
+		"startColumn": 16,
+		"endLineNumber": 922,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"cookie_handler\" for class \"BrowserUseAgent\"\n  Attribute \"cookie_handler\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 943,
+		"startColumn": 30,
+		"endLineNumber": 943,
+		"endColumn": 44
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 967,
+		"startColumn": 29,
+		"endLineNumber": 967,
+		"endColumn": 36
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"generate_gif\" for class \"Dict[str, Any]\"\n  Attribute \"generate_gif\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1024,
+		"startColumn": 47,
+		"endLineNumber": 1024,
+		"endColumn": 59
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"generate_gif\" for class \"Dict[str, Any]\"\n  Attribute \"generate_gif\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1025,
+		"startColumn": 51,
+		"endLineNumber": 1025,
+		"endColumn": 63
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1026,
+		"startColumn": 79,
+		"endLineNumber": 1026,
+		"endColumn": 86
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1039,
+		"startColumn": 83,
+		"endLineNumber": 1039,
+		"endColumn": 90
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1039,
+		"startColumn": 43,
+		"endLineNumber": 1039,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot assign to attribute \"stopped\" for class \"BrowserStateHistory\"\n  Attribute \"stopped\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1065,
+		"startColumn": 30,
+		"endLineNumber": 1065,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"generate_gif\" for class \"Dict[str, Any]\"\n  Attribute \"generate_gif\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1180,
+		"startColumn": 47,
+		"endLineNumber": 1180,
+		"endColumn": 59
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"generate_gif\" for class \"Dict[str, Any]\"\n  Attribute \"generate_gif\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1181,
+		"startColumn": 51,
+		"endLineNumber": 1181,
+		"endColumn": 63
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"history\" for class \"BrowserStateHistory\"\n  Attribute \"history\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 1182,
+		"startColumn": 79,
+		"endLineNumber": 1182,
+		"endColumn": 86
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"Empty\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 6,
+		"startColumn": 19,
+		"endLineNumber": 6,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"logging\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 10,
+		"startColumn": 8,
+		"endLineNumber": 10,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"AgentPlanner\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 29,
+		"startColumn": 54,
+		"endLineNumber": 29,
+		"endColumn": 66
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"agent_utils\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 30,
+		"startColumn": 35,
+		"endLineNumber": 30,
+		"endColumn": 46
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"agent_utils\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 34,
+		"startColumn": 35,
+		"endLineNumber": 34,
+		"endColumn": 46
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"AgentHeuristics\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 31,
+		"startColumn": 117,
+		"endLineNumber": 31,
+		"endColumn": 132
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"CookieHandler\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 31,
+		"startColumn": 198,
+		"endLineNumber": 31,
+		"endColumn": 211
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"BrowserFactory\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 36,
+		"startColumn": 62,
+		"endLineNumber": 36,
+		"endColumn": 76
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"_nvert_settings_to_dict\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 47,
+		"startColumn": 5,
+		"endLineNumber": 47,
+		"endColumn": 28
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"_prepare_agent_settings\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 179,
+		"startColumn": 5,
+		"endLineNumber": 179,
+		"endColumn": 28
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"message_manager\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 207,
+		"startColumn": 9,
+		"endLineNumber": 207,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"confirmation_event\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 217,
+		"startColumn": 9,
+		"endLineNumber": 217,
+		"endColumn": 27
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"agent_kwargs\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 336,
+		"startColumn": 38,
+		"endLineNumber": 336,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"system_prompt\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 336,
+		"startColumn": 68,
+		"endLineNumber": 336,
+		"endColumn": 81
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"loop\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 353,
+		"startColumn": 9,
+		"endLineNumber": 353,
+		"endColumn": 13
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"step_index\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 623,
+		"startColumn": 17,
+		"endLineNumber": 623,
+		"endColumn": 27
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"max_steps\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 860,
+		"startColumn": 49,
+		"endLineNumber": 860,
+		"endColumn": 58
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"agent_kwargs\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 979,
+		"startColumn": 48,
+		"endLineNumber": 979,
+		"endColumn": 60
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/src/agent/browser_use/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"handler\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 1061,
+		"startColumn": 9,
+		"endLineNumber": 1061,
+		"endColumn": 16
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"external": "https://github.com/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"add_message\" for class \"MessageManager\"\n  Attribute \"add_message\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 243,
+		"startColumn": 46,
+		"endLineNumber": 243,
+		"endColumn": 57
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"handle_max_steps_reached\" for class \"AgentCleanupHandler\"\n  Attribute \"handle_max_steps_reached\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 252,
+		"startColumn": 44,
+		"endLineNumber": 252,
+		"endColumn": 68
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"handle_shutdown\" for class \"AgentCleanupHandler\"\n  Attribute \"handle_shutdown\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 257,
+		"startColumn": 40,
+		"endLineNumber": 257,
+		"endColumn": 55
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"code": {
+			"value": "reportOptionalMemberAccess",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportOptionalMemberAccess.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"ainvoke\" is not a known attribute of \"None\"",
+		"source": "Pylance",
+		"startLineNumber": 314,
+		"startColumn": 64,
+		"endLineNumber": 314,
+		"endColumn": 71
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "Cannot access attribute \"add_message\" for class \"MessageManager\"\n  Attribute \"add_message\" is unknown",
+		"source": "Pylance",
+		"startLineNumber": 334,
+		"startColumn": 67,
+		"endLineNumber": 334,
+		"endColumn": 78
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"code": {
+			"value": "reportAttributeAccessIssue",
+			"target": {
+				"$mid": 1,
+				"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportAttributeAccessIssue.md",
+				"scheme": "https",
+				"authority": "github.com"
+			}
+		},
+		"severity": 0,
+		"message": "\"CompletionCheckHandler\" is not a known attribute of module \"src.agent.browser_use.agent_components\"",
+		"source": "Pylance",
+		"startLineNumber": 365,
+		"startColumn": 35,
+		"endLineNumber": 365,
+		"endColumn": 57
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"os\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 7,
+		"startColumn": 8,
+		"endLineNumber": 7,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"Empty\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 11,
+		"startColumn": 19,
+		"endLineNumber": 11,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"Callable\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 12,
+		"startColumn": 25,
+		"endLineNumber": 12,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"Sequence\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 12,
+		"startColumn": 57,
+		"endLineNumber": 12,
+		"endColumn": 65
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"cast\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 12,
+		"startColumn": 74,
+		"endLineNumber": 12,
+		"endColumn": 78
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"create_history_gif\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 21,
+		"startColumn": 35,
+		"endLineNumber": 21,
+		"endColumn": 53
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"AgentHookFunc\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 22,
+		"startColumn": 46,
+		"endLineNumber": 22,
+		"endColumn": 59
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"AgentHistory\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 25,
+		"startColumn": 5,
+		"endLineNumber": 25,
+		"endColumn": 17
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"AgentHistoryList\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 26,
+		"startColumn": 5,
+		"endLineNumber": 26,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"BrowserStateHistory\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 29,
+		"startColumn": 5,
+		"endLineNumber": 29,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"agent_utils\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 31,
+		"startColumn": 53,
+		"endLineNumber": 31,
+		"endColumn": 64
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"AgentPlanner\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 36,
+		"startColumn": 54,
+		"endLineNumber": 36,
+		"endColumn": 66
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"IOManager\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 41,
+		"startColumn": 34,
+		"endLineNumber": 41,
+		"endColumn": 43
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"message_manager\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 165,
+		"startColumn": 89,
+		"endLineNumber": 165,
+		"endColumn": 104
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"confirmation_event\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 165,
+		"startColumn": 283,
+		"endLineNumber": 165,
+		"endColumn": 301
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"e\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 293,
+		"startColumn": 33,
+		"endLineNumber": 293,
+		"endColumn": 34
+	},
+	{
+		"resource": "/c:/Users/Andrew/AppData/Local/Temp/browser_use_agent.py",
+		"severity": 3,
+		"message": "\"max_steps\" is not accessed",
+		"source": "Pylance",
+		"startLineNumber": 354,
+		"startColumn": 49,
+		"endLineNumber": 354,
+		"endColumn": 58
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'html' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 2,
+		"startColumn": 2,
+		"endLineNumber": 2,
+		"endColumn": 6
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'head' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 3,
+		"startColumn": 2,
+		"endLineNumber": 3,
+		"endColumn": 6
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 11,
+		"startColumn": 25,
+		"endLineNumber": 11,
+		"endColumn": 26
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 17,
+		"startColumn": 5,
+		"endLineNumber": 17,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 25,
+		"startColumn": 9,
+		"endLineNumber": 25,
+		"endColumn": 11
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 26,
+		"startColumn": 38,
+		"endLineNumber": 26,
+		"endColumn": 39
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 27,
+		"startColumn": 9,
+		"endLineNumber": 27,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 28,
+		"startColumn": 5,
+		"endLineNumber": 28,
+		"endColumn": 6
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 29,
+		"startColumn": 1,
+		"endLineNumber": 29,
+		"endColumn": 2
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 32,
+		"startColumn": 35,
+		"endLineNumber": 32,
+		"endColumn": 36
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 33,
+		"startColumn": 1,
+		"endLineNumber": 33,
+		"endColumn": 2
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 55,
+		"startColumn": 9,
+		"endLineNumber": 55,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 57,
+		"startColumn": 18,
+		"endLineNumber": 57,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 57,
+		"startColumn": 59,
+		"endLineNumber": 57,
+		"endColumn": 60
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 60,
+		"startColumn": 24,
+		"endLineNumber": 60,
+		"endColumn": 25
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 66,
+		"startColumn": 9,
+		"endLineNumber": 66,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 70,
+		"startColumn": 20,
+		"endLineNumber": 70,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 73,
+		"startColumn": 9,
+		"endLineNumber": 73,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 77,
+		"startColumn": 20,
+		"endLineNumber": 77,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 90,
+		"startColumn": 9,
+		"endLineNumber": 90,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 91,
+		"startColumn": 32,
+		"endLineNumber": 91,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 91,
+		"startColumn": 84,
+		"endLineNumber": 91,
+		"endColumn": 85
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 92,
+		"startColumn": 32,
+		"endLineNumber": 92,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 92,
+		"startColumn": 49,
+		"endLineNumber": 92,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 93,
+		"startColumn": 32,
+		"endLineNumber": 93,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 93,
+		"startColumn": 77,
+		"endLineNumber": 93,
+		"endColumn": 78
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 94,
+		"startColumn": 38,
+		"endLineNumber": 94,
+		"endColumn": 39
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 94,
+		"startColumn": 90,
+		"endLineNumber": 94,
+		"endColumn": 91
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 95,
+		"startColumn": 28,
+		"endLineNumber": 95,
+		"endColumn": 29
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 95,
+		"startColumn": 85,
+		"endLineNumber": 95,
+		"endColumn": 86
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 96,
+		"startColumn": 26,
+		"endLineNumber": 96,
+		"endColumn": 27
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 96,
+		"startColumn": 55,
+		"endLineNumber": 96,
+		"endColumn": 56
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 97,
+		"startColumn": 36,
+		"endLineNumber": 97,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 97,
+		"startColumn": 117,
+		"endLineNumber": 97,
+		"endColumn": 118
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 98,
+		"startColumn": 44,
+		"endLineNumber": 98,
+		"endColumn": 45
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 98,
+		"startColumn": 93,
+		"endLineNumber": 98,
+		"endColumn": 94
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 101,
+		"startColumn": 23,
+		"endLineNumber": 101,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 109,
+		"startColumn": 9,
+		"endLineNumber": 109,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 111,
+		"startColumn": 20,
+		"endLineNumber": 111,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 113,
+		"startColumn": 9,
+		"endLineNumber": 113,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 117,
+		"startColumn": 23,
+		"endLineNumber": 117,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 121,
+		"startColumn": 9,
+		"endLineNumber": 121,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 122,
+		"startColumn": 37,
+		"endLineNumber": 122,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 122,
+		"startColumn": 84,
+		"endLineNumber": 122,
+		"endColumn": 85
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 125,
+		"startColumn": 20,
+		"endLineNumber": 125,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 131,
+		"startColumn": 9,
+		"endLineNumber": 131,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 132,
+		"startColumn": 37,
+		"endLineNumber": 132,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 132,
+		"startColumn": 107,
+		"endLineNumber": 132,
+		"endColumn": 108
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 133,
+		"startColumn": 32,
+		"endLineNumber": 133,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 133,
+		"startColumn": 70,
+		"endLineNumber": 133,
+		"endColumn": 71
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 136,
+		"startColumn": 40,
+		"endLineNumber": 136,
+		"endColumn": 41
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 136,
+		"startColumn": 48,
+		"endLineNumber": 136,
+		"endColumn": 49
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 138,
+		"startColumn": 20,
+		"endLineNumber": 138,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 144,
+		"startColumn": 9,
+		"endLineNumber": 144,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 146,
+		"startColumn": 22,
+		"endLineNumber": 146,
+		"endColumn": 23
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 148,
+		"startColumn": 9,
+		"endLineNumber": 148,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 149,
+		"startColumn": 35,
+		"endLineNumber": 149,
+		"endColumn": 36
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 149,
+		"startColumn": 44,
+		"endLineNumber": 149,
+		"endColumn": 45
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 150,
+		"startColumn": 45,
+		"endLineNumber": 150,
+		"endColumn": 46
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 150,
+		"startColumn": 53,
+		"endLineNumber": 150,
+		"endColumn": 54
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 152,
+		"startColumn": 34,
+		"endLineNumber": 152,
+		"endColumn": 35
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 152,
+		"startColumn": 42,
+		"endLineNumber": 152,
+		"endColumn": 43
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 153,
+		"startColumn": 30,
+		"endLineNumber": 153,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 153,
+		"startColumn": 106,
+		"endLineNumber": 153,
+		"endColumn": 107
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 156,
+		"startColumn": 32,
+		"endLineNumber": 156,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 156,
+		"startColumn": 109,
+		"endLineNumber": 156,
+		"endColumn": 110
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 159,
+		"startColumn": 17,
+		"endLineNumber": 159,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 165,
+		"startColumn": 9,
+		"endLineNumber": 165,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 168,
+		"startColumn": 20,
+		"endLineNumber": 168,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 172,
+		"startColumn": 9,
+		"endLineNumber": 172,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 174,
+		"startColumn": 20,
+		"endLineNumber": 174,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 177,
+		"startColumn": 9,
+		"endLineNumber": 177,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 178,
+		"startColumn": 32,
+		"endLineNumber": 178,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 178,
+		"startColumn": 113,
+		"endLineNumber": 178,
+		"endColumn": 114
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 179,
+		"startColumn": 34,
+		"endLineNumber": 179,
+		"endColumn": 35
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 179,
+		"startColumn": 113,
+		"endLineNumber": 179,
+		"endColumn": 114
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 182,
+		"startColumn": 17,
+		"endLineNumber": 182,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 188,
+		"startColumn": 9,
+		"endLineNumber": 188,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 189,
+		"startColumn": 34,
+		"endLineNumber": 189,
+		"endColumn": 35
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 189,
+		"startColumn": 81,
+		"endLineNumber": 189,
+		"endColumn": 82
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 193,
+		"startColumn": 20,
+		"endLineNumber": 193,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 196,
+		"startColumn": 9,
+		"endLineNumber": 196,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 198,
+		"startColumn": 23,
+		"endLineNumber": 198,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 208,
+		"startColumn": 9,
+		"endLineNumber": 208,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 212,
+		"startColumn": 20,
+		"endLineNumber": 212,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 217,
+		"startColumn": 9,
+		"endLineNumber": 217,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 220,
+		"startColumn": 21,
+		"endLineNumber": 220,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 222,
+		"startColumn": 9,
+		"endLineNumber": 222,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 223,
+		"startColumn": 37,
+		"endLineNumber": 223,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 223,
+		"startColumn": 45,
+		"endLineNumber": 223,
+		"endColumn": 46
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 224,
+		"startColumn": 32,
+		"endLineNumber": 224,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 224,
+		"startColumn": 120,
+		"endLineNumber": 224,
+		"endColumn": 121
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 226,
+		"startColumn": 29,
+		"endLineNumber": 226,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 226,
+		"startColumn": 86,
+		"endLineNumber": 226,
+		"endColumn": 87
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 230,
+		"startColumn": 23,
+		"endLineNumber": 230,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 238,
+		"startColumn": 9,
+		"endLineNumber": 238,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 239,
+		"startColumn": 40,
+		"endLineNumber": 239,
+		"endColumn": 41
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 239,
+		"startColumn": 119,
+		"endLineNumber": 239,
+		"endColumn": 120
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 240,
+		"startColumn": 38,
+		"endLineNumber": 240,
+		"endColumn": 39
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 240,
+		"startColumn": 87,
+		"endLineNumber": 240,
+		"endColumn": 88
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 241,
+		"startColumn": 41,
+		"endLineNumber": 241,
+		"endColumn": 42
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 241,
+		"startColumn": 101,
+		"endLineNumber": 241,
+		"endColumn": 102
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 242,
+		"startColumn": 34,
+		"endLineNumber": 242,
+		"endColumn": 35
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 242,
+		"startColumn": 41,
+		"endLineNumber": 242,
+		"endColumn": 42
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 243,
+		"startColumn": 54,
+		"endLineNumber": 243,
+		"endColumn": 55
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 243,
+		"startColumn": 70,
+		"endLineNumber": 243,
+		"endColumn": 71
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 246,
+		"startColumn": 20,
+		"endLineNumber": 246,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 250,
+		"startColumn": 9,
+		"endLineNumber": 250,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 253,
+		"startColumn": 18,
+		"endLineNumber": 253,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 258,
+		"startColumn": 9,
+		"endLineNumber": 258,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 259,
+		"startColumn": 37,
+		"endLineNumber": 259,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 259,
+		"startColumn": 70,
+		"endLineNumber": 259,
+		"endColumn": 71
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 261,
+		"startColumn": 30,
+		"endLineNumber": 261,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 261,
+		"startColumn": 97,
+		"endLineNumber": 261,
+		"endColumn": 98
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 262,
+		"startColumn": 29,
+		"endLineNumber": 262,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 262,
+		"startColumn": 97,
+		"endLineNumber": 262,
+		"endColumn": 98
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 263,
+		"startColumn": 28,
+		"endLineNumber": 263,
+		"endColumn": 29
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 263,
+		"startColumn": 51,
+		"endLineNumber": 263,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 264,
+		"startColumn": 28,
+		"endLineNumber": 264,
+		"endColumn": 29
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 264,
+		"startColumn": 51,
+		"endLineNumber": 264,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 266,
+		"startColumn": 29,
+		"endLineNumber": 266,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 266,
+		"startColumn": 65,
+		"endLineNumber": 266,
+		"endColumn": 66
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 267,
+		"startColumn": 34,
+		"endLineNumber": 267,
+		"endColumn": 35
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 267,
+		"startColumn": 125,
+		"endLineNumber": 267,
+		"endColumn": 126
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 268,
+		"startColumn": 29,
+		"endLineNumber": 268,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 268,
+		"startColumn": 111,
+		"endLineNumber": 268,
+		"endColumn": 112
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 270,
+		"startColumn": 32,
+		"endLineNumber": 270,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 270,
+		"startColumn": 88,
+		"endLineNumber": 270,
+		"endColumn": 89
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 271,
+		"startColumn": 49,
+		"endLineNumber": 271,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 271,
+		"startColumn": 54,
+		"endLineNumber": 271,
+		"endColumn": 55
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 275,
+		"startColumn": 23,
+		"endLineNumber": 275,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 282,
+		"startColumn": 9,
+		"endLineNumber": 282,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 283,
+		"startColumn": 52,
+		"endLineNumber": 283,
+		"endColumn": 53
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 283,
+		"startColumn": 61,
+		"endLineNumber": 283,
+		"endColumn": 62
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 284,
+		"startColumn": 27,
+		"endLineNumber": 284,
+		"endColumn": 28
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 284,
+		"startColumn": 92,
+		"endLineNumber": 284,
+		"endColumn": 93
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 288,
+		"startColumn": 19,
+		"endLineNumber": 288,
+		"endColumn": 20
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 295,
+		"startColumn": 9,
+		"endLineNumber": 295,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 296,
+		"startColumn": 56,
+		"endLineNumber": 296,
+		"endColumn": 57
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 296,
+		"startColumn": 65,
+		"endLineNumber": 296,
+		"endColumn": 66
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 297,
+		"startColumn": 31,
+		"endLineNumber": 297,
+		"endColumn": 32
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 297,
+		"startColumn": 109,
+		"endLineNumber": 297,
+		"endColumn": 110
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 301,
+		"startColumn": 21,
+		"endLineNumber": 301,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 312,
+		"startColumn": 9,
+		"endLineNumber": 312,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 313,
+		"startColumn": 40,
+		"endLineNumber": 313,
+		"endColumn": 41
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 313,
+		"startColumn": 66,
+		"endLineNumber": 313,
+		"endColumn": 67
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 315,
+		"startColumn": 23,
+		"endLineNumber": 315,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 323,
+		"startColumn": 9,
+		"endLineNumber": 323,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 324,
+		"startColumn": 49,
+		"endLineNumber": 324,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 324,
+		"startColumn": 61,
+		"endLineNumber": 324,
+		"endColumn": 62
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 327,
+		"startColumn": 20,
+		"endLineNumber": 327,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 332,
+		"startColumn": 9,
+		"endLineNumber": 332,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 333,
+		"startColumn": 30,
+		"endLineNumber": 333,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 333,
+		"startColumn": 38,
+		"endLineNumber": 333,
+		"endColumn": 39
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 335,
+		"startColumn": 20,
+		"endLineNumber": 335,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 343,
+		"startColumn": 9,
+		"endLineNumber": 343,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 347,
+		"startColumn": 21,
+		"endLineNumber": 347,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 358,
+		"startColumn": 9,
+		"endLineNumber": 358,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 362,
+		"startColumn": 23,
+		"endLineNumber": 362,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 369,
+		"startColumn": 9,
+		"endLineNumber": 369,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 372,
+		"startColumn": 20,
+		"endLineNumber": 372,
+		"endColumn": 21
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 375,
+		"startColumn": 9,
+		"endLineNumber": 375,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 376,
+		"startColumn": 33,
+		"endLineNumber": 376,
+		"endColumn": 34
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 376,
+		"startColumn": 160,
+		"endLineNumber": 376,
+		"endColumn": 161
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17002,
+		"severity": 0,
+		"message": "Expected corresponding JSX closing tag for 'meta'.",
+		"source": "ts",
+		"startLineNumber": 378,
+		"startColumn": 3,
+		"endLineNumber": 378,
+		"endColumn": 7
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 383,
+		"startColumn": 9,
+		"endLineNumber": 383,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 383,
+		"startColumn": 36,
+		"endLineNumber": 383,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 391,
+		"startColumn": 18,
+		"endLineNumber": 391,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 391,
+		"startColumn": 39,
+		"endLineNumber": 391,
+		"endColumn": 40
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 417,
+		"startColumn": 18,
+		"endLineNumber": 417,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 417,
+		"startColumn": 54,
+		"endLineNumber": 417,
+		"endColumn": 55
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'input' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 426,
+		"startColumn": 30,
+		"endLineNumber": 426,
+		"endColumn": 35
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'input' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 430,
+		"startColumn": 34,
+		"endLineNumber": 430,
+		"endColumn": 39
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'input' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 436,
+		"startColumn": 34,
+		"endLineNumber": 436,
+		"endColumn": 39
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 443,
+		"startColumn": 18,
+		"endLineNumber": 443,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 443,
+		"startColumn": 36,
+		"endLineNumber": 443,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 449,
+		"startColumn": 16,
+		"endLineNumber": 449,
+		"endColumn": 17
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 452,
+		"startColumn": 1,
+		"endLineNumber": 452,
+		"endColumn": 2
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 457,
+		"startColumn": 10,
+		"endLineNumber": 457,
+		"endColumn": 11
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 457,
+		"startColumn": 39,
+		"endLineNumber": 457,
+		"endColumn": 40
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 459,
+		"startColumn": 11,
+		"endLineNumber": 459,
+		"endColumn": 12
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 459,
+		"startColumn": 40,
+		"endLineNumber": 459,
+		"endColumn": 41
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 479,
+		"startColumn": 12,
+		"endLineNumber": 479,
+		"endColumn": 13
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 479,
+		"startColumn": 32,
+		"endLineNumber": 479,
+		"endColumn": 33
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 485,
+		"startColumn": 18,
+		"endLineNumber": 485,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'img' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 485,
+		"startColumn": 51,
+		"endLineNumber": 485,
+		"endColumn": 54
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 485,
+		"startColumn": 89,
+		"endLineNumber": 485,
+		"endColumn": 90
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 488,
+		"startColumn": 11,
+		"endLineNumber": 488,
+		"endColumn": 12
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 488,
+		"startColumn": 29,
+		"endLineNumber": 488,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'input' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 497,
+		"startColumn": 26,
+		"endLineNumber": 497,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 505,
+		"startColumn": 10,
+		"endLineNumber": 505,
+		"endColumn": 11
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 505,
+		"startColumn": 51,
+		"endLineNumber": 505,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 515,
+		"startColumn": 14,
+		"endLineNumber": 515,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 515,
+		"startColumn": 33,
+		"endLineNumber": 515,
+		"endColumn": 34
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'input' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 519,
+		"startColumn": 22,
+		"endLineNumber": 519,
+		"endColumn": 27
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 528,
+		"startColumn": 13,
+		"endLineNumber": 528,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 528,
+		"startColumn": 35,
+		"endLineNumber": 528,
+		"endColumn": 36
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 537,
+		"startColumn": 22,
+		"endLineNumber": 537,
+		"endColumn": 23
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 537,
+		"startColumn": 49,
+		"endLineNumber": 537,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 547,
+		"startColumn": 6,
+		"endLineNumber": 547,
+		"endColumn": 7
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 547,
+		"startColumn": 19,
+		"endLineNumber": 547,
+		"endColumn": 20
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 548,
+		"startColumn": 5,
+		"endLineNumber": 548,
+		"endColumn": 6
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 548,
+		"startColumn": 29,
+		"endLineNumber": 548,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'input' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 556,
+		"startColumn": 18,
+		"endLineNumber": 556,
+		"endColumn": 23
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'input' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 559,
+		"startColumn": 22,
+		"endLineNumber": 559,
+		"endColumn": 27
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17008,
+		"severity": 0,
+		"message": "JSX element 'input' has no corresponding closing tag.",
+		"source": "ts",
+		"startLineNumber": 572,
+		"startColumn": 26,
+		"endLineNumber": 572,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 587,
+		"startColumn": 6,
+		"endLineNumber": 587,
+		"endColumn": 7
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 587,
+		"startColumn": 28,
+		"endLineNumber": 587,
+		"endColumn": 29
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 607,
+		"startColumn": 6,
+		"endLineNumber": 607,
+		"endColumn": 7
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 607,
+		"startColumn": 28,
+		"endLineNumber": 607,
+		"endColumn": 29
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 620,
+		"startColumn": 59,
+		"endLineNumber": 620,
+		"endColumn": 60
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 621,
+		"startColumn": 25,
+		"endLineNumber": 621,
+		"endColumn": 26
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 629,
+		"startColumn": 9,
+		"endLineNumber": 629,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 640,
+		"startColumn": 13,
+		"endLineNumber": 640,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 641,
+		"startColumn": 19,
+		"endLineNumber": 641,
+		"endColumn": 20
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 649,
+		"startColumn": 13,
+		"endLineNumber": 649,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 650,
+		"startColumn": 9,
+		"endLineNumber": 650,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 653,
+		"startColumn": 68,
+		"endLineNumber": 653,
+		"endColumn": 69
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 656,
+		"startColumn": 9,
+		"endLineNumber": 656,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 660,
+		"startColumn": 13,
+		"endLineNumber": 660,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 664,
+		"startColumn": 61,
+		"endLineNumber": 664,
+		"endColumn": 62
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 666,
+		"startColumn": 13,
+		"endLineNumber": 666,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 666,
+		"startColumn": 51,
+		"endLineNumber": 666,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 667,
+		"startColumn": 17,
+		"endLineNumber": 667,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 705,
+		"startColumn": 55,
+		"endLineNumber": 705,
+		"endColumn": 56
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 706,
+		"startColumn": 66,
+		"endLineNumber": 706,
+		"endColumn": 67
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 709,
+		"startColumn": 17,
+		"endLineNumber": 709,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 710,
+		"startColumn": 52,
+		"endLineNumber": 710,
+		"endColumn": 53
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 711,
+		"startColumn": 52,
+		"endLineNumber": 711,
+		"endColumn": 53
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 713,
+		"startColumn": 17,
+		"endLineNumber": 713,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 714,
+		"startColumn": 54,
+		"endLineNumber": 714,
+		"endColumn": 55
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 715,
+		"startColumn": 39,
+		"endLineNumber": 715,
+		"endColumn": 40
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 718,
+		"startColumn": 45,
+		"endLineNumber": 718,
+		"endColumn": 46
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 719,
+		"startColumn": 21,
+		"endLineNumber": 719,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 720,
+		"startColumn": 60,
+		"endLineNumber": 720,
+		"endColumn": 61
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 721,
+		"startColumn": 21,
+		"endLineNumber": 721,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 722,
+		"startColumn": 17,
+		"endLineNumber": 722,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 723,
+		"startColumn": 50,
+		"endLineNumber": 723,
+		"endColumn": 51
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 724,
+		"startColumn": 39,
+		"endLineNumber": 724,
+		"endColumn": 40
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 727,
+		"startColumn": 17,
+		"endLineNumber": 727,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 730,
+		"startColumn": 13,
+		"endLineNumber": 730,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 731,
+		"startColumn": 9,
+		"endLineNumber": 731,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 734,
+		"startColumn": 47,
+		"endLineNumber": 734,
+		"endColumn": 48
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 734,
+		"startColumn": 49,
+		"endLineNumber": 734,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 737,
+		"startColumn": 13,
+		"endLineNumber": 737,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 738,
+		"startColumn": 63,
+		"endLineNumber": 738,
+		"endColumn": 64
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 739,
+		"startColumn": 17,
+		"endLineNumber": 739,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 741,
+		"startColumn": 30,
+		"endLineNumber": 741,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 741,
+		"startColumn": 42,
+		"endLineNumber": 741,
+		"endColumn": 43
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 742,
+		"startColumn": 21,
+		"endLineNumber": 742,
+		"endColumn": 27
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 742,
+		"startColumn": 36,
+		"endLineNumber": 742,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 742,
+		"startColumn": 61,
+		"endLineNumber": 742,
+		"endColumn": 62
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 743,
+		"startColumn": 17,
+		"endLineNumber": 743,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 744,
+		"startColumn": 21,
+		"endLineNumber": 744,
+		"endColumn": 27
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 745,
+		"startColumn": 17,
+		"endLineNumber": 745,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 746,
+		"startColumn": 13,
+		"endLineNumber": 746,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 746,
+		"startColumn": 24,
+		"endLineNumber": 746,
+		"endColumn": 25
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 746,
+		"startColumn": 51,
+		"endLineNumber": 746,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 747,
+		"startColumn": 9,
+		"endLineNumber": 747,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 757,
+		"startColumn": 13,
+		"endLineNumber": 757,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 761,
+		"startColumn": 17,
+		"endLineNumber": 761,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 761,
+		"startColumn": 44,
+		"endLineNumber": 761,
+		"endColumn": 45
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 766,
+		"startColumn": 13,
+		"endLineNumber": 766,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 767,
+		"startColumn": 68,
+		"endLineNumber": 767,
+		"endColumn": 69
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 769,
+		"startColumn": 13,
+		"endLineNumber": 769,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 773,
+		"startColumn": 9,
+		"endLineNumber": 773,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 776,
+		"startColumn": 13,
+		"endLineNumber": 776,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 785,
+		"startColumn": 17,
+		"endLineNumber": 785,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 785,
+		"startColumn": 44,
+		"endLineNumber": 785,
+		"endColumn": 45
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 790,
+		"startColumn": 13,
+		"endLineNumber": 790,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 791,
+		"startColumn": 50,
+		"endLineNumber": 791,
+		"endColumn": 51
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 792,
+		"startColumn": 13,
+		"endLineNumber": 792,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 797,
+		"startColumn": 9,
+		"endLineNumber": 797,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 799,
+		"startColumn": 51,
+		"endLineNumber": 799,
+		"endColumn": 52
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 799,
+		"startColumn": 53,
+		"endLineNumber": 799,
+		"endColumn": 54
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 802,
+		"startColumn": 13,
+		"endLineNumber": 802,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 803,
+		"startColumn": 55,
+		"endLineNumber": 803,
+		"endColumn": 56
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 806,
+		"startColumn": 13,
+		"endLineNumber": 806,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 807,
+		"startColumn": 9,
+		"endLineNumber": 807,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 810,
+		"startColumn": 13,
+		"endLineNumber": 810,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 810,
+		"startColumn": 40,
+		"endLineNumber": 810,
+		"endColumn": 41
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 813,
+		"startColumn": 9,
+		"endLineNumber": 813,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 816,
+		"startColumn": 13,
+		"endLineNumber": 816,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 816,
+		"startColumn": 40,
+		"endLineNumber": 816,
+		"endColumn": 41
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 820,
+		"startColumn": 9,
+		"endLineNumber": 820,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 824,
+		"startColumn": 13,
+		"endLineNumber": 824,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 825,
+		"startColumn": 27,
+		"endLineNumber": 825,
+		"endColumn": 28
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 838,
+		"startColumn": 13,
+		"endLineNumber": 838,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 844,
+		"startColumn": 9,
+		"endLineNumber": 844,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 848,
+		"startColumn": 13,
+		"endLineNumber": 848,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 848,
+		"startColumn": 25,
+		"endLineNumber": 848,
+		"endColumn": 26
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 848,
+		"startColumn": 36,
+		"endLineNumber": 848,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1003,
+		"severity": 0,
+		"message": "Identifier expected.",
+		"source": "ts",
+		"startLineNumber": 851,
+		"startColumn": 75,
+		"endLineNumber": 851,
+		"endColumn": 76
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 852,
+		"startColumn": 59,
+		"endLineNumber": 852,
+		"endColumn": 60
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 853,
+		"startColumn": 13,
+		"endLineNumber": 853,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 860,
+		"startColumn": 9,
+		"endLineNumber": 860,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 863,
+		"startColumn": 28,
+		"endLineNumber": 863,
+		"endColumn": 29
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 866,
+		"startColumn": 9,
+		"endLineNumber": 866,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 869,
+		"startColumn": 47,
+		"endLineNumber": 869,
+		"endColumn": 48
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 869,
+		"startColumn": 49,
+		"endLineNumber": 869,
+		"endColumn": 50
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 872,
+		"startColumn": 13,
+		"endLineNumber": 872,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 873,
+		"startColumn": 17,
+		"endLineNumber": 873,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 873,
+		"startColumn": 35,
+		"endLineNumber": 873,
+		"endColumn": 36
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 873,
+		"startColumn": 55,
+		"endLineNumber": 873,
+		"endColumn": 56
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 874,
+		"startColumn": 36,
+		"endLineNumber": 874,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 875,
+		"startColumn": 13,
+		"endLineNumber": 875,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 876,
+		"startColumn": 17,
+		"endLineNumber": 876,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 876,
+		"startColumn": 37,
+		"endLineNumber": 876,
+		"endColumn": 38
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 876,
+		"startColumn": 62,
+		"endLineNumber": 876,
+		"endColumn": 63
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 877,
+		"startColumn": 36,
+		"endLineNumber": 877,
+		"endColumn": 37
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 878,
+		"startColumn": 13,
+		"endLineNumber": 878,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 880,
+		"startColumn": 9,
+		"endLineNumber": 880,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 883,
+		"startColumn": 67,
+		"endLineNumber": 883,
+		"endColumn": 68
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 884,
+		"startColumn": 9,
+		"endLineNumber": 884,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 887,
+		"startColumn": 13,
+		"endLineNumber": 887,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 889,
+		"startColumn": 9,
+		"endLineNumber": 889,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 892,
+		"startColumn": 70,
+		"endLineNumber": 892,
+		"endColumn": 71
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 893,
+		"startColumn": 9,
+		"endLineNumber": 893,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 896,
+		"startColumn": 13,
+		"endLineNumber": 896,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 897,
+		"startColumn": 42,
+		"endLineNumber": 897,
+		"endColumn": 43
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 898,
+		"startColumn": 13,
+		"endLineNumber": 898,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 901,
+		"startColumn": 9,
+		"endLineNumber": 901,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 904,
+		"startColumn": 89,
+		"endLineNumber": 904,
+		"endColumn": 90
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 904,
+		"startColumn": 91,
+		"endLineNumber": 904,
+		"endColumn": 92
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 906,
+		"startColumn": 13,
+		"endLineNumber": 906,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 908,
+		"startColumn": 9,
+		"endLineNumber": 908,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 910,
+		"startColumn": 13,
+		"endLineNumber": 910,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 915,
+		"startColumn": 9,
+		"endLineNumber": 915,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 917,
+		"startColumn": 23,
+		"endLineNumber": 917,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 919,
+		"startColumn": 9,
+		"endLineNumber": 919,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 949,
+		"startColumn": 15,
+		"endLineNumber": 949,
+		"endColumn": 16
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 950,
+		"startColumn": 9,
+		"endLineNumber": 950,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 954,
+		"startColumn": 29,
+		"endLineNumber": 954,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 959,
+		"startColumn": 9,
+		"endLineNumber": 959,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 962,
+		"startColumn": 30,
+		"endLineNumber": 962,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 966,
+		"startColumn": 9,
+		"endLineNumber": 966,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 969,
+		"startColumn": 17,
+		"endLineNumber": 969,
+		"endColumn": 24
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 970,
+		"startColumn": 29,
+		"endLineNumber": 970,
+		"endColumn": 30
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 971,
+		"startColumn": 17,
+		"endLineNumber": 971,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 972,
+		"startColumn": 30,
+		"endLineNumber": 972,
+		"endColumn": 31
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 976,
+		"startColumn": 17,
+		"endLineNumber": 976,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 977,
+		"startColumn": 13,
+		"endLineNumber": 977,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 978,
+		"startColumn": 9,
+		"endLineNumber": 978,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 982,
+		"startColumn": 13,
+		"endLineNumber": 982,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 988,
+		"startColumn": 42,
+		"endLineNumber": 988,
+		"endColumn": 43
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 996,
+		"startColumn": 9,
+		"endLineNumber": 996,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 1000,
+		"startColumn": 13,
+		"endLineNumber": 1000,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 1001,
+		"startColumn": 43,
+		"endLineNumber": 1001,
+		"endColumn": 44
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1002,
+		"startColumn": 14,
+		"endLineNumber": 1002,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1003,
+		"startColumn": 9,
+		"endLineNumber": 1003,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 1009,
+		"startColumn": 12,
+		"endLineNumber": 1009,
+		"endColumn": 17
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 1016,
+		"startColumn": 18,
+		"endLineNumber": 1016,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1018,
+		"startColumn": 13,
+		"endLineNumber": 1018,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 1020,
+		"startColumn": 58,
+		"endLineNumber": 1020,
+		"endColumn": 59
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 1021,
+		"startColumn": 55,
+		"endLineNumber": 1021,
+		"endColumn": 56
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1024,
+		"startColumn": 13,
+		"endLineNumber": 1024,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1382,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'>'}` or `&gt;`?",
+		"source": "ts",
+		"startLineNumber": 1025,
+		"startColumn": 58,
+		"endLineNumber": 1025,
+		"endColumn": 59
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 1026,
+		"startColumn": 55,
+		"endLineNumber": 1026,
+		"endColumn": 56
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1029,
+		"startColumn": 13,
+		"endLineNumber": 1029,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1030,
+		"startColumn": 9,
+		"endLineNumber": 1030,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 1035,
+		"startColumn": 58,
+		"endLineNumber": 1035,
+		"endColumn": 59
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 1038,
+		"startColumn": 17,
+		"endLineNumber": 1038,
+		"endColumn": 19
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 1039,
+		"startColumn": 46,
+		"endLineNumber": 1039,
+		"endColumn": 47
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1040,
+		"startColumn": 17,
+		"endLineNumber": 1040,
+		"endColumn": 18
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1041,
+		"startColumn": 13,
+		"endLineNumber": 1041,
+		"endColumn": 14
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1042,
+		"startColumn": 9,
+		"endLineNumber": 1042,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 1046,
+		"startColumn": 68,
+		"endLineNumber": 1046,
+		"endColumn": 69
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1109,
+		"severity": 0,
+		"message": "Expression expected.",
+		"source": "ts",
+		"startLineNumber": 1049,
+		"startColumn": 17,
+		"endLineNumber": 1049,
+		"endColumn": 22
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1051,
+		"startColumn": 14,
+		"endLineNumber": 1051,
+		"endColumn": 15
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1052,
+		"startColumn": 9,
+		"endLineNumber": 1052,
+		"endColumn": 10
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'}' expected.",
+		"source": "ts",
+		"startLineNumber": 1061,
+		"startColumn": 43,
+		"endLineNumber": 1061,
+		"endColumn": 44
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1381,
+		"severity": 0,
+		"message": "Unexpected token. Did you mean `{'}'}` or `&rbrace;`?",
+		"source": "ts",
+		"startLineNumber": 1062,
+		"startColumn": 8,
+		"endLineNumber": 1062,
+		"endColumn": 9
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 17002,
+		"severity": 0,
+		"message": "Expected corresponding JSX closing tag for 'meta'.",
+		"source": "ts",
+		"startLineNumber": 1067,
+		"startColumn": 3,
+		"endLineNumber": 1067,
+		"endColumn": 7
+	},
+	{
+		"resource": "/c:/Users/Andrew/OneDrive/Documents/Coding/web-ui-1/static/control_bar.js",
+		"code": 1005,
+		"severity": 0,
+		"message": "'</' expected.",
+		"source": "ts",
+		"startLineNumber": 1067,
+		"startColumn": 8,
+		"endLineNumber": 1067,
+		"endColumn": 8
+	}
+]

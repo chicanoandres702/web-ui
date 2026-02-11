@@ -1,4 +1,4 @@
-﻿// Control Bar Module
+﻿﻿
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -32,6 +32,7 @@ function setMode(mode) {
     showTicker('setMode: ' + mode);
 }
 
+
             --surface-hover: #222838;
             --surface-active: #2a324a;
             --text-primary: #ffffff;
@@ -48,13 +49,33 @@ function setMode(mode) {
             --priority-low: #10b981;
             --border: #2d3748;
             --radius-sm: 6px;
+// Control Bar Module
+function initControlBar() {
+    
+    const runButton = document.querySelector('.btn[onclick="runAgent()"]');
+    const stopButton = document.querySelector('.btn.btn-secondary[onclick="stopAgent()"]');
+    const mainInput = document.getElementById('mainInput');
+
+    runButton.addEventListener('click', runAgent);
+    stopButton.addEventListener('click', stopAgent);
+
+    mainInput.addEventListener('keydown', function (event) {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            addTaskBefore(this.value);
+        }
+    });
+}
+
+function setMode(mode) {
+    showTicker('setMode: ' + mode);
+}
             --radius-md: 8px;
             --radius-lg: 12px;
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
             --shadow-lg: 0 10px 25px rgba(0,0,0,0.5);
         }
 
-       * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: 'Inter', system-ui, sans-serif;
@@ -1007,6 +1028,7 @@ function setMode(mode) {
         // Config Sidebar Module
         function initConfig() {
            const fastModeButton = document.querySelector('.btn-sm.btn-secondary[onclick="setMode(\'fast\')"]');
+
             const deepModeButton = document.querySelector('.btn-sm.btn-secondary.active');
 
              function updateConfig() {
@@ -1017,6 +1039,7 @@ function setMode(mode) {
                 showTicker(config);
             }
 
+
             fastModeButton.addEventListener('click', () => {
                 fastModeButton.classList.add('active');
                 deepModeButton.classList.remove('active');
@@ -1026,6 +1049,7 @@ function setMode(mode) {
                 deepModeButton.classList.add('active');
                 fastModeButton.classList.remove('active');
                 updateConfig();
+
             });
         }
 
@@ -1059,7 +1083,7 @@ function setMode(mode) {
 
        function setMode(mode) {
             showTicker('setMode: ' + mode);
-       }
+
 
 
     </script>

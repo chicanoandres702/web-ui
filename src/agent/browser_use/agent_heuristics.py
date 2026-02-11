@@ -1,10 +1,12 @@
 
+import asyncio
 import logging
 import re
 import os
 import asyncio
 import sys
 from pathlib import Path
+
 
 # Ensure project root is in sys.path so 'src' imports work
 if str(Path(__file__).resolve().parents[3]) not in sys.path:
@@ -15,12 +17,11 @@ from langchain_core.messages import HumanMessage
 from browser_use.agent.views import ActionResult, AgentStepInfo
 
 from src.utils.utils import save_text_to_file
-from src.utils.browser_scripts import JS_DETECT_BLOCKING_ELEMENTS, JS_DETECT_NAVIGATION_CONTROLS
 from src.agent.browser_use.navigation_recovery import evaluate_site_state
-
 logger = logging.getLogger(__name__)
 
 class BlockingElementChecker:
+
     """Checks for blocking elements (ads/popups) and injects a warning."""
 
     def __init__(self, agent):
@@ -41,7 +42,6 @@ class BlockingElementChecker:
                 return
 
             # 2. Check for Chrome Promotion (Auto-Dismiss)
-            if "make google chrome your default browser" in content or "switch to chrome" in content or "get google chrome" in content:
                 try:
                     if page is None:
                         return
@@ -55,6 +55,7 @@ class BlockingElementChecker:
                             self.agent.inject_message(
                                 f"System Notification: I automatically dismissed a Chrome promotion popup by clicking '{btn_text}'.")
                             await page.wait_for_timeout(500)
+
                             return
                 except Exception as e:
                     logger.warning(f"Failed to auto-dismiss Chrome popup: {e}")
@@ -79,12 +80,14 @@ class BlockingElementChecker:
         except Exception:
             pass
 
+
     async def _get_current_page(self):
         """Safely retrieves the current page from the browser context."""
         try:
             return await self.agent.browser_context.get_current_page()
         except Exception:
             return None
+
 
 class CompletionHeuristicsChecker:
     """Checks for common completion signals in the page content."""
@@ -132,6 +135,7 @@ class CompletionHeuristicsChecker:
         except Exception:
             return None
 
+
 class LoginStatusChecker:
     """Checks the login status of the user."""
 
@@ -154,13 +158,14 @@ class LoginStatusChecker:
         except Exception:
             pass
 
+
     async def _get_current_page(self):
         """Safely retrieves the current page from the browser context."""
         try:
             return await self.agent.browser_context.get_current_page()
         except Exception:
             return None
-async def _safe_evaluate(page, js_code: str) -> str | None:
+async def _safe_evaluate(page:Any, js_code: str) -> str | None:
     """Safely evaluates JavaScript code on a page and returns the result."""
     try:
         result = await page.evaluate(js_code)
@@ -169,14 +174,14 @@ async def _safe_evaluate(page, js_code: str) -> str | None:
         logger.warning(f"Error evaluating JavaScript: {e}")
         return None
 
-async def _safe_take_screenshot(page, path: str):
+async def _safe_take_screenshot(page:Any, path: str):
 
      try:
           await page.screenshot(path=path)
      except Exception as e: # type: ignore
           logger.warning(f"Failed to save screenshot: {e}")
 
-class AgentHeuristics:
+class AgentHeuristics: # type: ignore
     """
     Encapsulates heuristic checks and behaviors for the BrowserUseAgent.
     This includes detecting blocking elements, loops, progress, and managing model switching.
@@ -191,7 +196,7 @@ class AgentHeuristics:
         try:
             return await self.agent.browser_context.get_current_page()
         except Exception:
-            return None
+            return None # type: ignore
 
     def inject_message(self, content: str):
 
@@ -212,6 +217,7 @@ class AgentHeuristics:
                     )
                     return
                  except Exception as e:
+
                      logger.warning(f"Failed to inject message via state message: {e}")
     
     def manage_model_switching(self):

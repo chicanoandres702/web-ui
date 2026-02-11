@@ -39,9 +39,38 @@ def clear_llm_cache_if_needed():
 
 def get_gemini_models() -> List[str]:
     """
-    Returns a list of available Gemini models.
+    Queries the Google AI Gateway/Generative AI API to retrieve the latest available models
+    using the service account credentials.
     """
-    return ["gemini-flash-latest"]  # Add other Gemini models as needed
+    service_account_path = "service_account.json"
+    if not os.path.exists(service_account_path):
+        logger.warning("Service account file not found. Cannot fetch Gemini models.")
+        return []
+
+    try:
+        import google.generativeai as genai
+        from google.oauth2 import service_account
+
+        creds = service_account.Credentials.from_service_account_file(
+            service_account_path, 
+            scopes=['https://www.googleapis.com/auth/generative-language']
+        )
+        
+        # Configure the generative AI library with the service account credentials
+        genai.configure(credentials=creds)
+        
+        models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                models.append(m.name.replace('models/', ''))
+        
+        return sorted(models)
+    except ImportError:
+        logger.error("google-generativeai package not installed.")
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching Gemini models: {e}")
+        return []
 
 
 def get_llm_model(llm_settings: Dict[str, Any], websocket = None) -> Optional[BaseChatModel]:

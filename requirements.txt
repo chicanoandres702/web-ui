@@ -20,5 +20,4 @@ google-auth-oauthlib
 langchain_google_genai
 langchain-openai
 langchain-ollama
-pydantic<2
 numpy

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 # Add project root to path to ensure imports work correctly
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from browser_use.browser.browser import BrowserConfig
+from browser_use.browser.profile import BrowserProfile
 from browser_use.browser.context import BrowserContextConfig
 from src.browser.custom_browser import CustomBrowser
 from src.controller.custom_controller import CustomController
@@ -42,7 +42,7 @@ async def test_custom_tools():
     # 3. Setup Browser
     # Set headless=False to visually see the browser actions
     browser = CustomBrowser(
-        config=BrowserConfig(
+        config=BrowserProfile(
             headless=False,
         )
     )

@@ -1,9 +1,6 @@
 import os
 from google.generativeai import GenerativeModel
 
-class GeminiConfig:
-    api_key: str = os.getenv("GOOGLE_API_KEY")
-
 
 async def get_gemini_models():
     """
@@ -24,6 +21,3 @@ async def get_gemini_models():
         print(f"Error fetching Gemini models: {e}")
         
         return []
-
-
-get_gemini_models_wrapper = get_gemini_models

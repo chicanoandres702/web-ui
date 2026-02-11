@@ -9,7 +9,7 @@ from src.utils.utils import save_text_to_file, read_file_safe, sanitize_filename
 
 logger = logging.getLogger(__name__)
 
-async def _create_embedding(text: str):
+async def _create_embedding(text: str, llm: Any):
     """
     Abstracts the process of creating an embedding for a given text.
 
@@ -100,10 +100,6 @@ def get_memory_manager(memory_dir: str = "./tmp/memory"):
         os.makedirs(_memory_manager.memory_dir, exist_ok=True)
     return _memory_manager
 
-def configure_mem0():
-        if not _memory_manager:
-            logger.info("Creating default SimpleMemoryManager as backup.")
-            _memory_manager = SimpleMemoryManager()
 
 
 def configure_mem0():
@@ -139,7 +135,7 @@ async def create_procedural_memory(step_data: dict, llm) -> bool:
     return True
 
 
-llm = None
+
     
 
 def get_relevant_memory(context_query: str, llm=None):

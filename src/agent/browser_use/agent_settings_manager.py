@@ -31,7 +31,7 @@ from src.utils import llm_provider
 from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS
 from src.agent.deep_research.state_manager import DeepResearchStateManager
 from src.routes.models import load_model_from_file
-from src.config import RATE_LIMIT_SECONDS, MAX_REQUESTS_PER_MINUTE
+
 
 from src.utils.instruction_handler import create_instruction_handler
 import logging

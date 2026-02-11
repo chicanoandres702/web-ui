@@ -1781,6 +1781,12 @@
             <div class="sidebar-header">
                 <h1>
                     <span>🤖</span>
+                <div id="googleSignInStatus" style="text-align: center; margin-bottom: 10px;">
+                    <button id="googleSignInButton" class="btn" onclick="signInWithGoogle()">Sign In with Google</button>
+                    <button id="googleSignOutButton" class="btn btn-secondary" onclick="signOutFromGoogle()" style="display: none;">Sign Out</button>
+                </div>
+                <div id = "api_key_text_field">
+
                     <span>AGENT CONTROL</span>
                 </h1>
                 <p>ULTIMATE NEON</p>
@@ -2040,6 +2046,7 @@
         </aside>
     </div>
 
+    <script src="js/controlBar.js"></script>
     <script>
 
         // ===== State Management =====
@@ -2051,9 +2058,10 @@
         let currentEditTaskId = null;
         let autoSaveEnabled = true;
         let consoleEntries = [];
-        let taskHistory = [];
-        let historyIndex = -1;
         let minimapActive = false;
+
+        // Modules
+        let controlBar;
 
         // ===== Particle Effects =====
 
@@ -2145,44 +2153,6 @@
             }, 3000);
         }
 
-        // ===== History (Undo/Redo) =====
-
-        function saveToHistory() {
-            taskHistory = taskHistory.slice(0, historyIndex + 1);
-            taskHistory.push(JSON.stringify(tasks));
-            historyIndex++;
-            updateHistoryButtons();
-        }
-
-        function undo() {
-            if (historyIndex > 0) {
-                historyIndex--;
-                tasks = JSON.parse(taskHistory[historyIndex]);
-                renderTasks();
-                updateProgress();
-                logToConsole('info', 'Undo performed');
-                showNotification('Undo performed', 'info');
-                updateHistoryButtons();
-            }
-        }
-
-        function redo() {
-            if (historyIndex < taskHistory.length - 1) {
-                historyIndex++;
-                tasks = JSON.parse(taskHistory[historyIndex]);
-                renderTasks();
-                updateProgress();
-                logToConsole('info', 'Redo performed');
-                showNotification('Redo performed', 'info');
-                updateHistoryButtons();
-            }
-        }
-
-        function updateHistoryButtons() {
-            document.getElementById('undoBtn').disabled = historyIndex <= 0;
-            document.getElementById('redoBtn').disabled = historyIndex >= taskHistory.length - 1;
-        }
-
         // ===== Minimap =====
 
         function toggleMinimap() {
@@ -2227,6 +2197,8 @@
             loadModels();
             loadSavedData();
             showNotification('Connected to agent server', 'success');
+            controlBar = initControlBar(ws);
+            controlBar.saveToHistory();
         };
 
         ws.onerror = function(error) {
@@ -2265,12 +2237,12 @@
                     break;
                 case 'result':
                     logToConsole('success', data.content);
-                    resetControls();
+                    controlBar.resetControls();
                     showNotification('Task completed!', 'success');
                     break;
                 case 'error':
                     logToConsole('error', data.content);
-                    resetControls();
+                    controlBar.resetControls();
                     showNotification('Task failed', 'error');
                     break;
                 case 'confirmation_required':
@@ -2304,62 +2276,6 @@
 
         // ===== Task Management =====
 
-        function sendMessage(event) {
-            event.preventDefault();
-            const input = document.getElementById("messageText");
-            const task = input.value.trim();
-            
-            if (!task) {
-                logToConsole('warning', 'No task entered');
-                showNotification('Please enter a task', 'warning');
-                return;
-            }
-
-            stepCount = 0;
-            document.getElementById('stepCounter').textContent = '0';
-
-            const agentType = document.getElementById("agentType").value;
-            const settings = JSON.parse(document.getElementById("settingsJson").value);
-
-            logToConsole('info', `Starting task: ${task}`);
-            document.getElementById('currentTaskDisplay').textContent = task;
-
-            ws.send(JSON.stringify({
-                action: "run",
-                task: task,
-                agent_type: agentType,
-                ...settings
-            }));
-
-            document.getElementById("sendBtn").disabled = true;
-            document.getElementById("sendBtn").innerHTML = '⏳';
-            document.getElementById("stopBtn").disabled = false;
-            input.value = '';
-        }
-
-        function stopAgent(event) {
-            event.preventDefault();
-            ws.send(JSON.stringify({action: "stop"}));
-            resetControls();
-            logToConsole('warning', 'Agent stopped by user');
-            showNotification('Agent stopped', 'warning');
-        }
-
-        function sendControl(command, value = null) {
-            ws.send(JSON.stringify({
-                action: "control",
-                command: command,
-                value: value
-            }));
-            logToConsole('info', `Control command: ${command}`);
-        }
-
-        function resetControls() {
-            document.getElementById("sendBtn").disabled = false;
-            document.getElementById("sendBtn").innerHTML = '▶️ Run';
-            document.getElementById("stopBtn").disabled = true;
-        }
-
         function updateTaskQueue(plan) {
             if (!plan || plan.length === 0) return;
 
@@ -2376,7 +2292,7 @@
                 expanded: false
             }));
 
-            saveToHistory();
+            controlBar.saveToHistory();
             renderTasks();
             updateProgress();
         }
@@ -2492,12 +2408,12 @@
             };
 
             tasks.push(newTask);
-            saveToHistory();
+            controlBar.saveToHistory();
             renderTasks();
             updateProgress();
             autoSave();
             
-            sendControl('add_task', taskText);
+            controlBar.sendControl('add_task', taskText);
             input.value = '';
             logToConsole('success', `Task added: ${taskText}`);
             showNotification('Task added', 'success');
@@ -2506,7 +2422,7 @@
         function deleteTask(event, taskId) {
             event.stopPropagation();
             tasks = tasks.filter(t => t.id !== taskId);
-            saveToHistory();
+            controlBar.saveToHistory();
             renderTasks();
             updateProgress();
             autoSave();
@@ -2539,7 +2455,7 @@
                 task.tags = document.getElementById('editTaskTags').value.split(',').map(t => t.trim()).filter(t => t);
                 task.notes = document.getElementById('editTaskNotes').value;
                 
-                saveToHistory();
+                controlBar.saveToHistory();
                 renderTasks();
                 autoSave();
                 logToConsole('success', 'Task updated');
@@ -2567,7 +2483,7 @@
                     status: 'pending'
                 });
                 task.expanded = true;
-                saveToHistory();
+                controlBar.saveToHistory();
                 renderTasks();
                 autoSave();
                 logToConsole('success', 'Subtask added');
@@ -2583,7 +2499,7 @@
                 const currentStatus = task.subtasks[subtaskIndex].status;
                 const nextIndex = (statuses.indexOf(currentStatus) + 1) % statuses.length;
                 task.subtasks[subtaskIndex].status = statuses[nextIndex];
-                saveToHistory();
+                controlBar.saveToHistory();
                 renderTasks();
                 autoSave();
             }
@@ -2594,7 +2510,7 @@
             const task = tasks.find(t => t.id === taskId);
             if (task) {
                 task.subtasks.splice(subtaskIndex, 1);
-                saveToHistory();
+                controlBar.saveToHistory();
                 renderTasks();
                 autoSave();
             }
@@ -2603,7 +2519,7 @@
         function clearAllTasks() {
             if (confirm("Clear all tasks?")) {
                 tasks = [];
-                saveToHistory();
+                controlBar.saveToHistory();
                 renderTasks();
                 updateProgress();
                 autoSave();
@@ -2615,7 +2531,7 @@
         function sortTasks() {
             const priorityOrder = { high: 0, medium: 1, low: 2 };
             tasks.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
-            saveToHistory();
+            controlBar.saveToHistory();
             renderTasks();
             logToConsole('info', 'Tasks sorted by priority');
             showNotification('Tasks sorted', 'info');
@@ -2664,7 +2580,7 @@
                 const [removed] = tasks.splice(draggedIndex, 1);
                 tasks.splice(targetIndex, 0, removed);
 
-                saveToHistory();
+                controlBar.saveToHistory();
                 renderTasks();
                 autoSave();
                 logToConsole('info', 'Tasks reordered');
@@ -2778,7 +2694,7 @@
             if (group) {
                 tasks = JSON.parse(JSON.stringify(group.tasks));
                 tasks.forEach(t => t.id = Date.now() + Math.random());
-                saveToHistory();
+                controlBar.saveToHistory();
                 renderTasks();
                 updateProgress();
                 logToConsole('success', `Loaded group: ${group.name}`);
@@ -2809,7 +2725,7 @@
             const savedTasks = localStorage.getItem('currentTasks');
             if (savedTasks) {
                 tasks = JSON.parse(savedTasks);
-                saveToHistory();
+                controlBar.saveToHistory();
                 renderTasks();
                 updateProgress();
             }
@@ -2897,22 +2813,6 @@
             showNotification(`Auto-save ${autoSaveEnabled ? 'enabled' : 'disabled'}`, 'info');
         }
 
-        function togglePauseNext() {
-            const toggle = document.getElementById('pauseNextToggle');
-            toggle.classList.toggle('active');
-            const isActive = toggle.classList.contains('active');
-            
-            sendControl('pause_on_next_step', isActive);
-            logToConsole('info', isActive ? 'Will pause after next step' : 'Pause cancelled');
-            showNotification(isActive ? 'Will pause after next step' : 'Pause cancelled', 'info');
-        }
-
-        function updateSpeed(value) {
-            const speeds = ['Instant', 'V.Fast', 'Fast', 'Quick', 'Moderate', 'Human', 'Careful', 'Deliberate', 'Slow', 'V.Slow', 'Ultra'];
-            document.getElementById('speedValue').textContent = speeds[value];
-            sendControl('update_speed', value);
-        }
-
         function updateLLMSettings() {
             const provider = document.getElementById('llmProvider').value;
             document.getElementById('apiKeyField').style.display = provider === 'ollama' ? 'none' : 'block';
@@ -2945,22 +2845,6 @@
         // ===== Keyboard Shortcuts =====
 
         document.addEventListener('keydown', function(e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                const form = document.querySelector('form');
-                if (form) form.dispatchEvent(new Event('submit'));
-            }
-            
-            if (e.ctrlKey && e.key === 'z') {
-                e.preventDefault();
-                undo();
-            }
-            
-            if (e.ctrlKey && e.key === 'y') {
-                e.preventDefault();
-                redo();
-            }
-            
             if (e.ctrlKey && e.key === 's') {
                 e.preventDefault();
                 showSaveGroupDialog();
@@ -2985,7 +2869,7 @@
                 } else if (shortcutsActive) {
                     hideShortcuts();
                 } else if (document.getElementById('stopBtn').disabled === false) {
-                    stopAgent(e);
+                    controlBar.stopAgent(e);
                 }
             }
         });
@@ -2993,11 +2877,9 @@
         // ===== Initialize =====
 
         updateLLMSettings();
-        saveToHistory();
         logToConsole('success', 'Browser Agent Pro - Ultimate Neon Edition initialized');
         showNotification('Ultimate Neon Edition Ready', 'success');
         console.log("🚀 Ultimate Neon Edition Ready");
     </script>
 </body>
-
 </html>
