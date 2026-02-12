@@ -1,4 +1,8 @@
-<!DOCTYPE html>
+"""
+This module contains the frontend/UI file definitions for the project setup.
+"""
+FRONTEND_FILES = {
+    "app/static/index.html": '''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -134,3 +138,5 @@
     </script>
 </body>
 </html>
+'''
+}

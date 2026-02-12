@@ -1,13 +1,16 @@
 from fastapi import APIRouter
-from abc import ABC, abstractmethod
+import requests
+from app.config import get_settings
 
-class BaseRouter(ABC):
-    def __init__(self):
-        self.router = APIRouter()
-        self.register_routes()
+settings = get_settings()
+router = APIRouter()
 
-    @abstractmethod
-    def register_routes(self):
-        pass    
-    def get_router(self) -> APIRouter:
-        return self.router
+@router.get("/health")
+async def health(): return {"status": "ok", "version": settings.VERSION}
+
+@router.get("/ollama/models")
+async def get_models():
+    try:
+        r = requests.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=2)
+        return r.json()
+    except: return {"models": []}

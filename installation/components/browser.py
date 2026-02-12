@@ -1,4 +1,8 @@
-import json
+"""
+This module contains the browser and agent logic file definitions for the project setup.
+"""
+BROWSER_FILES = {
+    "app/browser.py": '''import json
 import logging
 import asyncio
 import base64
@@ -31,7 +35,8 @@ try:
     IMPORT_ERROR = None
 except ImportError as e:
     HAS_LIBS = False
-    IMPORT_ERROR = f"{e}\n{traceback.format_exc()}"
+    IMPORT_ERROR = f"{e}
+{traceback.format_exc()}"
     class Browser: pass
 
 from app.models import SubTask 
@@ -245,3 +250,5 @@ class BrowserAgentWrapper:
             logger.error(f"Browser Execution Error: {e}")
             if callback: await callback("log", f"Browser Error: {e}")
             return False
+'''
+}

@@ -1,15 +1,14 @@
 import asyncio
 import uuid
 import logging
-from typing import Dict, Any
-
+from typing import Dict, List
 from app.models import (
     TaskStatus, SubTask, AgentTaskRequest, AgentState, UserFeedback
 )
 from app.llm_manager import create_llm
 from app.browser import BrowserAgentWrapper
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ScholarBackend")
 
 class TaskOrchestrator:
     _instance = None
@@ -18,47 +17,57 @@ class TaskOrchestrator:
         self.events: Dict[str, asyncio.Event] = {}
         self.queue = asyncio.Queue()
         self.global_callback = None
-        asyncio.create_task(self._worker())
+        self.worker_task = None
 
     @classmethod
     def get_instance(cls):
         if not cls._instance: cls._instance = cls()
         return cls._instance
 
+    def start_worker(self):
+        if not self.worker_task or self.worker_task.done():
+            self.worker_task = asyncio.create_task(self._worker())
+            logger.info("Task orchestrator worker started.")
+
+    async def stop_worker(self):
+        if self.worker_task and not self.worker_task.done():
+            self.worker_task.cancel()
+            try:
+                await self.worker_task
+            except asyncio.CancelledError:
+                logger.info("Task orchestrator worker stopped.")
+            self.worker_task = None
+
     def set_callback(self, cb):
         self.global_callback = cb
 
     async def _worker(self):
         while True:
-            item = await self.queue.get()
-            if len(item) == 3:
-                tid, req, auth_context = item
-            else:
-                tid, req = item
-                auth_context = None
-                
             try:
-                await self._process_lifecycle(tid, req, auth_context)
-            except Exception as e:
-                logger.error(f"Task {tid} failed: {e}")
-            finally:
-                self.queue.task_done()
+                tid, req = await self.queue.get()
+                try:
+                    await self._process_lifecycle(tid, req)
+                except Exception as e:
+                    logger.error(f"Task {tid} failed: {e}")
+                finally:
+                    self.queue.task_done()
+            except asyncio.CancelledError:
+                break
 
-    def add_to_queue(self, request: AgentTaskRequest, auth_context: Dict = None) -> str:
+    def add_to_queue(self, request: AgentTaskRequest) -> str:
         tid = str(uuid.uuid4())
         state = AgentState(task_id=tid, task_input=request.task, class_name=request.class_name)
         self.tasks[tid] = state
         self.events[tid] = asyncio.Event()
-        self.queue.put_nowait((tid, request, auth_context))
+        self.queue.put_nowait((tid, request))
         if self.global_callback:
             asyncio.create_task(self.global_callback("queue_update", [t.model_dump() for t in self.tasks.values()]))
         return tid
 
-    async def _process_lifecycle(self, tid, req, auth_context=None):
+    async def _process_lifecycle(self, tid, req):
         state = self.tasks[tid]
         cb = self.global_callback
         try:
-            # The auth_context is not used for now, but could be used for passing credentials
             llm = create_llm(req.model_override)
         except Exception as e:
             state.status = TaskStatus.FAILED
@@ -66,7 +75,12 @@ class TaskOrchestrator:
             if cb: await cb("log", f"LLM Error: {e}")
             return
 
-        agent_wrapper = BrowserAgentWrapper(llm)
+        try:
+            agent_wrapper = BrowserAgentWrapper(llm)
+        except Exception as e:
+            logger.error(f"Failed to init agent wrapper: {e}")
+            return
+
         state.status = TaskStatus.PLANNING
         if cb:
             await cb("queue_update", [t.model_dump() for t in self.tasks.values()])
