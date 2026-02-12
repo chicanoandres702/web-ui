@@ -31,7 +31,7 @@ try:
     IMPORT_ERROR = None
 except ImportError as e:
     HAS_LIBS = False
-    IMPORT_ERROR = f"{e}\n{traceback.format_exc()}"
+    IMPORT_ERROR = f"{e}/n{traceback.format_exc()}"
     class Browser: pass
 
 from app.models import SubTask 
@@ -73,11 +73,12 @@ async def start_chrome_with_debug_port(port: int = 9222, headless: bool = False)
     if not browser_exe:
         raise RuntimeError('Could not find a compatible browser (Edge, Chrome, or Chromium). Please install one and ensure it is in your system`s PATH.')
 
-    user_data_dir = tempfile.mkdtemp(prefix="gemini_browser_")
-    
+    # usecr_data_dir = tempfile.mkdtemp(prefix="gemini_browser_")
+    # usecr_data_dir = tempfile.tempdir("batman_browser")
     cmd = [
         browser_exe,
-        f'--user-data-dir={user_data_dir}',
+        #f'--user-data-dir={user_data_dir}',
+        '--profile-directory=BatmanBrowser',
         f'--remote-debugging-port={port}',
         '--no-first-run',
         '--no-default-browser-check',
@@ -115,7 +116,7 @@ async def start_chrome_with_debug_port(port: int = 9222, headless: bool = False)
         try: 
             process.terminate()
         except: pass
-        shutil.rmtree(user_data_dir, ignore_errors=True)
+        # shutil.rmtree(user_data_dir, ignore_errors=True)
         raise RuntimeError('Browser failed to start with CDP.')
         
     logger.info("CDP Ready.")
@@ -128,6 +129,11 @@ class BrowserAgentWrapper:
         self.session = None
         self.chrome_process = None
         self.user_data_dir = None
+    
+    def set_provider(self, provider: str):
+        """Sets the LLM provider for the agent wrapper."""
+        self.llm.provider = provider
+        logger.info(f"Provider set to: {self.provider}")
 
     async def start_session(self, headless: bool = False):
         if not HAS_LIBS: 
@@ -145,8 +151,16 @@ class BrowserAgentWrapper:
 
         try:
             self.browser = Browser(cdp_url="http://localhost:9222", headless=headless)
-            self.session = await self.browser.new_session()
-                
+            try:
+                # Primary attempt: Use the modern method (Playwright standard)
+                self.session = await self.browser.new_context()
+            except AttributeError:
+                try:
+                    # Fallback 1: Use the legacy method if new_context is missing
+                    self.session = await self.browser.new_session()
+                except AttributeError:
+                    # Fallback 2: The browser object itself IS the session/context
+                    self.session = self.browser
             if os.path.exists(COOKIE_PATH):
                 try:
                     with open(COOKIE_PATH, 'r') as f:

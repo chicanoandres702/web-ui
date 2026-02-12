@@ -35,8 +35,7 @@ try:
     IMPORT_ERROR = None
 except ImportError as e:
     HAS_LIBS = False
-    IMPORT_ERROR = f"{e}
-{traceback.format_exc()}"
+    IMPORT_ERROR = f"{e}/n{traceback.format_exc()}"
     class Browser: pass
 
 from app.models import SubTask 
@@ -150,8 +149,12 @@ class BrowserAgentWrapper:
 
         try:
             self.browser = Browser(cdp_url="http://localhost:9222", headless=headless)
-            self.session = await self.browser.new_session()
-                
+            try:
+                # Primary attempt: Use the modern method (Playwright standard)
+                self.session = await self.browser.new_context()
+            except AttributeError:
+                # Fallback: Use the legacy method if new_context is missing
+                self.session = await self.browser.new_session()
             if os.path.exists(COOKIE_PATH):
                 try:
                     with open(COOKIE_PATH, 'r') as f:
