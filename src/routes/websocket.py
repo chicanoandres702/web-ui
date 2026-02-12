@@ -9,13 +9,11 @@ import uuid
 from collections import defaultdict
 from pathlib import Path
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect
 from langchain_core.callbacks import BaseCallbackHandler
 
-from src.agent.browser_use.browser_use_agent import BrowserUseAgent
 from src.agent.deep_research.deep_research_agent import DeepResearchAgent
 from src.browser.custom_browser import CustomBrowser
-from browser_use.agent.views import AgentSettings
 from browser_use.browser.browser import BrowserConfig
 from src.controller.custom_controller import CustomController
 from src.utils.llm_manager import get_llm_model
@@ -23,6 +21,7 @@ from src.agent.browser_use.components.cookie_manager import CookieManager
 from browser_use.browser.context import BrowserContextConfig
 from src.utils import llm_provider
 
+from app.agents.browser_use.browser_use_agent import BrowserUseAgent
 # from browser_use.agent.message_manager.service import MessageManager, MessageManagerSettings, MessageManagerState
 from src.agent.deep_research.search_tool import _AGENT_STOP_FLAGS
 from src.agent.deep_research.state_manager import DeepResearchStateManager
@@ -34,7 +33,6 @@ from src.utils.instruction_handler import InstructionHandler, create_instruction
 logger = logging.getLogger(__name__)
 COOKIE_PATH = "./tmp/cookies.json"
 
-router = APIRouter()
 
 
 def get_cookie_manager():

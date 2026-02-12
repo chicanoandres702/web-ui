@@ -25,4 +25,4 @@ class ComponentInitializer:
 
     def _apply_system_prompt_override(self, system_prompt: Optional[str] = None) -> None:
         if system_prompt:
-            self.agent.system_prompt = system_prompt  # type: ignore
+            self.agent.system_prompt = system_prompt

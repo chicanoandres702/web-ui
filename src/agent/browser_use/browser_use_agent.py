@@ -24,17 +24,16 @@ from browser_use.agent.views import (
     AgentOutput,
     BrowserStateHistory,
     AgentStepInfo)
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 
+from app.agents.browser_use.components.knowledge_base_manager import KnowledgeBaseManager
+from app.agents.browser_use.user_interaction_handler import UserInteractionHandler
+from app.agents.browser_use.components.knowledge_base_manager import KnowledgeBaseManager
 from browser_use.agent.service import Agent, AgentHookFunc  # AIMessage is from langchain_core.messages
 from browser_use.agent.views import AgentHistory
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from src.utils.prompts import CONFIRMER_PROMPT_FAST, CONFIRMER_PROMPT_STANDARD
 from src.agent.browser_use import agent_utils
 from src.agent.browser_use.agent_components import CookieHandler
-from src.agent.browser_use.agent_heuristics import AgentHeuristics
-from src.agent.browser_use import agent_utils  # Import the new module
-from src.agent.browser_use.components.site_knowledge_injector import SiteKnowledgeInjector
-
 from src.agent.browser_use.components.planner import AgentPlanner
 from src.agent.browser_use.components.browser_factory import BrowserFactory
 from src.utils.io_manager import IOManager
@@ -251,12 +250,12 @@ class BrowserUseAgent(Agent):
         self.settings = settings
 
         agent_kwargs = kwargs.copy() # type: ignore
+      
         self.use_custom_memory = agent_kwargs.pop('use_memory', True) # type: ignore
         # Extract agent-specific args that should not be passed to the base Agent classs
         self.save_history_path = agent_kwargs.pop('save_history_path', None) # type: ignore
         self.planner_llm = agent_kwargs.pop('planner_llm', None)
         self.planner_interval = agent_kwargs.pop('planner_interval', 5.0)
-        self.cookie_path = agent_kwargs.pop('cookie_path', "./tmp/cookies.json")
         self.initial_actions = agent_kwargs.pop('initial_actions', None)
 
         self.agent_control_queue = agent_kwargs.pop('agent_control_queue', None)
@@ -279,16 +278,13 @@ class BrowserUseAgent(Agent):
         # Safely get the llm
         original_llm = agent_kwargs.get('llm')
         if not original_llm:
-            raise ValueError("LLM must be provided in agent_kwargs or model_priority_list")
+        raise ValueError("LLM must be provided in agent_kwargs or model_priority_list")
         
         # Patch LLM if it's a model that needs JSON fixes (e.g., Qwen/Ollama)
         self.llm_manager = AgentLLMManager(self, model_priority_list)
 
         # Extract raw LLM from RunnableSequence if necessary to check model name
         raw_llm = original_llm
-        if hasattr(original_llm, "first"):
-            raw_llm = original_llm.first
-
         model_name = getattr(raw_llm, "model_name", "").lower() or getattr(raw_llm, "model", "").lower()
 
         # This instructs the LLM to produce output conforming to AgentOutput -type: ignore
@@ -303,24 +299,21 @@ class BrowserUseAgent(Agent):
         agent_kwargs['llm'] = structured_llm
 
 
-        # super().__init__(**agent_kwargs)
-        super().__init__(task=task, **agent_kwargs)
+        super().__init__(llm=llm, task=task, **agent_kwargs)
         self.state = state if state is not None else BrowserStateHistory(url='', title='', tabs=[], interacted_element=[], screenshot=None) #type: ignore
-
-        self.heuristics = AgentHeuristics(self)
+        
         self.confirmer_llm = confirmer_llm
         self.confirmer_strictness: int = confirmer_strictness
         self.controller = controller
-
         if model_priority_list and model_priority_list[0].get('llm'):
 
             self.llm_manager.set_llm(model_priority_list[0]['llm'])
         else:
-            self.llm_manager.set_llm(agent_kwargs['llm'])
-        
+        self.llm_manager.set_llm(agent_kwargs['llm'])
+      
         self._initialize_internal_components(agent_kwargs, system_prompt)
         
-
+  
     def _initialize_internal_components(self, agent_kwargs, system_prompt):
         """Initializes modular components for the agent."""
         if not self.browser_context:
@@ -374,7 +367,7 @@ class BrowserUseAgent(Agent):
                 # Inject into message history so the agent knows what happened
                 summary = "\n".join(results) # type: ignore
                 msg = f"SYSTEM NOTE: The following actions were already executed for this step:\n{summary}\n\nCheck the current state. If the goal is achieved, output {{'finish': ...}}. Do NOT repeat the above actions."
-                if hasattr(self, "message_manager") and self.message_manager:
+        if hasattr(self, "message_manager") and self.message_manager:
                     add_msg_func = getattr(self.message_manager, "add_message", None)
                     if callable(add_msg_func):
                         add_msg_func(HumanMessage(content=msg))
@@ -402,10 +395,13 @@ class BrowserUseAgent(Agent):
 
                     step_info = AgentStepInfo(step_number=step, max_steps=max_steps)
                     await self._execute_agent_step(step_info)
+          
 
                     if on_step_end is not None:
                         await on_step_end(self)
+                  
 
+          
                     if await self.post_step_handler.handle_post_step(step, max_steps):
                         break
                 except Exception as e:
@@ -445,7 +441,7 @@ class BrowserUseAgent(Agent):
 
             else:
                 logger.error(f"An unexpected error occurred during step {step_info.step_number + 1}: {e}")
-                self.heuristics.inject_message(f"SYSTEM: An error occurred during step {step_info.step_number + 1}: {e}")
+        self.heuristics.inject_message(f"SYSTEM: An error occurred during step {step_info.step_number + 1}: {e}")
                 raise e
 
     async def _recover_from_timeout(self):
@@ -454,7 +450,7 @@ class BrowserUseAgent(Agent):
             if self.browser_context:
                 page = await self.browser_context.get_current_page()
                 await page.reload(wait_until="domcontentloaded", timeout=15000)
-                self.heuristics.inject_message("SYSTEM: A timeout occurred. I have reloaded the page to recover. Please re-assess the current state.")
+        self.heuristics.inject_message("SYSTEM: A timeout occurred. I have reloaded the page to recover. Please re-assess the current state.")
         except Exception as reload_e:
 
             logger.error(f"Failed to reload page after timeout: {reload_e}")
@@ -517,7 +513,7 @@ class BrowserUseAgent(Agent):
                         desc = plan_update["step_description"] # type: ignore
                         after_idx = plan_update.get("after_index") # 1-based index to insert after
                         insert_pos = int(after_idx) if after_idx is not None else len(manager.bu_plan)
-                        manager.add_plan_step(desc, index=insert_pos)
+                manager.add_plan_step(desc, index=insert_pos)
                         self.heuristics.inject_message(f"SYSTEM (Planner): I've added a new step to the plan: '{desc}'")
                     elif action == "update" and "step_index" in plan_update and "status" in plan_update:
                         idx = int(plan_update["step_index"]) - 1 # Convert 1-based to 0-based
@@ -654,7 +650,7 @@ class BrowserUseAgent(Agent):
     def _get_confirmer_prompt(self) -> str:
         # Prompt helper to select the correct prompt based on strictness settings
 
-        if self.confirmer_strictness and self.confirmer_strictness <= 3:
+    if self.confirmer_strictness and self.confirmer_strictness <= 3:
             return CONFIRMER_PROMPT_FAST.format(task=self.task)
         return CONFIRMER_PROMPT_STANDARD.format(task=self.task, strictness=self.confirmer_strictness or 5)
 
@@ -714,7 +710,7 @@ class BrowserUseAgent(Agent):
             logger.warning(f"Failed to inject notification: {e}")
 
     def _manage_model_switching(self):
-        """Handles Cost Saver and Smart Retry logic."""
+    """Handles Cost Saver and Smart Retry logic."""
         self.heuristics.manage_model_switching()
 
     def _suggest_alternative_strategy(self):
@@ -750,10 +746,10 @@ class BrowserUseAgent(Agent):
 
     async def _handle_pre_step(self) -> bool:
         # Handles pre-step operations such as loading cookies, managing tabs, and injecting site knowledge.
+        # Handles pre-step operations such as loading cookies, managing tabs, and injecting site knowledge.
         """
         Handles pre-step checks: pause, stop, model switching, failures.
 
-        Also manages cookie persistence across sessions
 
         Returns True if the agent should stop/break the loop.
         """
@@ -761,10 +757,11 @@ class BrowserUseAgent(Agent):
         await self.control_queue_handler._process_control_queue()
 
         # Suggest alternative strategies on failure
+    # Suggest alternative strategies on failure
         # Manage Model Switching (Cost Saver / Smart Retry)
         self.heuristics.manage_model_switching()
 
-                # Suggest alternative strategies on failure
+        # Suggest alternative strategies on failure
         self._suggest_alternative_strategy()
 
         # Close extraneous tabs (e.g. ads, social shares)
@@ -789,7 +786,7 @@ class BrowserUseAgent(Agent):
                 await self.send_agent_message_callback({ # type: ignore
                     "type": "mfa_required",
                     "message": "MFA Required: Approve from your other device to continue."   
-                })
+        })
             while self.heuristics.is_waiting_for_mfa and not self.state.stopped:
                 await asyncio.sleep(1)  # Check every second
             logger.info("MFA approved or agent stopped.")

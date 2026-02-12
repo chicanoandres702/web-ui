@@ -1,4 +1,5 @@
-function initControlBar(ws, state, utils) {
+function initControlBar(ws, state, utils,test = false) {
+
     const messageText = document.getElementById('messageText');
     const sendBtn = document.getElementById('sendBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -10,10 +11,10 @@ function initControlBar(ws, state, utils) {
     function saveToHistory() {
         state.taskHistory = state.taskHistory.slice(0, state.historyIndex + 1);
         state.taskHistory.push(JSON.stringify(state.tasks));
-        state.historyIndex++;
         updateHistoryButtons();
     }
 
+}
     function updateHistoryButtons() {
         undoBtn.disabled = state.historyIndex <= 0;
         redoBtn.disabled = state.historyIndex >= state.taskHistory.length - 1;

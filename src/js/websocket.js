@@ -1,4 +1,4 @@
-import { updateState } from './state.js';
+import { updateState } from '../../static/app/state.js';
 import { 
     updateTaskQueue, 
     updateTicker, 

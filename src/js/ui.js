@@ -1,4 +1,4 @@
-import { state, updateState } from './state.js';
+import { state, updateState } from '../../static/app/state.js';
 import { 
     addNewTask, 
     deleteTask, 

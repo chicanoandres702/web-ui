@@ -24,4 +24,4 @@ class ControlQueueHandler: # type: ignore
             except asyncio.QueueEmpty:
                 break  # Exit loop if queue is empty
             except Exception as e:
-                logger.error(f"Error processing control queue: {e}")
+                logger.error(f"Error processing control queue: {e}") # type: ignore

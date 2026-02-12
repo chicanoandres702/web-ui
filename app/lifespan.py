@@ -1,20 +1,20 @@
 import logging
 import inspect
+import os
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi.staticfiles import StaticFiles # type: ignore
 
-from src.server_setup import startup_check_ollama
-from app.factory import get_environment_banner_html
 
 logger = logging.getLogger(__name__)
 
 def get_cookie_manager():
     try:
-        from src.agent.browser_use.components.cookie_manager import CookieManager # type: ignore
-        return CookieManager # type: ignore
+        from app.agent.browser_use.components.cookie_manager import CookieManager # type: ignore
+        return CookieManager
     except ImportError:
-        # Fallback to a dummy implementation if the specific utility is missing
+        # Fallback to a dummy implementation if the specific utility is missing 
         return None
 
 async def initialize_services(app: FastAPI, args):
@@ -28,7 +28,7 @@ async def initialize_services(app: FastAPI, args):
                 sig = inspect.signature(app.state.cookie_manager.load_cookies)
                 params = sig.parameters
                 if 'browser_context' in params and params['browser_context'].default is inspect.Parameter.empty:
-                    logger.info("CookieManager.load_cookies requires an active browser_context; skipping global load.")
+                    logger.info("CookieManager.load_cookies requires an active browser_context; skipping global load.") # type: ignore
                 else:
                     await app.state.cookie_manager.load_cookies(browser_context=None)
             except Exception as e:
@@ -36,8 +36,11 @@ async def initialize_services(app: FastAPI, args):
 
     STATIC_DIR = app.extra.get("STATIC_DIR", "static")
 
+    os.makedirs(STATIC_DIR, exist_ok=True)
+
     class SecureStaticFiles(StaticFiles):
         async def get_response(self, path: str, scope: dict) -> Response:
+            from app.environment_banner import get_environment_banner_html
             response = await super().get_response(path, scope)
             request = Request(scope)
             if request.url.scheme != "https" and response.media_type == "text/html":
@@ -54,19 +57,19 @@ async def initialize_services(app: FastAPI, args):
     if not args.https:
         app.mount("/", SecureStaticFiles(directory=STATIC_DIR, html=True), name="static")
 
-    await startup_check_ollama()
+
 
 async def shutdown_event(app: FastAPI):
     """FastAPI shutdown handler."""
     logger.info("Application shutdown")
     if hasattr(app.state, 'cookie_manager') and app.state.cookie_manager:
         browser_context = getattr(app.state, 'browser_context', None)
+
         if browser_context:
             await app.state.cookie_manager.save_cookies(browser_context)
             logger.info("Cookies saved on shutdown.")
         else:
             logger.warning("Browser context not available on shutdown. Cookies not saved.")
-
 def lifespan_factory(args):
     @asynccontextmanager
     async def lifespan(app: FastAPI):

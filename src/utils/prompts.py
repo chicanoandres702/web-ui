@@ -473,6 +473,15 @@ ENHANCED_AGENT_DISCOVERY_PROMPT = """Goal: {goal}
 Website Content: {content_sample}...
 
 Analyze this page. Are there actions I MUST do to reach the actual quiz, homework, or course content?
+"""
+
+ACTION_SELECTION_PROMPT = """
+Goal: {goal}
+Page Content: {page_content}
+Status Summary: {status_summary}
+
+Given the goal and the current page content, select the best action from the following list: {available_actions}. Return only the name of the action.
+
 Examples: Click 'Start', 'Play Now', 'Accept Cookies', 'Login', 'Next', 'Read Chapter 1', 'Complete Module'.
 
 Return a JSON list of short strings describing these actions. 

@@ -22,7 +22,7 @@ class CookieHandler:
                     await browser_context.add_cookies(cookies)
                     logger.info(f"Loaded cookies from {cookie_path}")
                 except Exception as e:
-                    logger.error(f"Failed to load cookies: {e}")
+                    logger.error(f"Failed to load cookies: {e}") # type: ignore
 
     async def save_cookies(self, browser_context: Any, cookie_path: str) -> None:
         """Saves cookies from the browser context to a file."""
@@ -33,4 +33,4 @@ class CookieHandler:
                     json.dump(cookies, f)
                 logger.info(f"Saved cookies to {cookie_path}")
             except Exception as e:
-                logger.error(f"Failed to save cookies: {e}")
+                logger.error(f"Failed to save cookies: {e}") # type: ignore

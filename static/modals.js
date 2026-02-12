@@ -1,5 +1,0 @@
-
-// Modals Module
-function initModals() {
-
-}

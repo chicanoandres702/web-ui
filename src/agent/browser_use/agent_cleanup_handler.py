@@ -1,9 +1,9 @@
 import logging
 from typing import Any
 
-from browser_use.agent.gif import create_history_gif
+from app.agents.browser_use.gif import create_history_gif
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # type: ignore
 
 class AgentCleanupHandler:
     def __init__(self, agent: Any):
