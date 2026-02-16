@@ -1,4 +1,5 @@
 import logging
+import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from app.config import get_settings
@@ -11,13 +12,14 @@ def create_llm(model_override: str = None, **kwargs):
     model = model_override or settings.MODEL_NAME
 
     if (model and "gemini" in model) or provider == "gemini":
-        if settings.GEMINI_SERVICE_ACCOUNT_FILE:
+        sa_file = settings.GEMINI_SERVICE_ACCOUNT_FILE or "service_account.json"
+        if sa_file and os.path.exists(sa_file):
             try:
                 from google.oauth2 import service_account
                 credentials = service_account.Credentials.from_service_account_file(
-                    settings.GEMINI_SERVICE_ACCOUNT_FILE
+                    sa_file
                 )
-                logger.info(f"Using Gemini with service account from {settings.GEMINI_SERVICE_ACCOUNT_FILE}")
+                logger.info(f"Using Gemini with service account from {sa_file}")
                 return ChatGoogleGenerativeAI(
                     model=model if model and "gemini" in model else "gemini-flash-latest",
                     credentials=credentials,

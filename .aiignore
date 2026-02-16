@@ -1,0 +1,15 @@
+# AI Context Exclusion List
+# Prevents the LLM from ingesting heavy or irrelevant files.
+
+# Heavy Dependencies
+node_modules/
+
+# Build Artifacts
+out/
+dist/
+*.vsix
+
+# Lock Files (Too much noise)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

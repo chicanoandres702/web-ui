@@ -1,95 +1,64 @@
-# Browser Use Web UI
+# 🚀 AI Pilot: Your Autonomous IDE Companion
 
-A lightweight, advanced Web UI for the [Browser Use](https://github.com/browser-use/browser-use) agent. This interface allows you to control autonomous browser agents, perform deep research, and interact with LLMs like OpenAI, Google Gemini, and Ollama.
+AI Pilot is a VS Code extension that transforms your editor into an intelligent, autonomous development environment. Powered by generative AI, it can understand your project, fix problems, generate code, and execute multi-step development plans.
 
-## Features
+![AI Pilot UI](https://i.imgur.com/example.png)
+  
+## Core Features
 
-- **Interactive Web UI**: Real-time browser view and control.
-- **Multiple Agent Types**: Standard Browser Agent and Deep Research Agent.
-- **Google Login Integration**: Sign in with your Google account to use Gemini models without manually handling API keys.
-- **Local LLM Support**: Integration with Ollama.
-- **File Management**: Upload files and view generated artifacts.
+*   **🧠 Diagnostic Medic:**
+    *   **Automated Problem Fixing:** Scans for errors and warnings in your code and provides AI-powered fixes.
+    *   **Recursive Debugging:** If a fix fails, the AI analyzes the error and retries, learning from its mistakes.
+    *   **Test Generation:** Automatically generates unit tests alongside every fix to ensure correctness.
 
-## Installation
+*   **🤖 Autonomous Task Execution:**
+    *   **Project Planner:** Generate a complete project outline from a high-level idea.
+    *   **Interactive Planning:** Approve or deny features in the generated outline directly within the editor.
+    *   **Task Executor:** The AI breaks down approved features into a step-by-step task list.
+    *   **"Go" Button:** Run the autonomous agent to execute the entire task list, from creating files to writing code.
 
-1.  **Clone the repository**:
-    ```bash
-    git clone <your-repo-url>
-    cd web-ui-1
-    ```
+*   **✨ Streamlined UI & UX:**
+    *   **Dedicated UI:** A dedicated "AI Pilot" view in the Activity Bar provides a central hub for all features.
+    *   **Interactive Chat:** A chat interface for issuing commands and interacting with the AI.
+    *   **Task Manager:** A UI to view and manage the agent's task list and execution status.
+    *   **Status Bar Integration:** See the AI's current status at a glance.
+    *   **Situational Hints:** Get proactive suggestions from the AI as you work.
 
-2.  **Install Dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    playwright install
-    ```
-    *Note: Ensure you have `langchain-google-genai`, `google-auth-oauthlib`, and `itsdangerous` installed for Google Login support.*
+*   **📚 Comprehensive Knowledge Base:**
+    *   **AI Constitution:** A cetral set of rules and principles that govern the AI's behavior.
+    *   **LLM-Specific Guides:** Detailed prompting manuals for Gemini, Claude, and GPT to optimize AI performance.
+    *   **Automatic Syncing:** The knowledge base and rule files are kept in sync automatically.
 
-## Configuration
+*   **🔧 Advanced Configuration:**
+    *   **Settings File:** Use the `.vscode/aipilot.json` file to customize prompts and other advanced settings.
+    *   **External Auth:** Support for signing in with your own Google account to use its AI services.
 
-### 1. Environment Variables (`.env`)
-Create a `.env` file in the root directory to store your API keys and configuration.
+## Getting Started
 
-```env
-# Security (Required for Session Management)
-SECRET_KEY=change_this_to_a_random_string
+1.  **Install the extension.**
+2.  Open the **AI Pilot** view from the Activity Bar.
+3.  Run the **"AI Pilot: Initialize Settings File"** command to create `aipilot.json`.
+4.  Run the **"AI Pilot: Setup Rules"** command to generate the knowledge base.
+5.  Start exploring! Try the **"Generate Project Outline"** command to see the agent in action.
 
-# Google OAuth (Required for "Sign in with Google")
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+## Changelog
 
-# Optional: Default API Keys (if not using UI input)
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-...
-```
+- **v5.1.0 (Current):**
+    - **Architectural Refactor:** Full migration to Feature Architecture.
+    - **New Features:** Smart Paste, Snippets Manager, Prompt Library.
+    - **Improvements:** Enhanced Medic Diagnostic Scan.
 
-### 2. Google OAuth Setup (For Gemini)
-To enable the "Sign in with Google" button:
-
-1.  Go to the Google Cloud Console.
-2.  Create a new project.
-3.  Enable the **Google Generative Language API**.
-4.  **Configure OAuth Consent Screen**:
-    *   Go to **APIs & Services > OAuth consent screen**.
-    *   Select **External** and Create.
-    *   **Scopes**: Click **Add or Remove Scopes** and manually add `https://www.googleapis.com/auth/cloud-platform` and `https://www.googleapis.com/auth/generative-language.peruserquota`.
-    *   **Test Users**: Add your Google email address. This is required for the app to work while in "Testing" status.
-5.  Go to **APIs & Services > Credentials**.
-6.  Create **OAuth client ID** credentials (Application type: Web application).
-7.  Set **Authorized redirect URIs** to: `http://localhost:8000/auth/callback` and `http://127.0.0.1:8000/auth/callback`
-8.  Download the JSON file, rename it to `client_secret.json`, and place it in the project root.
-    *   *Alternatively, copy the Client ID and Secret into your `.env` file.*
-
-**Note:** Both `.env` and `client_secret.json` are ignored by git to keep your credentials safe.
-
-### 3. Service Account Setup (Optional - No Login Required)
-If you prefer not to use the "Sign in with Google" flow, you can use a Service Account:
-1.  Go to **IAM & Admin > Service Accounts** in Google Cloud Console.
-2.  Create a Service Account and grant it the **Vertex AI User** or **Generative Language User** role.
-3.  Create a **JSON Key** for this account.
-4.  Rename the downloaded file to `service_account.json` and place it in the project root.
-5.  The app will automatically detect and use it if you are not logged in.
-
-## Usage
-
-1.  **Start the Server**:
-    ```bash
-    python server.py
-    ```
-
-2.  **Open the UI**:
-    Navigate to `http://localhost:8000` in your browser.
-
-3.  **Select LLM**:
-    - Choose **Gemini (Google)** and click "Sign in with Google" to use your account quota.
-    - Or select **OpenAI** / **Anthropic** and enter your API Key.
-    - Or select **Ollama** for local inference.
-
-## Credits
-
-This project is a Web UI wrapper built around the incredible **Browser Use** library.
-
-- **Core Library**: Browser Use
-- **Original Developers**: The Browser Use Team
-
-Please support the original project by starring their repository!
+- **v1.0.0:**
+    - **New Feature:** Autonomous Agent for multi-step task execution.
+    - **New Feature:** Interactive Chat UI in the main sidebar.
+    - **New Feature:** Centralized prompt configuration via `aipilot.json`.
+    - **New Feature:** "Sign in with Google" authentication framework.
+    - **New Feature:** Living README feature to auto-document changes.
+    - **New Feature:** Situational Hints to provide contextual help.
+    - **New Feature:** Task Manager UI to visualize and run agent tasks.
+    - **New Feature:** Project Planner to generate and manage project outlines.
+    - **New Feature:** Greatly expanded Knowledge Base with guides for multiple LLMs.
+    - **New Feature:** UI enhancements including a dedicated Activity Bar icon and Status Bar item.
+    - **Enhancement:** Diagnostic Medic now supports test generation and more robust recursive debugging.
+    - **Enhancement:** Neural Tab Orchestrator now supports "Focus Mode" and "Dependency Mapping".
+    - **Initial Release:** Core features including Diagnostic Medic, Tab Orchestrator, and Global Rule Propagator.

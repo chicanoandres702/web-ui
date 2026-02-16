@@ -1,19 +1,29 @@
 import os
-from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+import sys
+import asyncio
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from app.api.endpoints import router as api_router
+from app.auth import router as auth_router
+from app.config import get_settings
 
-router = APIRouter()
+# CRITICAL WINDOWS SUBPROCESS FIX
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-@router.get("/health")
-async def health_check():    
-   return {"status": "ok"}
+settings = get_settings()
 
-# def get_index_path():
-#    """Helper to get the path to the index.html file."""
-#    static_dir = os.getenv("STATIC_DIR", "static")
-#    return os.path.join("./static/", "index.html")
+# Setup Env for Auth
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+if settings.GOOGLE_CLIENT_ID:
+    os.environ.setdefault("GOOGLE_CLIENT_ID", settings.GOOGLE_CLIENT_ID)
+if settings.GOOGLE_CLIENT_SECRET:
+    os.environ.setdefault("GOOGLE_CLIENT_SECRET", settings.GOOGLE_CLIENT_SECRET)
 
-# @router.get("/", include_in_schema=False)
-# async def serve_index():
-#    """Serves the index.html file from the static directory."""
-#    return FileResponse(get_index_path())
+app = FastAPI(title=settings.APP_NAME)
+app.include_router(api_router, prefix="/api/v1")
+app.include_router(auth_router)
+
+static_p = os.path.join(os.path.dirname(__file__), "static")
+if not os.path.exists(static_p): os.makedirs(static_p)
+app.mount("/", StaticFiles(directory=static_p, html=True), name="static")

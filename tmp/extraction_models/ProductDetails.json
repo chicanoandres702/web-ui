@@ -1,0 +1,35 @@
+{
+  "name": "ProductDetails",
+  "fields": [
+    {
+      "name": "product_name",
+      "type": "str",
+      "description": "The name of the product"
+    },
+    {
+      "name": "price",
+      "type": "float",
+      "description": "The price of the product"
+    },
+    {
+      "name": "currency",
+      "type": "str",
+      "description": "The currency of the price (e.g., USD, EUR)"
+    },
+    {
+      "name": "availability",
+      "type": "str",
+      "description": "Availability status (e.g., In Stock, Out of Stock)"
+    },
+    {
+      "name": "rating",
+      "type": "float",
+      "description": "Product rating (0-5)"
+    },
+    {
+      "name": "review_count",
+      "type": "int",
+      "description": "Number of reviews"
+    }
+  ]
+}

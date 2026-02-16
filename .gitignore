@@ -1,14 +1,35 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
 
-# Environment & Secrets
+# Build Output
+out/
+dist/
+build/
+*.vsix
+
+# Testing
+coverage/
+.vscode-test/
+
+# System & Logs
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor Directories
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+
+# AI Pilot Specific
+.ai-pilot/knowledge-vault/private/
+.history/
 .env
-client_secret.json
-
-# Local Storage & Temp
-tmp/
-storage/
-browser_session/*
-/service_account.json

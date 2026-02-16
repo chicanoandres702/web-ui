@@ -1,0 +1,30 @@
+{
+  "name": "NewsArticle",
+  "fields": [
+    {
+      "name": "headline",
+      "type": "str",
+      "description": "The main headline of the article"
+    },
+    {
+      "name": "author",
+      "type": "str",
+      "description": "Name of the author"
+    },
+    {
+      "name": "publication_date",
+      "type": "str",
+      "description": "Date of publication"
+    },
+    {
+      "name": "summary",
+      "type": "str",
+      "description": "A concise summary of the article content"
+    },
+    {
+      "name": "topics",
+      "type": "List[str]",
+      "description": "List of main topics or tags"
+    }
+  ]
+}

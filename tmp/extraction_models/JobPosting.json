@@ -1,0 +1,35 @@
+{
+  "name": "JobPosting",
+  "fields": [
+    {
+      "name": "job_title",
+      "type": "str",
+      "description": "Title of the job position"
+    },
+    {
+      "name": "company",
+      "type": "str",
+      "description": "Name of the hiring company"
+    },
+    {
+      "name": "location",
+      "type": "str",
+      "description": "Job location"
+    },
+    {
+      "name": "salary_range",
+      "type": "str",
+      "description": "Salary range if available"
+    },
+    {
+      "name": "description",
+      "type": "str",
+      "description": "Brief summary of the job description"
+    },
+    {
+      "name": "requirements",
+      "type": "List[str]",
+      "description": "List of key requirements or skills"
+    }
+  ]
+}

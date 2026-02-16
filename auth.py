@@ -14,10 +14,10 @@ def sync_dependencies():
     
     core_packages = [
         "fastapi", "uvicorn[standard]", "pydantic>=2.0", "pydantic-settings",
-        "langchain-google-genai", "langchain-openai", "langchain-community",
+        "langchain-google-genai", "langchain-openai", "langchain-community", "langchain-core",
         "langchain-ollama", "huggingface_hub", "browser-use", "tqdm", 
-        "requests", "python-multipart", "python-dotenv", "google-auth", 
-        "google-auth-oauthlib", "playwright"
+        "requests", "python-multipart", "python-dotenv", "itsdangerous", "google-auth", 
+        "google-auth-oauthlib", "playwright", "nest_asyncio", "aiohttp"
     ]
     
     try:
@@ -26,7 +26,7 @@ def sync_dependencies():
         subprocess.check_call([sys.executable, "-m", "pip", "install", *core_packages])
         
         print("Ensuring Playwright browsers are installed...")
-        subprocess.check_call([sys.executable, "-m", "playwright", "install", "chromium"])
+        subprocess.check_call([sys.executable, "-m", "playwright", "install", "chromium", "--with-deps"])
         
         if os.name == 'nt':
             print("Detected Windows: Installing optimized Llama-CPP binaries...")
@@ -46,11 +46,12 @@ def sync_dependencies():
         sys.exit(1)
 
 # ==========================================
-#           PROJECT FILE MAP
+#           FEATURE MODULES
 # ==========================================
 
-files = {
-    "app/config.py": """import os
+class CoreModule:
+    """Base application infrastructure."""
+    CONFIG = """import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -89,9 +90,56 @@ def get_settings():
     s = Settings()
     s.ensure_dirs()
     return s
-""",
+"""
 
-    "app/models.py": """from __future__ import annotations
+    MAIN = """import os
+import sys
+import asyncio
+import nest_asyncio
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+from app.api.routers import api, auth
+from app.config import get_settings
+
+nest_asyncio.apply()
+# CRITICAL WINDOWS SUBPROCESS FIX
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+settings = get_settings()
+app = FastAPI(title=settings.APP_NAME)
+
+# Middleware must be added before routers
+app.add_middleware(SessionMiddleware, secret_key=settings.API_SECRET_KEY, https_only=False, max_age=3600)
+
+app.include_router(api.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/auth")
+
+static_p = os.path.join(os.path.dirname(__file__), "static")
+if not os.path.exists(static_p): os.makedirs(static_p)
+app.mount("/", StaticFiles(directory=static_p, html=True), name="static")
+"""
+
+    SERVER = """import uvicorn
+import sys, os
+import asyncio
+import nest_asyncio
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def run_server():
+    nest_asyncio.apply()
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, workers=1)
+
+if __name__ == "__main__":
+    run_server()
+"""
+
+class AgentModule:
+    """AI Agent capabilities and business logic."""
+    MODELS = """from __future__ import annotations
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from enum import Enum
@@ -141,11 +189,13 @@ class HealthCheck(BaseModel):
     version: str
     active_tasks: int
     llm_status: str
-""",
+"""
 
-    "app/core/llm_factory.py": """import logging
+    SERVICE_LLM = """import logging
+import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
+from google.oauth2 import service_account
 from app.config import get_settings
 
 settings = get_settings()
@@ -159,19 +209,30 @@ class LLMFactory:
         
         # Priority for Gemini models
         if m and m.startswith("gemini-"):
-            return ChatGoogleGenerativeAI(model=m, google_api_key=settings.GEMINI_API_KEY)
+            if settings.GEMINI_API_KEY:
+                return ChatGoogleGenerativeAI(model=m, google_api_key=settings.GEMINI_API_KEY)
+            
+            # Use Service Account if available
+            if os.path.exists(settings.GOOGLE_SERVICE_ACCOUNT_JSON):
+                try:
+                    creds = service_account.Credentials.from_service_account_file(settings.GOOGLE_SERVICE_ACCOUNT_JSON)
+                    return ChatGoogleGenerativeAI(model=m, credentials=creds)
+                except Exception as e:
+                    logger.error(f"Failed to load service account: {e}")
+            
+            return ChatGoogleGenerativeAI(model=m)
 
         if p == "ollama":
             return ChatOllama(base_url=settings.OLLAMA_BASE_URL, model=m)
         
         # Fallback
-        return ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=settings.GEMINI_API_KEY)
+        return ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=settings.GEMINI_API_KEY or None)
 
 def get_llm(model_name=None):
     return LLMFactory.create_llm(model_name)
-""",
+"""
 
-    "app/agents/browser_agent.py": """import json
+    SERVICE_BROWSER = """import json
 import logging
 import asyncio
 import base64
@@ -187,7 +248,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class BrowserAgentWrapper:
+class BrowserService:
     def __init__(self, llm):
         self.llm = llm
 
@@ -203,11 +264,16 @@ class BrowserAgentWrapper:
 
     async def run_step(self, description: str, class_name: str, headless: bool = False, quality: int = 50, callback=None) -> bool:
         if not HAS_LIBS: 
+            logger.warning("Browser libraries not found.")
             await asyncio.sleep(1); return True
         
         browser = None
+        ctx = None
         try:
-            browser = Browser(config=BrowserConfig(headless=headless))
+            # Initialize Browser
+            browser = Browser(config=BrowserConfig(headless=headless, disable_security=True))
+            
+            # Create Context
             ctx = await browser.new_context()
             agent = BUAgent(task=description, llm=self.llm, browser_context=ctx)
             
@@ -230,21 +296,21 @@ class BrowserAgentWrapper:
                 await asyncio.sleep(0.5)
             
             await run_task
-            await ctx.close()
-            await browser.close()
             return True
         except Exception as e:
             logger.error(f"Browser Execution Error: {e}")
-            if browser: await browser.close()
             return False
-""",
+        finally:
+            if ctx: await ctx.close()
+            if browser: await browser.close()
+"""
 
-    "app/services/orchestrator.py": """import asyncio
+    SERVICE_ORCHESTRATOR = """import asyncio
 import uuid
 import logging
 from app.models import AgentTaskRequest, AgentState, TaskStatus, UserFeedback, SubTask
-from app.core.llm_factory import get_llm
-from app.agents.browser_agent import BrowserAgentWrapper
+from app.services.llm import get_llm
+from app.services.browser import BrowserService
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +355,7 @@ class TaskOrchestrator:
         state = self.tasks[tid]
         cb = self.global_callback
         llm = get_llm(req.model_override)
-        agent = BrowserAgentWrapper(llm)
+        agent = BrowserService(llm)
 
         # 1. PLAN
         state.status = TaskStatus.PLANNING
@@ -334,10 +400,11 @@ class TaskOrchestrator:
             else:
                 state.status = TaskStatus.STOPPED
                 self.events[fb.task_id].set()
-""",
+"""
 
-    "app/api/endpoints.py": """from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+    ROUTER_API = """from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import requests
+import asyncio
 from app.models import AgentTaskRequest, UserFeedback, HealthCheck
 from app.services.orchestrator import TaskOrchestrator
 from app.config import get_settings
@@ -352,7 +419,8 @@ async def health():
 
 @router.get("/ollama/models")
 async def get_models():
-    try: return requests.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=2).json()
+    try: 
+        return await asyncio.to_thread(lambda: requests.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=2).json())
     except: return {"models": []}
 
 @router.post("/agent/run")
@@ -381,40 +449,33 @@ async def ws_endpoint(ws: WebSocket):
     try:
         while True: await ws.receive_text()
     except WebSocketDisconnect: manager.disconnect(ws)
-""",
+"""
 
-    "app/main.py": """import os
-import sys
-import asyncio
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from app.api.endpoints import router as api_router
-from app.config import get_settings
+class AuthModule:
+    """Authentication and Identity."""
+    ROUTER_AUTH = """from fastapi import APIRouter, Request
+from pydantic import BaseModel
 
-# CRITICAL WINDOWS SUBPROCESS FIX
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+router = APIRouter()
 
-settings = get_settings()
-app = FastAPI(title=settings.APP_NAME)
-app.include_router(api_router, prefix="/api/v1")
+class AuthStatus(BaseModel):
+    is_logged_in: bool
+    user: dict | None = None
 
-static_p = os.path.join(os.path.dirname(__file__), "static")
-if not os.path.exists(static_p): os.makedirs(static_p)
-app.mount("/", StaticFiles(directory=static_p, html=True), name="static")
-""",
+@router.get("/status", response_model=AuthStatus)
+async def auth_status(request: Request):
+    user = request.session.get("user")
+    return AuthStatus(is_logged_in=bool(user), user=user)
 
-    "app/server.py": """import uvicorn
-import sys, os
-import asyncio
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if __name__ == "__main__":
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, workers=1)
-""",
+@router.post("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return {"status": "logged_out"}
+"""
 
-    "app/static/index.html": """<!DOCTYPE html>
+class UIModule:
+    """Frontend assets."""
+    INDEX_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -545,7 +606,37 @@ if __name__ == "__main__":
 </body>
 </html>
 """
-}
+
+# ==========================================
+#           PROJECT FILE MAP
+# ==========================================
+
+class ProjectBuilder:
+    @staticmethod
+    def build_map():
+        return {
+            # Core
+            "app/config.py": CoreModule.CONFIG,
+            "app/main.py": CoreModule.MAIN,
+            "app/server.py": CoreModule.SERVER,
+            "app/__init__.py": "",
+            
+            # Agent
+            "app/models.py": AgentModule.MODELS,
+            "app/services/llm.py": AgentModule.SERVICE_LLM,
+            "app/services/browser.py": AgentModule.SERVICE_BROWSER,
+            "app/services/orchestrator.py": AgentModule.SERVICE_ORCHESTRATOR,
+            "app/services/__init__.py": "",
+            "app/api/routers/api.py": AgentModule.ROUTER_API,
+            "app/api/__init__.py": "",
+            "app/api/routers/__init__.py": "",
+            
+            # Auth
+            "app/api/routers/auth.py": AuthModule.ROUTER_AUTH,
+            
+            # UI
+            "app/static/index.html": UIModule.INDEX_HTML
+        }
 
 # ==========================================
 #           INSTALLER LOGIC
@@ -554,7 +645,7 @@ if __name__ == "__main__":
 def create_project(base_dir="scholar_agent_app"):
     if not os.path.exists(base_dir): os.makedirs(base_dir)
     print(f"Creating project in: {os.path.abspath(base_dir)}")
-    for filepath, content in files.items():
+    for filepath, content in ProjectBuilder.build_map().items():
         full_path = os.path.join(base_dir, filepath)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(full_path, "w", encoding="utf-8") as f: f.write(content)

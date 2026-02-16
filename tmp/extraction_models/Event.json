@@ -1,0 +1,30 @@
+{
+  "name": "Event",
+  "fields": [
+    {
+      "name": "title",
+      "type": "str",
+      "description": "Title of the event"
+    },
+    {
+      "name": "date",
+      "type": "str",
+      "description": "Date and time of the event"
+    },
+    {
+      "name": "location",
+      "type": "str",
+      "description": "Location or venue"
+    },
+    {
+      "name": "description",
+      "type": "str",
+      "description": "Description of the event"
+    },
+    {
+      "name": "price",
+      "type": "str",
+      "description": "Ticket price or cost"
+    }
+  ]
+}

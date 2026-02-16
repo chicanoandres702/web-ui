@@ -36,86 +36,91 @@ from app.models import SubTask
 
 COOKIE_PATH = "./tmp/cookies.json"
 
-async def start_chrome_with_debug_port(port: int = 9222, headless: bool = False):
-    """Start Chrome with remote debugging enabled."""
-    user_data_dir = tempfile.mkdtemp(prefix='chrome_cdp_')
+class ChromeLauncher:
+    """Component to handle browser process launching."""
     
-    chrome_paths = [
-        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        r"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-        r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-        "msedge",
-        "microsoft-edge"
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/usr/bin/google-chrome',
-        'chrome',
-        'chromium', 
-        r'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        r'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-    ]
-    
-    chrome_exe = None
-    for path in chrome_paths:
-        if os.path.exists(path) or path in ['chrome', 'chromium', 'msedge', 'microsoft-edge']:
-            try:
-                test_proc = await asyncio.create_subprocess_exec(
-                    path, '--version', stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-                await test_proc.wait()
-                chrome_exe = path
-                break
-            except Exception:
-                continue
-                
-    if not chrome_exe:
-        logger.error("Browser executable not found in standard paths.")
-        chrome_exe = 'chrome'
-
-    cmd = [
-        chrome_exe,
-        f'--remote-debugging-port={port}',
-        f'--user-data-dir={user_data_dir}',
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-extensions',
-        '--disable-popup-blocking',
-        '--disable-blink-features=AutomationControlled'
-    ]
-    
-    if headless:
-        cmd.append('--headless=new')
-    else:
-        cmd.append('about:blank')
-
-    logger.info(f"Launching Browser: {cmd}")
-    process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    cdp_ready = False
-    for i in range(20):
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f'http://localhost:{port}/json/version', timeout=1) as response:
-                    if response.status == 200:
-                        cdp_ready = True
-                        break
-        except Exception:
-            pass
-        if i % 5 == 0: logger.info("Waiting for CDP...")
-        await asyncio.sleep(1)
-
-    if not cdp_ready:
-        try: process.terminate()
-        except: pass
-        raise RuntimeError('Browser failed to start with CDP')
+    @staticmethod
+    async def launch(port: int = 9222, headless: bool = False):
+        user_data_dir = tempfile.mkdtemp(prefix='chrome_cdp_')
+        chrome_paths = [
+            r"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+            r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+            r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+            "msedge",
+            "microsoft-edge",
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/usr/bin/google-chrome',
+            'chrome',
+            'chromium', 
+            r'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            r'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+        ]
         
-    logger.info("CDP Ready.")
-    return process
+        chrome_exe = None
+        for path in chrome_paths:
+            if os.path.exists(path) or path in ['chrome', 'chromium', 'msedge', 'microsoft-edge']:
+                try:
+                    test_proc = await asyncio.create_subprocess_exec(
+                        path, '--version', stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
+                    await test_proc.wait()
+                    logger.info("Found browser executable: "+path)                
+                    chrome_exe = path
+                    break
+                except Exception:
+                    continue
+                    
+        if not chrome_exe:
+            logger.error("Browser executable not found in standard paths.")
+            chrome_exe = 'chrome'
+
+        cmd = [
+            chrome_exe,
+            f'--remote-debugging-port={port}',
+            f'--user-data-dir={user_data_dir}',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-extensions',
+            '--disable-popup-blocking',
+            '--disable-blink-features=AutomationControlled'
+        ]
+        
+        if headless:
+            cmd.append('--headless=new')
+        else:
+            cmd.append('about:blank')
+
+        logger.info(f"Launching Browser: {chrome_exe} on port {port}")
+        process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        cdp_ready = False
+        for i in range(20):
+            try:            
+                import aiohttp
+                    
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f'http://localhost:{port}/json/version', timeout=1) as response:
+                        if response.status == 200:
+                            cdp_ready = True
+                            break
+            except Exception:
+                pass
+            if i % 5 == 0: logger.info("Waiting for CDP...")
+            await asyncio.sleep(1)
+
+        if not cdp_ready:
+            try: process.terminate()
+            except: pass
+            raise RuntimeError('Browser failed to start with CDP')
+            
+        logger.info("CDP Ready.")
+        return process
 
 class BrowserAgentWrapper:
     def __init__(self, llm):
         self.llm = llm
         self.browser = None
-        self.session = None
+        self.context = None
         self.chrome_process = None
 
     async def start_session(self, headless: bool = False):
@@ -126,7 +131,7 @@ class BrowserAgentWrapper:
         logger.info(f"Initializing Session (Headless: {headless})")
         
         try:
-            self.chrome_process = await start_chrome_with_debug_port(9222, headless)
+            self.chrome_process = await ChromeLauncher.launch(9222, headless)
         except Exception as e:
             logger.error(f"Failed to launch browser process: {e}")
 
@@ -137,14 +142,14 @@ class BrowserAgentWrapper:
                 headless=headless
             )
 
-            # Simplified session creation
-            self.session = await self.browser.new_session()
+            # Create browser context (session)
+            self.context = await self.browser.new_context()
                 
             if os.path.exists(COOKIE_PATH):
                 try:
                     with open(COOKIE_PATH, 'r') as f:
                         cookies = json.load(f)
-                    await self.session.add_cookies(cookies)
+                    await self.context.add_cookies(cookies)
                     logger.info("Cookies loaded.")
                 except Exception as e:
                     logger.warning(f"Failed to load cookies: {e}")
@@ -156,9 +161,9 @@ class BrowserAgentWrapper:
             raise e
 
     async def close_session(self):
-        if self.session:
-            await self.session.close()
-            self.session = None
+        if self.context:
+            await self.context.close()
+            self.context = None
         if self.browser:
             await self.browser.close()
             self.browser = None
@@ -196,21 +201,21 @@ class BrowserAgentWrapper:
             if callback: await callback("log", msg)
             return False
 
-        if not self.browser or not self.session:
+        if not self.browser or not self.context:
             await self.start_session(headless)
 
         try:
             agent = BUAgent(
                 task=f"Context: {class_name}. Instruction: {description}", 
                 llm=self.llm, 
-                browser_context=self.session
+                browser_context=self.context
             )
             
             run_task = asyncio.create_task(agent.run(max_steps=10))
             
             while not run_task.done():
                 try:
-                    page = await self.session.get_current_page()
+                    page = await self.context.get_current_page()
                     if page:
                         screenshot = await page.screenshot(type='jpeg', quality=quality)
                         encoded = base64.b64encode(screenshot).decode('utf-8')

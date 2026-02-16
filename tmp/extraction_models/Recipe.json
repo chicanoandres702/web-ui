@@ -1,0 +1,30 @@
+{
+  "name": "Recipe",
+  "fields": [
+    {
+      "name": "name",
+      "type": "str",
+      "description": "Name of the recipe"
+    },
+    {
+      "name": "ingredients",
+      "type": "List[str]",
+      "description": "List of ingredients"
+    },
+    {
+      "name": "prep_time",
+      "type": "str",
+      "description": "Preparation time"
+    },
+    {
+      "name": "cook_time",
+      "type": "str",
+      "description": "Cooking time"
+    },
+    {
+      "name": "servings",
+      "type": "int",
+      "description": "Number of servings"
+    }
+  ]
+}
