@@ -1,0 +1,9 @@
+# Gemini Code Assist Project Context
+project_context:
+  rules_file: "AI_CONSTITUTION.md"
+  documentation_path: ".ai-pilot/knowledge-vault"
+  coding_standards:
+    - "Strict 100-line limit per file"
+    - "Recursive Debugging (Medic Mode)"
+    - "Design Intent documentation"
+    - "Functional Programming Pref"

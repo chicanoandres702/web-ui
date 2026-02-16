@@ -1,0 +1,6 @@
+description = "Generates unit tests using the Factory pattern."
+prompt = """
+Generate unit tests for the current file. 
+Use the [Feature]Factory pattern to mock dependencies.
+Focus on business logic isolation.
+"""

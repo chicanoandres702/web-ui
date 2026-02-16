@@ -1,0 +1,27 @@
+# Ignore build artifacts and dependencies
+node_modules/
+bin/
+obj/
+dist/
+build/
+.vs/
+.vscode/
+
+# Ignore media and assets that AI can't process
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.mp4
+*.pdf
+
+# Ignore logs and temp files
+*.log
+temp/
+tmp/
+
+# Ignore sensitive info
+.env
+*.pem
+*.key

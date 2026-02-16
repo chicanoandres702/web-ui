@@ -1,0 +1,25 @@
+{
+  "name": "web-ui-1",
+  "version": "1.0.0",
+  "description": "A lightweight, advanced Web UI for the [Browser Use](https://github.com/browser-use/browser-use) agent. This interface allows you to control autonomous browser agents, perform deep research, and interact with LLMs like OpenAI, Google Gemini, and Ollama.",
+  "main": "promptParser.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chicanoandres702/web-ui.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/chicanoandres702/web-ui/issues"
+  },
+  "homepage": "https://github.com/chicanoandres702/web-ui#readme"
+}

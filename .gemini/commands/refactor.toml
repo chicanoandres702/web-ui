@@ -1,0 +1,6 @@
+description = "Splits a class into smaller units to stay under 100 lines."
+prompt = """
+Analyze the current file. It exceeds our 100-line modularity rule.
+Identify a specific logic block to extract into a new technical class (e.g., Validator).
+Update the Factory to inject this new dependency. Keep classes small.
+"""

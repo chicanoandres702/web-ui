@@ -1,0 +1,6 @@
+description = "Generates a new root-level feature blueprint (Contract & Factory)."
+prompt = """
+I want to create a new feature for {{args}}.
+Based on our GEMINI.md, design the [FeatureName]Contract first.
+Define interfaces and DTOs only. Explain how the Factory will handle instantiation.
+"""

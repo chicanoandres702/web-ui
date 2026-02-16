@@ -10,6 +10,16 @@ A lightweight, advanced Web UI for the [Browser Use](https://github.com/browser-
 - **Local LLM Support**: Integration with Ollama.
 - **File Management**: Upload files and view generated artifacts.
 
+## Project Structure
+
+The project is modularized by feature for scalability:
+
+- **`src/core`**: Shared utilities, configuration, and security helpers.
+- **`src/features/auth`**: Google OAuth and Session management.
+- **`src/features/agents`**: Browser Agent and Deep Research logic.
+- **`src/features/llm`**: Integrations for Gemini, OpenAI, and Ollama.
+- **`src/ui`**: Web interface and static assets.
+
 ## Installation
 
 1.  **Clone the repository**:
@@ -31,14 +41,14 @@ A lightweight, advanced Web UI for the [Browser Use](https://github.com/browser-
 Create a `.env` file in the root directory to store your API keys and configuration.
 
 ```env
-# Security (Required for Session Management)
+# Core Security
 SECRET_KEY=change_this_to_a_random_string
 
-# Google OAuth (Required for "Sign in with Google")
+# Feature: Auth (Google)
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 
-# Optional: Default API Keys (if not using UI input)
+# Feature: LLM Providers
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-...
 ```
