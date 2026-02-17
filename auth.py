@@ -49,7 +49,7 @@ def sync_dependencies():
 #           FEATURE MODULES
 # ==========================================
 
-class CoreModule:
+class CoreFeature:
     """Base application infrastructure."""
     CONFIG = """import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -99,8 +99,10 @@ import nest_asyncio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-from app.api.routers import api, auth
-from app.config import get_settings
+from app.features.agent.api import router as agent_router
+from app.features.researcher.api import router as researcher_router
+from app.features.auth.api import router as auth_router
+from app.core.config import get_settings
 
 nest_asyncio.apply()
 # CRITICAL WINDOWS SUBPROCESS FIX
@@ -113,10 +115,11 @@ app = FastAPI(title=settings.APP_NAME)
 # Middleware must be added before routers
 app.add_middleware(SessionMiddleware, secret_key=settings.API_SECRET_KEY, https_only=False, max_age=3600)
 
-app.include_router(api.router, prefix="/api/v1")
-app.include_router(auth.router, prefix="/auth")
+app.include_router(agent_router, prefix="/api/v1")
+app.include_router(researcher_router, prefix="/api/v1/researcher")
+app.include_router(auth_router, prefix="/auth")
 
-static_p = os.path.join(os.path.dirname(__file__), "static")
+static_p = os.path.join(os.path.dirname(os.path.dirname(__file__)), "features", "navigator", "ui")
 if not os.path.exists(static_p): os.makedirs(static_p)
 app.mount("/", StaticFiles(directory=static_p, html=True), name="static")
 """
@@ -131,13 +134,13 @@ def run_server():
     nest_asyncio.apply()
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, workers=1)
+    uvicorn.run("app.core.main:app", host="0.0.0.0", port=8000, reload=True, workers=1)
 
 if __name__ == "__main__":
     run_server()
 """
 
-class AgentModule:
+class AgentFeature:
     """AI Agent capabilities and business logic."""
     MODELS = """from __future__ import annotations
 from pydantic import BaseModel, Field
@@ -196,7 +199,7 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from google.oauth2 import service_account
-from app.config import get_settings
+from app.core.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -236,7 +239,7 @@ def get_llm(model_name=None):
 import logging
 import asyncio
 import base64
-from app.models import SubTask
+from app.features.agent.models import SubTask
 from langchain.schema import HumanMessage
 
 try:
@@ -308,9 +311,9 @@ class BrowserService:
     SERVICE_ORCHESTRATOR = """import asyncio
 import uuid
 import logging
-from app.models import AgentTaskRequest, AgentState, TaskStatus, UserFeedback, SubTask
-from app.services.llm import get_llm
-from app.services.browser import BrowserService
+from app.features.agent.models import AgentTaskRequest, AgentState, TaskStatus, UserFeedback, SubTask
+from app.features.agent.services.llm import get_llm
+from app.features.agent.services.browser import BrowserService
 
 logger = logging.getLogger(__name__)
 
@@ -405,9 +408,9 @@ class TaskOrchestrator:
     ROUTER_API = """from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import requests
 import asyncio
-from app.models import AgentTaskRequest, UserFeedback, HealthCheck
-from app.services.orchestrator import TaskOrchestrator
-from app.config import get_settings
+from app.features.agent.models import AgentTaskRequest, UserFeedback, HealthCheck
+from app.features.agent.services.orchestrator import TaskOrchestrator
+from app.core.config import get_settings
 
 router = APIRouter()
 orc = TaskOrchestrator.get_instance()
@@ -451,7 +454,7 @@ async def ws_endpoint(ws: WebSocket):
     except WebSocketDisconnect: manager.disconnect(ws)
 """
 
-class AuthModule:
+class AuthFeature:
     """Authentication and Identity."""
     ROUTER_AUTH = """from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -473,7 +476,39 @@ async def logout(request: Request):
     return {"status": "logged_out"}
 """
 
-class UIModule:
+class ResearcherFeature:
+    """Academic research and synthesis capabilities."""
+    MODELS = """from pydantic import BaseModel
+from typing import List, Optional
+
+class ResearchRequest(BaseModel):
+    topic: str
+    depth: str = "standard"
+
+class ResearchResult(BaseModel):
+    summary: str
+    sources: List[str]
+"""
+    SERVICE = """import logging
+class ResearchService:
+    async def perform_research(self, topic: str):
+        # Placeholder for specialized research logic
+        return {"summary": f"Synthesized research results for: {topic}", "sources": ["https://scholar.google.com"]}
+"""
+    API = """from fastapi import APIRouter
+from app.features.researcher.models import ResearchRequest, ResearchResult
+from app.features.researcher.services.research import ResearchService
+
+router = APIRouter()
+svc = ResearchService()
+
+@router.post("/search", response_model=ResearchResult)
+async def search(req: ResearchRequest):
+    res = await svc.perform_research(req.topic)
+    return ResearchResult(**res)
+"""
+
+class NavigatorFeature:
     """Frontend assets."""
     INDEX_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -607,6 +642,25 @@ class UIModule:
 </html>
 """
 
+    CHAT_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scholar Pro | Chat</title>
+    <style>
+        body { background: #0b0d11; color: #e0e6ed; font-family: sans-serif; padding: 20px; }
+        .chat-container { max-width: 600px; margin: auto; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h2>Agent Chat Interface</h2>
+        <div id="messages"></div>
+    </div>
+</body>
+</html>
+"""
+
 # ==========================================
 #           PROJECT FILE MAP
 # ==========================================
@@ -615,27 +669,37 @@ class ProjectBuilder:
     @staticmethod
     def build_map():
         return {
-            # Core
-            "app/config.py": CoreModule.CONFIG,
-            "app/main.py": CoreModule.MAIN,
-            "app/server.py": CoreModule.SERVER,
+            # Core Feature
+            "app/core/config.py": CoreFeature.CONFIG,
+            "app/core/main.py": CoreFeature.MAIN,
+            "app/core/__init__.py": "",
+            "app/server.py": CoreFeature.SERVER,
             "app/__init__.py": "",
             
-            # Agent
-            "app/models.py": AgentModule.MODELS,
-            "app/services/llm.py": AgentModule.SERVICE_LLM,
-            "app/services/browser.py": AgentModule.SERVICE_BROWSER,
-            "app/services/orchestrator.py": AgentModule.SERVICE_ORCHESTRATOR,
-            "app/services/__init__.py": "",
-            "app/api/routers/api.py": AgentModule.ROUTER_API,
-            "app/api/__init__.py": "",
-            "app/api/routers/__init__.py": "",
+            # Agent Feature
+            "app/features/agent/models.py": AgentFeature.MODELS,
+            "app/features/agent/services/llm.py": AgentFeature.SERVICE_LLM,
+            "app/features/agent/services/browser.py": AgentFeature.SERVICE_BROWSER,
+            "app/features/agent/services/orchestrator.py": AgentFeature.SERVICE_ORCHESTRATOR,
+            "app/features/agent/api.py": AgentFeature.ROUTER_API,
+            "app/features/agent/__init__.py": "",
+            "app/features/agent/services/__init__.py": "",
             
-            # Auth
-            "app/api/routers/auth.py": AuthModule.ROUTER_AUTH,
+            # Auth Feature
+            "app/features/auth/api.py": AuthFeature.ROUTER_AUTH,
+            "app/features/auth/__init__.py": "",
             
-            # UI
-            "app/static/index.html": UIModule.INDEX_HTML
+            # Researcher Feature
+            "app/features/researcher/models.py": ResearcherFeature.MODELS,
+            "app/features/researcher/services/research.py": ResearcherFeature.SERVICE,
+            "app/features/researcher/api.py": ResearcherFeature.API,
+            "app/features/researcher/__init__.py": "",
+            "app/features/researcher/services/__init__.py": "",
+            
+            # Navigator Feature (UI)
+            "app/features/navigator/ui/index.html": NavigatorFeature.INDEX_HTML,
+            "app/features/navigator/ui/chat.html": NavigatorFeature.CHAT_HTML,
+            "app/features/__init__.py": ""
         }
 
 # ==========================================

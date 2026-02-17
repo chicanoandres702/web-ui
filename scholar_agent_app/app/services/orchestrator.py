@@ -2,8 +2,8 @@ import asyncio
 import uuid
 import logging
 from app.models import AgentTaskRequest, AgentState, TaskStatus, UserFeedback, SubTask
-from app.core.llm_factory import get_llm
-from app.agents.browser_agent import BrowserAgentWrapper
+from app.services.llm import get_llm
+from app.services.browser import BrowserService
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class TaskOrchestrator:
         state = self.tasks[tid]
         cb = self.global_callback
         llm = get_llm(req.model_override)
-        agent = BrowserAgentWrapper(llm)
+        agent = BrowserService(llm)
 
         # 1. PLAN
         state.status = TaskStatus.PLANNING
